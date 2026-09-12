@@ -1,0 +1,104 @@
+# miaoli_bot
+
+一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，将 **pi**（`pi_bridge` 桥接的 LLM Agent）接入 QQ 对话服务，让 QQ 消息驱动 agent 思考、回复并调用工具。
+
+- **版本**：0.1.0
+- **入口**：`main.py`（插件类 `Claw`）
+- **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
+
+## 功能特性
+
+- 🧠 **LLM 接入 QQ**：通过 `pi_bridge.PiClient` 与 pi Agent 通信，QQ 私聊/群聊消息直接进入 agent 会话（`PiClient.open(session_dir="/tmp/", system_prompt=data/new_prompt.md)` + `set_model(...)` 完成初始化）。
+- ⚡ **流式事件驱动**：逐帧消费 pi 的事件流，用 `utils/pi_event_classifier.py` 区分正文增量（`TextDeltaEvent`）、思维链增量（`ThinkingDeltaEvent`）、agent 结束（`AgentSettledEvent`）与错误事件。正文按 `\n\n` 分块实时发回 QQ，思维链以 `=====思维链=====` 前缀单独发送，本轮结束回复 `[DONE]`。
+- 🎭 **角色扮演**：内置猫娘「喵璃」人设提示词（`data/new_prompt.md`），agent 输出由插件自动发送，仅在需要图片/文件/AT/引用/跨会话时才调用发消息工具。
+- 🧭 **流式期间可干预**：agent 正在输出时收到新消息会以 `steer` 注入而非另起一轮。
+- 🧠 **会话记忆外部托管**：插件不做本地持久化，会话上下文由外部 PI AGENT 进程管理（`session_dir` 指定）。
+- 🛠️ **工具调用闭环**：通过 `core.PIToolBackend` 把 QQ 侧能力（发消息 `send_message_to_QQ`、下载文件 `download_qq_file`）注册为 pi 可调用的工具。
+- 🧩 **事件处理链**：`EventParseChain` 责任链分发，`GroupMessageEventHandler` / `PrivateMessageEventHandler` 分别把 ncatbot 事件规整为统一 dict，再交给 agent。
+- 🦆 **鸭子类型适配**：`adapters/EventAdapter` 不依赖具体 ncatbot 类型，通过属性探测兼容不同消息事件形态。
+- 💾 **共享存储**：`stores/SHARE_STORE` 全局共享容器，用于跨调用共享解析链等状态（带 `asyncio.Lock` 保护）。
+- 🔧 **协议先行**：`protocols/` 定义 `Handler`、`ChainProtocol`、`StoreProtocol` 抽象，业务实现均依赖接口。
+
+## 架构设计
+
+```
+QQ / NapCat (OneBot)
+        │ ncatbot 事件
+        ▼
+main.py  Claw(NcatBotPlugin)
+        │ EventParseChain（责任链）
+        ▼
+handlers/  GroupMessageEventHandler / PrivateMessageEventHandler
+        │ 规整为统一 dict（platform / segments / sender ...）
+        ▼
+adapters/  EventAdapter（鸭子类型适配 ncatbot 事件：user_id / group_id / is_group / send）
+        │
+        ▼
+core/PiClient.prompt() ────────────►  pi_bridge.PiClient ──►  pi Agent（LLM）
+        │                                                          │ 工具调用
+        │ 事件流（Text/ThinkingDelta, AgentSettled）                 ▼
+utils/pi_event_classifier 分类 ◄───          core/PIToolBackend._execute_tool
+        │                                              │
+        ▼                                              ├─ tools/send_message.py   (send_message_to_QQ)
+   发送到 QQ（easier_send）                            └─ tools/download_file.py  (download_qq_file)
+```
+
+### 目录结构
+
+```
+miaoli_bot/
+├── main.py                        # 插件入口：Claw，注册事件链与工具
+├── manifest.toml                  # 插件清单（name/version/entry_class）
+├── adapters/                      # ncatbot 事件鸭子类型适配器
+│   ├── base_adapter.py            #   BaseAdapter 基类
+│   └── event_adapter.py           #   EventAdapter（user_id/group_id/is_group/send）
+├── chains/                        # 事件处理链
+│   ├── base_chain.py              #   BaseHandlerChain：注册 + 分发给首个接受的 handler
+│   └── event_chain.py             #   EventParseChain
+├── core/                          # pi 桥接层
+│   ├── pi_client.py               #   PiClient：prompt 流式接口，出错落盘崩溃日志
+│   └── pi_tool_backend.py         #   PIToolBackend：配置文件驱动 host/port，记录工具调用
+├── enums/                         # 枚举定义
+├── handlers/                      # 消息事件处理器（群聊 / 私聊）
+├── models/runtimes/               # 运行时数据模型（DispatchResult）
+├── protocols/                     # 抽象协议：Handler / ChainProtocol / StoreProtocol
+├── stores/                        # 全局共享存储（SHARE_STORE）
+├── tools/                         # 暴露给 pi 的工具（发消息 / 下载 QQ 文件）
+└── utils/                         # 工具函数
+    ├── easier_sender.py           #   private/group 便捷发送封装
+    ├── event_ops.py               #   从事件取 id（群→group_id，私聊→user_id）
+    └── pi_event_classifier.py     #   pi 事件分类（text/thinking 增量、agent 结束/错误）
+```
+
+## 数据流
+
+1. QQ 消息经 NapCat → ncatbot → 触发 `Claw` 插件。
+2. `EventParseChain` 依次询问各 handler 是否接受：群消息 → `GroupMessageEventHandler`，私聊 → `PrivateMessageEventHandler`。
+3. handler 把 ncatbot 事件规整为统一 dict（`platform`、`created_at`、`segments`、`sender` 等）。
+4. `PiClient.prompt()` 将消息送入 pi Agent，流式返回事件；若 agent 正在输出则 `steer` 注入新消息。
+5. `pi_event_classifier` 分类事件：正文增量实时回发 QQ；agent 结束即结束本轮；出错记录日志。
+6. agent 需要调用工具时，经 `PIToolBackend` 执行 `send_message_to_QQ` / `download_qq_file`，结果回流给 agent。
+
+## 安装与使用
+
+1. 将本目录放入 ncatbot 的插件目录（如 `plugins/miaoli_bot`）。
+2. 确认运行环境已安装依赖：
+   - `ncatbot`
+   - `pi_bridge`（参见 [pi-bridge](https://github.com/lyt2011/pi-bridge)）
+   - `aiofiles`
+3. 在 ncatbot 配置中为插件提供配置项（`core/PIToolBackend` 读取 `tool_backend_host` / `tool_backend_port`）。
+4. 启动 bot，在 QQ 中私聊或群聊即可与 agent 对话。
+
+## 依赖
+
+| 包 | 用途 |
+|---|---|
+| `ncatbot` | QQ 机器人框架 / 事件与消息 API |
+| `pi_bridge` | pi 与 Python 的桥接层（`PiClient` / `PIToolBackend`，v0.5.4+） |
+| `aiofiles` | 异步文件读写（崩溃日志落盘） |
+
+> 注：`manifest.toml` 中 `pip_dependencies = []`，依赖需在运行环境中自行安装。
+
+## 项目状态
+
+v0.1.0 — 核心链路（消息接入 → agent 对话 → 工具调用）可用，仍在演进中。

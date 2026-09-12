@@ -96,6 +96,7 @@ class Claw(NcatBotPlugin):
 		await self._register_parse_chain()
 		await self._register_tools()
 		
+		# HACK: 为了快速测试留下的技术债
 		self.pi_client = await PiClient.open(
 			session_dir		= "/tmp/",
 			system_prompt	= Path("/sdcard/Ncatbot_QQ/plugins/miaoli_bot/data/new_prompt.md").read_text(),

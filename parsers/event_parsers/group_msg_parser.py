@@ -15,7 +15,7 @@ class GroupMessageEventParser(Parser):
 		event_data = {
 			"platform"	: "qq",
 			"from_group": True,
-			"created_at": datetime.now(),
+			"created_at": datetime.now().isoformat(timespec="seconds"),
 			"group_name": data.group_name,
 			"group_id"	: data.group_id,
 			"sender"	: data.sender.model_dump(),

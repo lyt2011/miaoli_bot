@@ -54,10 +54,10 @@ async def send_message_to_QQ(
 		message_array.add_segment(File(file=attachment_path))
 	
 	sender_result = await easier_send(
-		ncatbot_api		= nc_api,
-		recipient_id	= recipient_id,
-		send_to_group	= send_to_group,
-		message_content	= message_array
+		ncatbot_api	= nc_api,
+		chat_id		= recipient_id,
+		to_group	= send_to_group,
+		message		= message_array
 	)
 	
 	if hasattr(sender_result, "model_dump_json"):

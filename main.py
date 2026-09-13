@@ -6,14 +6,20 @@ from ncatbot.utils		import get_log
 from pi_bridge	import models
 from pathlib	import Path
 
-from .chains	import EventParseChain
+from .chains	import EventParseChain, SegmentParseChain
 from .core		import PIToolBackend, PiClient
-from .parsers	import GroupMessageEventParser, PrivateMessageEventParser
+from .parsers	import (
+	GroupMessageEventParser,
+	PrivateMessageEventParser,
+	AtSegmentParser,
+	TextSegmentParser,
+)
 from .stores	import SHARE_STORE
 from .tools		import send_message_to_QQ, download_qq_file
 from .adapters	import EventAdapter
 from .utils		import (
 	easier_send,
+	parse_message,
 	get_id_from_event,
 	is_agent_end,
 	is_agent_error,
@@ -22,7 +28,7 @@ from .utils		import (
 )
 from .consts	import (
 	EVENT_PARSER,
-	SEGMENT_PARSE,
+	SEGMENT_PARSER,
 	NCATBOT_API,
 	TOOL_BACKEND,
 )
@@ -40,9 +46,9 @@ class Claw(NcatBotPlugin):
 		self._share_store_lock	= asyncio.Lock()
 		self._plugin_lock		= asyncio.Lock()
 	
-	async def _register_parse_chain(self) -> None:
+	async def _register_event_parse_chain(self) -> None:
 		
-		"""事件链已注册后不会重新注册处理器"""
+		"""event 解析链已注册后不会重新注册"""
 		
 		async with self._share_store_lock:
 		
@@ -54,6 +60,21 @@ class Claw(NcatBotPlugin):
 		
 		parse_chain.register_parser(GroupMessageEventParser())
 		parse_chain.register_parser(PrivateMessageEventParser())
+	
+	async def _register_segment_parse_chain(self) -> None:
+		
+		"""segment 解析链已注册后不会重新注册"""
+		
+		async with self._share_store_lock:
+		
+			if SHARE_STORE.contains(SEGMENT_PARSER):
+				return None
+			
+			parse_chain = SegmentParseChain()
+			SHARE_STORE.set(SEGMENT_PARSER, parse_chain)
+		
+		parse_chain.register_parser(TextSegmentParser())
+		parse_chain.register_parser(AtSegmentParser())
 		
 	async def _register_tools(self) -> None:
 		
@@ -99,7 +120,8 @@ class Claw(NcatBotPlugin):
 				
 		SHARE_STORE.set(NCATBOT_API, self.api)
 		
-		await self._register_parse_chain()
+		await self._register_event_parse_chain()
+		await self._register_segment_parse_chain()
 		await self._register_tools()
 		
 		# HACK: 为了快速测试留下的技术债
@@ -120,7 +142,6 @@ class Claw(NcatBotPlugin):
 	@registrar.on_message()
 	async def on_message(self, event: MessageEvent) -> None:
 		
-		parse_chain 	= SHARE_STORE.recall(EVENT_PARSER, None)
 		is_group		= event.is_group_msg()
 		target_id		= get_id_from_event(event)
 		event_adapter	= EventAdapter.build(event)
@@ -135,22 +156,14 @@ class Claw(NcatBotPlugin):
 			self.logger.warning(f"跳过 {target_id}")
 			return
 		
-		if not parse_chain:
-			self.logger.warning("parse_chain 不存在/获取失败")
-			return
+		# HACK: 这里可能不稳定 需要先判断再获取属性
+		parse_result = await parse_message(event, event.message)
 		
-		disp_result	= await parse_chain.dispatch(event)
-		if not disp_result.is_handled:
-			self.logger.warning(f"无解析器器接受 {type(event)}")
-			
-		if not disp_result.result:
-			self.logger.warning(f"{type(event)} 无处理结果")
+		i_data = json.dumps({
+			"event"		: parse_result.event,
+			"segments"	: parse_result.segments,
+		}, ensure_ascii=False, indent=2)
 		
-		if isinstance(disp_result.result, dict):
-			i_data = json.dumps(disp_result.result, ensure_ascii=False, indent=2)
-		
-		else:
-			i_data = str(disp_result.result)
 		
 		client_state = await self.pi_client.get_state()
 		if client_state.isStreaming is True:

@@ -15,7 +15,7 @@ class PrivateMessageEventParser(Parser):
 		event_data = {
 			"platform"	: "qq",
 			"from_group": False,
-			"created_at": datetime.now(),
+			"created_at": datetime.now().isoformat(timespec="seconds"),
 			"sender"	: data.sender.model_dump(),
 		}
 		

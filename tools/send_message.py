@@ -2,6 +2,7 @@ from ncatbot.types	import MessageArray, File
 
 from ..utils	import easier_send
 from ..stores	import SHARE_STORE
+from ..consts	import NCATBOT_API
 
 from typing	import Optional, Literal
 
@@ -34,7 +35,7 @@ async def send_message_to_QQ(
 	False: recipient_id 将作为QQ号使用 给对应QQ号的用户发消息
 	"""
 	
-	nc_api = SHARE_STORE.recall("ncatbot_api", None)
+	nc_api = SHARE_STORE.recall(NCATBOT_API, None)
 	if nc_api is None:
 		return f"ncatbot api is unavailable"
 	

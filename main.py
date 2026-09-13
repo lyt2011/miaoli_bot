@@ -8,7 +8,7 @@ from pathlib	import Path
 
 from .chains	import EventParseChain
 from .core		import PIToolBackend, PiClient
-from .handlers	import GroupMessageEventHandler, PrivateMessageEventHandler
+from .parsers	import GroupMessageEventParser, PrivateMessageEventParser
 from .stores	import SHARE_STORE
 from .tools		import send_message_to_QQ, download_qq_file
 from .adapters	import EventAdapter
@@ -19,6 +19,12 @@ from .utils		import (
 	is_agent_error,
 	is_thinking_delta,
 	is_text_delta,
+)
+from .consts	import (
+	EVENT_PARSER,
+	SEGMENT_PARSE,
+	NCATBOT_API,
+	TOOL_BACKEND,
 )
 
 import json
@@ -40,14 +46,14 @@ class Claw(NcatBotPlugin):
 		
 		async with self._share_store_lock:
 		
-			if SHARE_STORE.contains("parse_chain"):
+			if SHARE_STORE.contains(EVENT_PARSER):
 				return None
 			
 			parse_chain = EventParseChain()
-			SHARE_STORE.set("parse_chain", parse_chain)
+			SHARE_STORE.set(EVENT_PARSER, parse_chain)
 		
-		parse_chain.register_handler(GroupMessageEventHandler())
-		parse_chain.register_handler(PrivateMessageEventHandler())
+		parse_chain.register_parser(GroupMessageEventParser())
+		parse_chain.register_parser(PrivateMessageEventParser())
 		
 	async def _register_tools(self) -> None:
 		
@@ -62,11 +68,11 @@ class Claw(NcatBotPlugin):
 		
 		async with self._share_store_lock:
 		
-			if SHARE_STORE.contains("tool_backend"):
+			if SHARE_STORE.contains(TOOL_BACKEND):
 				return None
 		
 			tool_backend = PIToolBackend(config)
-			SHARE_STORE.set("tool_backend", tool_backend)
+			SHARE_STORE.set(TOOL_BACKEND, tool_backend)
 		
 		tool_backend.register_tool(send_message_to_QQ)
 		tool_backend.register_tool(download_qq_file)
@@ -77,10 +83,10 @@ class Claw(NcatBotPlugin):
 		
 		async with self._share_store_lock:
 			
-			tool_backend = SHARE_STORE.recall("tool_backend", None)
+			tool_backend = SHARE_STORE.recall(TOOL_BACKEND, None)
 			
 			if tool_backend is not None:
-				SHARE_STORE.drop("tool_backend")
+				SHARE_STORE.drop(TOOL_BACKEND)
 		
 		# double-check并打印日志
 		if tool_backend is None:
@@ -91,7 +97,7 @@ class Claw(NcatBotPlugin):
 	
 	async def on_load(self) -> None:
 				
-		SHARE_STORE.set("ncatbot_api", self.api)
+		SHARE_STORE.set(NCATBOT_API, self.api)
 		
 		await self._register_parse_chain()
 		await self._register_tools()
@@ -99,10 +105,10 @@ class Claw(NcatBotPlugin):
 		# HACK: 为了快速测试留下的技术债
 		self.pi_client = await PiClient.open(
 			session_dir		= "/tmp/",
-			system_prompt	= Path("/sdcard/Ncatbot_QQ/plugins/miaoli_bot/data/new_prompt.md").read_text(),
+			system_prompt	= Path("/sdcard/Ncatbot_QQ/plugins/miaoli_bot/data/prompt_v1.1.md").read_text(),
 			buffer_limit	= 32 * 1024 * 1024,
 		)
-		await self.pi_client.set_model("lisenaupair", "deepseek-v4-flash")
+		await self.pi_client.set_model("deepseek-official", "deepseek-flash")
 		
 	async def on_close(self) -> None:
 		
@@ -114,10 +120,20 @@ class Claw(NcatBotPlugin):
 	@registrar.on_message()
 	async def on_message(self, event: MessageEvent) -> None:
 		
-		parse_chain 	= SHARE_STORE.recall("parse_chain", None)
+		parse_chain 	= SHARE_STORE.recall(EVENT_PARSER, None)
 		is_group		= event.is_group_msg()
 		target_id		= get_id_from_event(event)
 		event_adapter	= EventAdapter.build(event)
+		
+		# HACK: 测试期过滤非@
+		if not event.message.is_at("2449906317"):
+			self.logger.warning(f"跳过 非@")
+			return
+		
+		# HACK: 测试期白名单
+		if target_id not in ("1046279455", "3757973483"):
+			self.logger.warning(f"跳过 {target_id}")
+			return
 		
 		if not parse_chain:
 			self.logger.warning("parse_chain 不存在/获取失败")
@@ -146,30 +162,33 @@ class Claw(NcatBotPlugin):
 		
 		async for pi_event in self.pi_client.prompt(i_data):
 			
-			# HACK: 不够优雅
-			# FIXME: 已知bug 当AI仅回复一句话时，没有`\n\n`，不进入该逻辑，导致最终text被丢弃，可稳定复现
-			if text.endswith("\n\n"):
-				
-				await event_adapter.send(self.api, text.rstrip())
-				text = ""
-			
-			if is_text_delta(pi_event):
-				text += pi_event.assistantMessageEvent.delta
-			
-			if is_thinking_delta(pi_event):
-				thinking += pi_event.assistantMessageEvent.delta
-			
 			if is_agent_error(pi_event):
 				await event_adapter.send(self.api, f"出现错误: {pi_event.error}")
 			
-			if is_agent_end(pi_event):
+			elif is_text_delta(pi_event):
+				
+				text += pi_event.assistantMessageEvent.delta
+				
+				# HACK: 不够优雅
+				# FIXME: 已知bug 当AI仅回复一句话时，没有`\n\n`，不进入该逻辑，导致最终text被丢弃，可稳定复现
+				if text.endswith("\n\n"):
+					
+					await event_adapter.send(self.api, text.rstrip())
+					text = ""
+			
+			elif is_thinking_delta(pi_event):
+				thinking += pi_event.assistantMessageEvent.delta
+			
+			elif is_agent_end(pi_event):
+				
+				# HACK: 因为上面的缓冲区bug 临时写一个兜底逻辑
+				if text:
+					await event_adapter.send(self.api, text)
+				
 				break
 		
-		if thinking:
-			await event_adapter.send(self.api, f"=====思维链=====\n\n{thinking}")
-		
-		# HACK: 因为上面的缓冲区bug 临时写一个兜底逻辑
-		if text:
-			await event_adapter.send(self.api, text)
+		# 思维链懒得看了 先删掉
+		# if thinking:
+			# await event_adapter.send(self.api, f"=====思维链=====\n\n{thinking}")
 		
 		await event.reply("[DONE]")

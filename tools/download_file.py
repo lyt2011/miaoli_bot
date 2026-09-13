@@ -1,4 +1,5 @@
 from ..stores	import SHARE_STORE
+from ..consts	import NCATBOT_API
 
 
 async def download_qq_file(url: str) -> str:
@@ -12,7 +13,7 @@ async def download_qq_file(url: str) -> str:
 	url 为非 QQ 平台文件时将会发生未定义情况
 	"""
 	
-	nc_api = SHARE_STORE.recall("ncatbot_api", None)
+	nc_api = SHARE_STORE.recall(NCATBOT_API, None)
 	if nc_api is None:
 		return "ncatbot api is unavailable"
 	

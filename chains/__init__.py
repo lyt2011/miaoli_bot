@@ -1,10 +1,12 @@
-from .base_chain	import BaseHandlerChain
-from .event_chain	import EventParseChain
+from .base_chain			import BaseParserChain
+from .event_parse_chain		import EventParseChain
+from .segment_parse_chain	import SegmentParseChain
 
 
 __all__ = [
 
-	"BaseHandlerChain",
+	"BaseParserChain",
 	"EventParseChain",
+	"SegmentParseChain",
 	
 ]

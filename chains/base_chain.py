@@ -1,25 +1,24 @@
-from ..protocols	import ChainProtocol, Handler
+from ..protocols	import ChainProtocol, Parser
 from ..models		import DispatchResult
 
 from typing	import Set, Any
 
 
-class BaseHandlerChain(ChainProtocol):
+class BaseParserChain(ChainProtocol):
 	
 	def __init__(self) -> None:
+		self._parsers: Set[Parser] = set()
 		
-		self._handlers: Set[Handler] = set()
-		
-	def register_handler(self, handler: Handler) -> None:
-		self._handlers.add(handler)
+	def register_parser(self, parser: Parser) -> None:
+		self._parsers.add(parser)
 		
 	async def dispatch(self, data: Any) -> DispatchResult:
 		
-		for handler in self._handlers:
+		for parser in self._parsers:
 			
-			if not await handler.is_accept(data):
+			if not await parser.is_accept(data):
 				continue
 			
-			return DispatchResult(result=await handler.handle(data))
+			return DispatchResult(result=await parser.handle(data))
 		
 		return DispatchResult(is_handled=False)

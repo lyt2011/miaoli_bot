@@ -6,6 +6,9 @@ from .event_parsers	import (
 from .segment_parsers	import (
 	TextSegmentParser,
 	AtSegmentParser,
+	ImageSegmentParser,
+	FileSegmentParser,
+	ReplySegmentParser,
 )
 
 
@@ -18,5 +21,8 @@ __all__ = [
 	# segment_parsers
 	"TextSegmentParser",
 	"AtSegmentParser",
+	"ImageSegmentParser",
+	"FileSegmentParser",
+	"ReplySegmentParser",
 
 ]

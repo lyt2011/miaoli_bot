@@ -3,6 +3,26 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.3.0] - 2026-09-14
+
+### Added
+- **消息段解析扩展**：新增 `ImageSegmentParser` / `FileSegmentParser` / `ReplySegmentParser`（`parsers/segment_parsers/`），图片/文件段产出 `{image, size}`、引用段产出 `{reply}`，`SegmentParseChain` 与 `parsers/__init__` 同步注册导出
+- **新工具 `query_qq_message_id`**（`tools/query_message_id.py`）：按 `msg_id` 查询未经解析的 OB11 原始消息数据，返回 JSON 字符串；`tools/__init__` 导出并在 `main.py` 注册进 `PIToolBackend`
+- **`PLUGIN_CONFIG` 共享键**（`consts/share_store_keys.py`）：ncatbot 插件配置加入 `SHARE_STORE`，`on_load` 写入、`on_close` 清理，供 `PIToolBackend` 等消费
+
+### Changed
+- **`PiClient.prompt` 重写忙时语义**（`core/pi_client.py`）：流式期间收到新消息不再依赖 prompt 内置 `streamingBehavior` 透传给 pi，而是 `get_state()` 判定 `isStreaming` 后由客户端提前分流——`steer` 走 `self.steer()`、`followUp` 走 `self.follow_up()`，随后直接 `return`，避免同一事件流被多个 Task 重复订阅；`main.py` 相应改为 `prompt(i_data, streamingBehavior="steer")`，删除调用侧原先手写的 `get_state` + `steer` 分支
+- **`PIToolBackend.__init__` 改从 `SHARE_STORE` 取配置**（`core/pi_tool_backend.py`）：不再要求构造时显式传 `config`，改为 `SHARE_STORE.recall(PLUGIN_CONFIG, {})`，`main.py` 的 `_register_tools` 相应去掉 `self.config` 时序断言
+- **`[DONE]` 兜底移动**：`main.py` 中 `event.reply("[DONE]")` 移入 `is_agent_end` 分支内，确保仅在正常结束时发送
+- **`main.py` 过滤逻辑放宽**：移除测试期用户白名单，仅保留「群消息需 @」判定（私聊不再受 @ 限制），修复私聊无法使用的问题
+- 崩溃日志读取缓冲由 32KB 提升至 32MB（`core/pi_client.py`）
+
+### Docs
+- README 更新至 0.3.0 架构（新增消息段/工具/共享键说明、目录结构与数据流同步）
+
+### Future
+- **单订阅者互斥（待实现）**：当前 `PiClient.prompt` 通过 `get_state()` 做流式判定属于一次 RPC 往返，存在 TOCTOU 时间窗口——并发调用方可能同时读到 `isStreaming=False` 而各自订阅，无法原子保证 `_subscribers` 中只有一个活跃订阅者。计划引入**本地 `asyncio.Lock`** 包裹「检查 → 置位 → 订阅 → 发指令」，并以本地 `is_streaming` 布尔标志（`False` 时置 `True` 正常开始，`True` 时直接跳过）替代实时状态查询，从而在客户端侧**严格保证单订阅者**。同时考虑将跳过路径由静默 `return` 改为 `raise`（或产出合成事件），以便调用方区分「被 steer 掉」与「正常结束」。
+
 ## [0.2.0] - 2026-09-13
 
 ### Added

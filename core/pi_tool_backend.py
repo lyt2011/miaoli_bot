@@ -3,6 +3,9 @@ from typing		import Any, Dict, AsyncIterable
 
 from ncatbot.utils	import get_log
 
+from ..stores	import SHARE_STORE
+from ..consts	import PLUGIN_CONFIG
+
 
 TOOL_BACKEND_LOGGER = get_log("PIToolBackend")
 
@@ -11,7 +14,9 @@ class PIToolBackend(_PIToolBackend):
 	
 	"""重新封装初始化逻辑使其支持配置文件与ncatbot日志"""
 	
-	def __init__(self, config: Dict[str, Any], *args, **kwargs) -> None:
+	def __init__(self, *args, **kwargs) -> None:
+		
+		config = SHARE_STORE.recall(PLUGIN_CONFIG, {})
 		
 		cg_host	= config.get("tool_backend_host")
 		cg_port	= config.get("tool_backend_port")

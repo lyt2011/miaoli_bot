@@ -3,6 +3,7 @@ from .share_store_keys	import (
 	SEGMENT_PARSER,
 	NCATBOT_API,
 	TOOL_BACKEND,
+	PLUGIN_CONFIG,
 )
 
 
@@ -13,5 +14,6 @@ __all__ = [
 	"SEGMENT_PARSER",
 	"NCATBOT_API",
 	"TOOL_BACKEND",
+	"PLUGIN_CONFIG",
 
 ]

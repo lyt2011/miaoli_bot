@@ -8,15 +8,22 @@ from pathlib	import Path
 
 from .chains	import EventParseChain, SegmentParseChain
 from .core		import PIToolBackend, PiClient
+from .stores	import SHARE_STORE
+from .adapters	import EventAdapter
 from .parsers	import (
 	GroupMessageEventParser,
 	PrivateMessageEventParser,
 	AtSegmentParser,
 	TextSegmentParser,
+	ImageSegmentParser,
+	FileSegmentParser,
+	ReplySegmentParser,
 )
-from .stores	import SHARE_STORE
-from .tools		import send_message_to_QQ, download_qq_file
-from .adapters	import EventAdapter
+from .tools		import (
+	send_message_to_QQ,
+	download_qq_file,
+	query_qq_message_id
+)
 from .utils		import (
 	easier_send,
 	parse_message,
@@ -31,6 +38,7 @@ from .consts	import (
 	SEGMENT_PARSER,
 	NCATBOT_API,
 	TOOL_BACKEND,
+	PLUGIN_CONFIG,
 )
 
 import json
@@ -75,28 +83,25 @@ class Claw(NcatBotPlugin):
 		
 		parse_chain.register_parser(TextSegmentParser())
 		parse_chain.register_parser(AtSegmentParser())
+		parse_chain.register_parser(ImageSegmentParser())
+		parse_chain.register_parser(FileSegmentParser())
+		parse_chain.register_parser(ReplySegmentParser())
 		
 	async def _register_tools(self) -> None:
 		
 		"""统一注册工具"""
-		
-		async with self._plugin_lock:
-			
-			if not hasattr(self, "config"):
-				raise RuntimeError(f"调用时序出错 config不可用")
-			
-			config = self.config
 		
 		async with self._share_store_lock:
 		
 			if SHARE_STORE.contains(TOOL_BACKEND):
 				return None
 		
-			tool_backend = PIToolBackend(config)
+			tool_backend = PIToolBackend()
 			SHARE_STORE.set(TOOL_BACKEND, tool_backend)
 		
 		tool_backend.register_tool(send_message_to_QQ)
 		tool_backend.register_tool(download_qq_file)
+		tool_backend.register_tool(query_qq_message_id)
 		
 		await tool_backend.run_server()
 	
@@ -119,12 +124,13 @@ class Claw(NcatBotPlugin):
 	async def on_load(self) -> None:
 				
 		SHARE_STORE.set(NCATBOT_API, self.api)
+		SHARE_STORE.set(PLUGIN_CONFIG, self.config)
 		
 		await self._register_event_parse_chain()
 		await self._register_segment_parse_chain()
 		await self._register_tools()
 		
-		# HACK: 为了快速测试留下的技术债
+		# HACK: 为了快速测试将使用全局单例 技术债
 		self.pi_client = await PiClient.open(
 			session_dir		= "/tmp/",
 			system_prompt	= Path("/sdcard/Ncatbot_QQ/plugins/miaoli_bot/data/prompt_v1.1.md").read_text(),
@@ -133,6 +139,9 @@ class Claw(NcatBotPlugin):
 		await self.pi_client.set_model("deepseek-official", "deepseek-flash")
 		
 	async def on_close(self) -> None:
+		
+		SHARE_STORE.drop(NCATBOT_API)
+		SHARE_STORE.drop(PLUGIN_CONFIG)
 		
 		await self._close_tool_backend()
 				
@@ -146,14 +155,9 @@ class Claw(NcatBotPlugin):
 		target_id		= get_id_from_event(event)
 		event_adapter	= EventAdapter.build(event)
 		
-		# HACK: 测试期过滤非@
-		if not event.message.is_at("2449906317"):
-			self.logger.warning(f"跳过 非@")
-			return
-		
-		# HACK: 测试期白名单
-		if target_id not in ("1046279455", "3757973483"):
-			self.logger.warning(f"跳过 {target_id}")
+		# HACK: 修复了私聊没法使用的问题(需要@ 但私聊不能@) 这里的逻辑还是测试期专属
+		if is_group and not event.message.is_at("2449906317"):
+			self.logger.warning(f"群消息无3 已跳过")
 			return
 		
 		# HACK: 这里可能不稳定 需要先判断再获取属性
@@ -165,15 +169,10 @@ class Claw(NcatBotPlugin):
 		}, ensure_ascii=False, indent=2)
 		
 		
-		client_state = await self.pi_client.get_state()
-		if client_state.isStreaming is True:
-			return await self.pi_client.steer(i_data)
-		
-		
 		text	: str = ""
 		thinking: str = ""
 		
-		async for pi_event in self.pi_client.prompt(i_data):
+		async for pi_event in self.pi_client.prompt(i_data, streamingBehavior="steer"):
 			
 			if is_agent_error(pi_event):
 				await event_adapter.send(self.api, f"出现错误: {pi_event.error}")
@@ -194,14 +193,12 @@ class Claw(NcatBotPlugin):
 			
 			elif is_agent_end(pi_event):
 				
-				# HACK: 因为上面的缓冲区bug 临时写一个兜底逻辑
+				# HACK: 因为上面的缓冲区bug 临时写一个兜底逻辑 有更好的方案之后将会删除
 				if text:
 					await event_adapter.send(self.api, text)
+					
+				await event.reply("[DONE]")
 				
 				break
 		
-		# 思维链懒得看了 先删掉
-		# if thinking:
-			# await event_adapter.send(self.api, f"=====思维链=====\n\n{thinking}")
-		
-		await event.reply("[DONE]")
+		return

@@ -1,0 +1,3 @@
+class BaseBotError(Exception):
+	"""机器人基类错误"""
+	...

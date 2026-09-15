@@ -3,6 +3,30 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.3.1] - 2026-09-15
+
+### Added
+- **`errors/` 异常模块**：新增 `BaseBotError` 基类（`errors/base_bot_error.py`）与 `PIPromptBusyError`（`errors/pi_prompt_busy_error.py`），后者表示 pi 正在流式输出且 `prompt` 未指定 `streamingBehavior`；`errors/__init__` 统一导出
+- **`PiClient._stream_lock`**（`core/pi_client.py`）：`__init__` 中初始化 `asyncio.Lock`，作为客户端侧单订阅者互斥的唯一依据
+
+### Changed
+- **`PiClient.prompt` 忙闲判定改为本地锁**（`core/pi_client.py`）：由原先「调用 `get_state()` → 读 `isStreaming`」的一次 RPC 往返，改为检查 `self._stream_lock.locked()`，与 `acquire()` 之间不再有 await 点，**消除 TOCTOU 时间窗口**——此前并发调用方可能同时读到 `isStreaming=False` 而各自订阅，无法原子保证 `_subscribers` 中只有一个活跃订阅者（0.3.0 列为 Future，本次落地）
+- **`PiClient.prompt` 签名收紧**：由 `(*args, streamingBehavior=None, **kwargs)` 改为显式 `(message: str, *, images=None, streamingBehavior=None)`，与父类 `pi_bridge.PiClient.prompt` 对齐；`steer` / `follow_up` 调用同步改为显式关键字传参（`self.steer(message=message, images=images)`）
+- **忙时未指定 `streamingBehavior` 由静默拒绝改为抛异常**：不再静默 `return`，改抛 `PIPromptBusyError`，使调用方能够区分「被 steer 掉」与「正常结束」（0.3.0 Future 中提出的待办）
+- **异常日志覆盖率扩大**：`except ValueError` 改为 `except Exception` + `PI_LOGGER.exception()`。原写法在此路径上捕获率为零（`pi_bridge` 的 `prompt` 链路上不抛 `ValueError`，唯一的 `ValueError` 在 `open()` 建进程阶段，不经 `prompt`），且丢失 traceback
+- **`manifest.toml` 移除 `aiofiles` 依赖**：`pip_dependencies` 收敛为 `{ ncatbot5 = ">=5.5.8", pi_bridge = ">=0.5.5" }`
+
+### Removed
+- **崩溃落盘逻辑**（`core/pi_client.py`）：删除 `except ValueError` 中的 32MB stdout 直读 + `aiofiles` 写 `/root/lastest_crash.log`（含路径拼写错误 `lastest`、`"w"` 覆盖模式、无 `try` 保护等缺陷）。该逻辑捕获率近零且转储失败会顶替原始异常，改由日志系统承接——`PI_LOGGER.exception()` 经 NcatBot 的 `TimedRotatingFileHandler` 自动落盘 `logs/bot.log`（按天轮转、默认保留 7 天），无需手动翻文件
+- **`aiofiles` 依赖**：随崩溃落盘逻辑一并移除，`manifest.toml` / README 同步更新
+- **无用 import**：`collections.deque`、`typing.List`、`aiofiles`
+
+### Fixed
+- **`PiClient` 实例化缺失**：`_stream_lock` 所需的 `__init__` 覆写此前不存在，新增后补齐 `super().__init__(*args, **kwargs)` 调用
+
+### Docs
+- README 更新至 0.3.1：忙时判定描述由 `get_state()`/`isStreaming` 改为本地 `asyncio.Lock`；目录结构补充 `errors/`；依赖表移除 `aiofiles`
+
 ## [0.3.0] - 2026-09-14
 
 ### Added
@@ -21,7 +45,7 @@
 - README 更新至 0.3.0 架构（新增消息段/工具/共享键说明、目录结构与数据流同步）
 
 ### Future
-- **单订阅者互斥（待实现）**：当前 `PiClient.prompt` 通过 `get_state()` 做流式判定属于一次 RPC 往返，存在 TOCTOU 时间窗口——并发调用方可能同时读到 `isStreaming=False` 而各自订阅，无法原子保证 `_subscribers` 中只有一个活跃订阅者。计划引入**本地 `asyncio.Lock`** 包裹「检查 → 置位 → 订阅 → 发指令」，并以本地 `is_streaming` 布尔标志（`False` 时置 `True` 正常开始，`True` 时直接跳过）替代实时状态查询，从而在客户端侧**严格保证单订阅者**。同时考虑将跳过路径由静默 `return` 改为 `raise`（或产出合成事件），以便调用方区分「被 steer 掉」与「正常结束」。
+- **提前终止时的锁释放时机**：`async for` 中途 `break` 时，async generator 的 `finally` 需经事件循环若干 tick 才执行，`_stream_lock` 的释放因此有短暂延迟。这是 Python async generator 的语言语义（`PiClient` 与父类同属一套机制，无法在子类内根治），调用方若需立即释放应显式 `await gen.aclose()` 或让 `async for` 自然耗尽。当前 `main.py` 在 `is_agent_end` 分支后的处理方式对该窗口的敏感度待评估
 
 ## [0.2.0] - 2026-09-13
 
@@ -71,6 +95,8 @@
 - `3a9be1e`：`main.py` 添加 HACK 注释标记测试期技术债（白名单 / 非 @ 过滤 / 缓冲逻辑）
 - `587d9ca`：`manifest.toml` 声明插件级 pip 依赖并带版本约束
 
+[0.3.1]: https://github.com/lyt2011/miaoli_bot/compare/ebb8d53...main
+[0.3.0]: https://github.com/lyt2011/miaoli_bot/commit/ebb8d53
 [0.2.0]: https://github.com/lyt2011/miaoli_bot/compare/e610876...55cb08f
 [0.1.1]: https://github.com/lyt2011/miaoli_bot/compare/de11062...e610876
 [0.1.0]: https://github.com/lyt2011/miaoli_bot/commit/de11062

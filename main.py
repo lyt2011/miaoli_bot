@@ -45,7 +45,7 @@ import json
 import asyncio
 
 
-class Claw(NcatBotPlugin):
+class MiaoLiBot(NcatBotPlugin):
 	
 	def __init__(self, *args, **kwargs) -> None:
 		
@@ -160,8 +160,12 @@ class Claw(NcatBotPlugin):
 			self.logger.warning(f"群消息无3 已跳过")
 			return
 		
-		# HACK: 这里可能不稳定 需要先判断再获取属性
-		parse_result = await parse_message(event, event.message)
+		segment = getattr(event, "message", None)
+		if not segment:
+			self.logger.warning(f"segment 无内容或 event 不含 segment")
+			return
+		
+		parse_result = await parse_message(event, segment)
 		
 		i_data = json.dumps({
 			"event"		: parse_result.event,

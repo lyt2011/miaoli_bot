@@ -3,6 +3,16 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.3.2] - 2026-09-15
+
+### Changed
+- **插件入口类改名为 `MiaoLiBot`**：`main.py` 中的插件类 `Claw` 重命名为 `MiaoLiBot`（`main.py:48`），`manifest.toml` 的 `entry_class` 同步由 `"Claw"` 改为 `"MiaoLiBot"`；README 中相关引用一并更新
+
+> **本次为纯改名，无 API 变动**：类重命名不改动任何公开方法签名、消息结构、工具接口或事件流语义，对已集成的调用方无影响，升级无需改动业务代码
+
+### Fixed
+- **消息段空值防护**（`main.py` `on_message`）：`parse_message` 调用前改用 `getattr(event, "message", None)` 取值并判空，缺失或为空时记录告警并提前 `return`，避免向 `parse_message(event, segments)` 传入 falsy 的 `segments`
+
 ## [0.3.1] - 2026-09-15
 
 ### Added
@@ -95,7 +105,8 @@
 - `3a9be1e`：`main.py` 添加 HACK 注释标记测试期技术债（白名单 / 非 @ 过滤 / 缓冲逻辑）
 - `587d9ca`：`manifest.toml` 声明插件级 pip 依赖并带版本约束
 
-[0.3.1]: https://github.com/lyt2011/miaoli_bot/compare/ebb8d53...main
+[0.3.2]: https://github.com/lyt2011/miaoli_bot/compare/4ffdf61...main
+[0.3.1]: https://github.com/lyt2011/miaoli_bot/compare/ebb8d53...4ffdf61
 [0.3.0]: https://github.com/lyt2011/miaoli_bot/commit/ebb8d53
 [0.2.0]: https://github.com/lyt2011/miaoli_bot/compare/e610876...55cb08f
 [0.1.1]: https://github.com/lyt2011/miaoli_bot/compare/de11062...e610876

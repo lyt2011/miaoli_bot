@@ -2,8 +2,8 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，将 **pi**（`pi_bridge` 桥接的 LLM Agent）接入 QQ 对话服务，让 QQ 消息驱动 agent 思考、回复并调用工具。
 
-- **版本**：0.3.1
-- **入口**：`main.py`（插件类 `Claw`）
+- **版本**：0.3.2
+- **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 
 ## 功能特性
@@ -27,7 +27,7 @@
 QQ / NapCat (OneBot)
         │ ncatbot 事件
         ▼
-main.py  Claw(NcatBotPlugin)
+main.py  MiaoLiBot(NcatBotPlugin)
         │ parse_message（easier_parser 合并 event + segment 两级解析）
         ▼
 parsers/  EventParseChain → Group/PrivateMessageEventParser（事件元数据）
@@ -51,7 +51,7 @@ utils/pi_event_classifier 分类 ◄───          core/PIToolBackend._execu
 
 ```
 miaoli_bot/
-├── main.py                        # 插件入口：Claw，注册两级解析链与工具后端
+├── main.py                        # 插件入口：MiaoLiBot，注册两级解析链与工具后端
 ├── manifest.toml                  # 插件清单（name/version/entry_class）
 ├── adapters/                      # ncatbot 事件鸭子类型适配器
 │   ├── base_adapter.py            #   BaseAdapter 基类
@@ -89,7 +89,7 @@ miaoli_bot/
 
 ## 数据流
 
-1. QQ 消息经 NapCat → ncatbot → 触发 `Claw` 插件。
+1. QQ 消息经 NapCat → ncatbot → 触发 `MiaoLiBot` 插件。
 2. `on_message` 调用 `parse_message`：`EventParseChain` 解析事件元数据（群 → `GroupMessageEventParser`，私聊 → `PrivateMessageEventParser`），`SegmentParseChain` 逐段解析 `message`（文本 → `TextSegmentParser`，AT → `AtSegmentParser`，图片 → `ImageSegmentParser`，文件 → `FileSegmentParser`，引用 → `ReplySegmentParser`），合并为统一 dict（`platform`、`from_group`、`created_at`、`group`、`sender`、`message: [...]`）。
 3. `PiClient.prompt(i_data, streamingBehavior="steer")` 将解析结果送入 pi Agent，流式返回事件；`prompt` 内部先检查本地 `_stream_lock`，若 agent 正在输出则改走 `steer()` 注入新消息并直接返回（不产生事件流），未指定 `streamingBehavior` 时抛 `PIPromptBusyError`。
 4. `pi_event_classifier` 分类事件：正文增量实时回发 QQ；agent 结束即回复 `[DONE]` 并结束本轮；出错记录日志。
@@ -122,5 +122,7 @@ cd <插件父目录>          # plugins/
 > 注：`manifest.toml` 中 `pip_dependencies` 声明插件依赖（`ncatbot5` / `pi_bridge`），也可在运行环境中自行安装。
 
 ## 项目状态
+
+v0.3.2 — 插件入口类改名为 `MiaoLiBot`（原 `Claw`），`manifest.toml` 的 `entry_class` 同步更新，**本次为纯改名，无 API 变动**；同时为 `on_message` 的消息段取值增加空值防护（`getattr(event, "message", None)` + 判空提前返回）。
 
 v0.3.1 — 客户端侧单订阅者互斥落地：`PiClient` 引入 `asyncio.Lock`，忙闲判定由一次 `get_state()` RPC 往返改为本地锁检查，消除 TOCTOU 窗口；`prompt` 签名收紧为显式参数，忙时未指定 `streamingBehavior` 抛 `PIPromptBusyError`（新增 `errors/` 异常模块）；崩溃落盘逻辑移除并改用 `PI_LOGGER.exception()`（覆盖率由 `ValueError` 扩大到全部异常，自带 traceback），同步移除 `aiofiles` 依赖。

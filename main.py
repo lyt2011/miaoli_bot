@@ -1,7 +1,6 @@
 from ncatbot.plugin		import NcatBotPlugin
 from ncatbot.core		import registrar
 from ncatbot.event.qq	import MessageEvent
-from ncatbot.utils		import get_log
 
 from pi_bridge	import models
 from pathlib	import Path

@@ -3,6 +3,14 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.3.3] - 2026-09-15
+
+### Added
+- **`PiClient.is_streaming` 只读属性**（`core/pi_client.py`）：新增 `@property is_streaming -> bool`，直接返回 `self._stream_lock.locked()`，为外部提供不经过 RPC 的本地忙闲查询入口（此前外部若需判断需自行访问私有 `_stream_lock`）
+
+### Changed
+- **`main.py` 移除未使用的 `get_log` 导入**：`from ncatbot.utils import get_log` 在模块中无任何引用，删除以清理 lint 噪音（日志器实际由各模块自行 `get_log(...)` 获取）
+
 ## [0.3.2] - 2026-09-15
 
 ### Changed
@@ -105,7 +113,8 @@
 - `3a9be1e`：`main.py` 添加 HACK 注释标记测试期技术债（白名单 / 非 @ 过滤 / 缓冲逻辑）
 - `587d9ca`：`manifest.toml` 声明插件级 pip 依赖并带版本约束
 
-[0.3.2]: https://github.com/lyt2011/miaoli_bot/compare/4ffdf61...main
+[0.3.3]: https://github.com/lyt2011/miaoli_bot/compare/f612505...main
+[0.3.2]: https://github.com/lyt2011/miaoli_bot/compare/4ffdf61...f612505
 [0.3.1]: https://github.com/lyt2011/miaoli_bot/compare/ebb8d53...4ffdf61
 [0.3.0]: https://github.com/lyt2011/miaoli_bot/commit/ebb8d53
 [0.2.0]: https://github.com/lyt2011/miaoli_bot/compare/e610876...55cb08f

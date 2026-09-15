@@ -22,6 +22,10 @@ class PiClient(_PiClient):
 		# 并发输出安全
 		self._stream_lock: asyncio.Lock	= asyncio.Lock()
 	
+	@property
+	def is_streaming(self) -> bool:
+		return self._stream_lock.locked()
+	
 	async def prompt(
 		self,
 		message				: str, *,

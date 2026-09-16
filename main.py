@@ -21,7 +21,8 @@ from .parsers	import (
 from .tools		import (
 	send_message_to_QQ,
 	download_qq_file,
-	query_qq_message_id
+	query_qq_message_id,
+	delete_qq_message,
 )
 from .utils		import (
 	easier_send,
@@ -42,6 +43,9 @@ from .consts	import (
 
 import json
 import asyncio
+
+
+PLUGIN_NAME	= "喵璃の本体"
 
 
 class MiaoLiBot(NcatBotPlugin):
@@ -101,6 +105,7 @@ class MiaoLiBot(NcatBotPlugin):
 		tool_backend.register_tool(send_message_to_QQ)
 		tool_backend.register_tool(download_qq_file)
 		tool_backend.register_tool(query_qq_message_id)
+		tool_backend.register_tool(delete_qq_message)
 		
 		await tool_backend.run_server()
 	
@@ -137,6 +142,8 @@ class MiaoLiBot(NcatBotPlugin):
 		)
 		await self.pi_client.set_model("deepseek-official", "deepseek-flash")
 		
+		self.logger.info(f"{PLUGIN_NAME} 已加载")
+		
 	async def on_close(self) -> None:
 		
 		SHARE_STORE.drop(NCATBOT_API)
@@ -146,6 +153,8 @@ class MiaoLiBot(NcatBotPlugin):
 				
 		if not SHARE_STORE.is_empty():
 			self.logger.warning(f"共享容器可能存在资源泄露: {list(SHARE_STORE.keys())}")
+		
+		self.logger.info(f"{PLUGIN_NAME} 已卸载")
 	
 	@registrar.on_message()
 	async def on_message(self, event: MessageEvent) -> None:
@@ -201,7 +210,8 @@ class MiaoLiBot(NcatBotPlugin):
 					await event_adapter.send(self.api, text)
 					
 				await event.reply("[DONE]")
-				
-				break
+			
+			else:
+				self.logger.warning(f"未被处理的 event -> {type(pi_event).__name__}")
 		
 		return

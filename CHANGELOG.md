@@ -3,6 +3,20 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.4.0] - 2026-09-16
+
+### Added
+- **新工具 `delete_qq_message`**（`tools/delete_message.py`）：按 `msg_id` 撤回（删除）对应的 QQ 消息，成功返回 `"successful"`；ncatbot api 不可用时返回 `"ncatbot api is unavailable"`；`tools/__init__` 导出并在 `main.py` 注册进 `PIToolBackend`
+- **插件上下线日志**（`main.py`）：新增 `PLUGIN_NAME = "喵璃の本体"` 常量，`on_load` / `on_close` 分别记录「已加载 / 已卸载」info 日志
+
+### Changed
+- **未处理事件不再中断事件流**（`main.py` `on_message`）：原先在 `is_agent_end` 分支回完 `[DONE]` 后 `break` 退出事件循环，现改为循环自然走完，未匹配任何分支的 pi 事件记 warning 日志（`未被处理的 event -> <类型名>`），便于发现新事件类型
+- **`utils/easier_sender.py` 移除 `*args` / `**kwargs` 透传**：`private_easier_send` / `group_easier_send` / `easier_send` 三个函数签名收紧为显式参数（`*args` / `**kwargs` 在内部并未使用）
+- **本地测试目录改名 `pytest/` → `test/`**：`.gitignore` 忽略项同步更新，README 中的路径引用一并修正
+
+### Docs
+- README 更新至 0.4.0：工具列表与数据流补充 `delete_qq_message`，目录结构与本地测试命令同步为 `test/`
+
 ## [0.3.3] - 2026-09-15
 
 ### Added

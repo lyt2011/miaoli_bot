@@ -9,7 +9,6 @@ async def private_easier_send(
 	ncatbot_api	: nc_api,
 	chat_id		: str,
 	message		: Union[str, MessageArray],
-	*args, **kwargs
 ) -> SendMessageResult:
 	
 	"""
@@ -19,15 +18,14 @@ async def private_easier_send(
 	
 	send_funcion	= ncatbot_api.qq.messaging.send_private_msg
 	messages_array	= message.to_list() if isinstance(message, MessageArray) else message
-	sender_coro		= send_funcion(user_id=chat_id, message=messages_array, *args, **kwargs)
+	sender_coro		= send_funcion(user_id=chat_id, message=messages_array)
 	
 	return await sender_coro
 
 async def group_easier_send(
 	ncatbot_api	: nc_api,
 	chat_id		: str,
-	message		: Union[str, MessageArray],
-	*args, **kwargs
+	message		: Union[str, MessageArray]
 ) -> SendMessageResult:
 	
 	"""
@@ -37,7 +35,7 @@ async def group_easier_send(
 	
 	send_funcion	= ncatbot_api.qq.messaging.send_group_msg
 	messages_array	= message.to_list() if isinstance(message, MessageArray) else message
-	sender_coro		= send_funcion(group_id=chat_id, message=messages_array, *args, **kwargs)
+	sender_coro		= send_funcion(group_id=chat_id, message=messages_array)
 	
 	return await sender_coro
 
@@ -45,8 +43,7 @@ async def easier_send(
 	ncatbot_api	: nc_api,
 	chat_id		: Union[str, int],
 	message		: Union[str, MessageArray],
-	to_group	: bool = False,
-	*args, **kwargs
+	to_group	: bool = False
 ) -> SendMessageResult:
 	
 	"""
@@ -56,6 +53,6 @@ async def easier_send(
 	"""
 	
 	send_func	= group_easier_send if to_group else private_easier_send
-	send_coro	= send_func(ncatbot_api=ncatbot_api, chat_id=chat_id, message=message, *args, **kwargs)
+	send_coro	= send_func(ncatbot_api=ncatbot_api, chat_id=chat_id, message=message)
 	
 	return await send_coro

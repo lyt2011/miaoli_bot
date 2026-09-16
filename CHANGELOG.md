@@ -3,6 +3,18 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.5.2] - 2026-09-16
+
+### Changed
+- **`close_sessions` 关闭流程重构**（`core/pi_session_manager.py`）：把「取快照 + 清空缓存」下沉为同步方法 `_pop_sessions()`，`close_sessions` 只保留「幂等判定 → 置位 `_is_closing` → 取快照 → 逐个 `close()`」。`_pop_sessions` 是普通 `def` 而非 `async def`，因此「快照与清空之间不可能出现 await」由语言层面保证而非注释约定；幂等语义仍留在 `close_sessions`（`_is_closing` 为真时直接返回），对外行为与 0.5.1 完全一致
+
+### Added
+- 关闭语义补充两例（并发用例 14 → 16）：`test_close_without_sessions_is_safe`（空关闭不抛错且幂等，钉住「空快照被当作对象解包」这类回归）、`test_close_under_sustained_creation_leaves_nothing_open`（已缓存会话 + 20 个在建请求与关闭交错时，「快照关闭」与「在途回收」两条路径同时生效且不留未关闭 client）
+
+### Note
+- 快照方法 `_pop_sessions()` 只负责「把会话摘出来」，**不负责关闭** —— 它不知道摘出来的必须被 `close()`。目前仅 `close_sessions` 一个调用点，将来新增调用点时必须自行承担关闭责任
+- `_locks` 字典按设计**不做清理**：per-session 锁的正确性依赖「同一 `session_id` 恒对应同一把 `Lock` 对象」，一旦在丢弃会话时删除条目，老等待者与新请求会持有两把不同的锁并同时进入临界区（实测：同一会话建出两个 client，其中一个被覆盖成无人引用的孤儿）。代价仅约 105 B/会话（1 万会话 ≈ 1 MiB），且 `main.py` 关闭时会 `SHARE_STORE.drop`，锁字典随 manager 实例一并回收
+
 ## [0.5.1] - 2026-09-16
 
 ### Added
@@ -174,6 +186,7 @@
 - `3a9be1e`：`main.py` 添加 HACK 注释标记测试期技术债（白名单 / 非 @ 过滤 / 缓冲逻辑）
 - `587d9ca`：`manifest.toml` 声明插件级 pip 依赖并带版本约束
 
+[0.5.2]: https://github.com/lyt2011/miaoli_bot/compare/d1863eb...main
 [0.5.1]: https://github.com/lyt2011/miaoli_bot/compare/5b4140b...main
 [0.5.0]: https://github.com/lyt2011/miaoli_bot/compare/50a3b2e...main
 [0.4.0]: https://github.com/lyt2011/miaoli_bot/commit/50a3b2e

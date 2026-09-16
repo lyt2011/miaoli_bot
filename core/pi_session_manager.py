@@ -1,6 +1,6 @@
 from ncatbot.utils	import get_log
 
-from typing			import Dict, Awaitable, Callable
+from typing			import Dict, Awaitable, Callable, Tuple, List
 from collections	import defaultdict
 
 from .pi_client	import PiClient
@@ -23,17 +23,21 @@ class PiSessionManager:
 		
 		self._is_closing: bool = False
 	
+	def _pop_sessions(self) -> Tuple[List[str], List[PiClient]]:
+		
+		session_ids, sessions	= list(self.sessions.keys()), list(self.sessions.values())
+		self.sessions			= {}
+		
+		return session_ids, sessions	
+	
 	async def close_sessions(self) -> None:
 		
 		if self._is_closing :
-			return # 幂等关闭
+			return
 		
-		else:
-			self._is_closing = True
+		self._is_closing = True
 		
-		# 原子替换
-		sessions		= list(self.sessions.values())
-		self.sessions	= {}
+		_, sessions = self._pop_sessions()
 		
 		for session in sessions:
 			await session.close()

@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，将 **pi**（`pi_bridge` 桥接的 LLM Agent）接入 QQ 对话服务，让 QQ 消息驱动 agent 思考、回复并调用工具。
 
-- **版本**：0.5.1
+- **版本**：0.5.2
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 
@@ -133,6 +133,8 @@ cd <插件父目录>          # plugins/
 > 注：`manifest.toml` 中 `pip_dependencies` 声明插件依赖（`ncatbot5` / `pi_bridge`），也可在运行环境中自行安装。
 
 ## 项目状态
+
+v0.5.2 — **关闭流程重构**：`close_sessions` 把「取快照 + 清空缓存」下沉为同步方法 `_pop_sessions()`（普通 `def`，语言层面保证中间不可能插入 `await`），幂等语义仍留在 `close_sessions`，对外行为与 0.5.1 一致；`_locks` 字典按设计保留不清理（清理会让同一 `session_id` 出现两把锁，实测并发建出两个 client 并产生孤儿，代价仅约 105 B/会话且随实例回收）。并发用例增至 16 例、全量 102 例通过。
 
 v0.5.1 — **关闭窗口泄漏修复**：`ensure_session` 在工厂返回后、写缓存前再判一次 `_is_closing`，回收「已通过判定、在关闭期间才建好」的 `PiClient` 并抛 `SessionManagerClosingError`（关闭中不再留下永不 `close` 的会话），进锁前的前置判定保留作快速失败门槛；本地测试目录由 `test/` 更名为 `tests/`（`.gitignore` 同步），并新增 `PiSessionManager` 高并发用例（同会话单例 / 会话隔离 / 失败路径 / 关闭幂等 / 关闭窗口回收，14 例，全量 100 例通过）。用例覆盖的是并发不变量，与真实 PI 进程 / 网络环境下的并发行为不等价。
 

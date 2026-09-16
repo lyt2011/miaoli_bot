@@ -3,6 +3,34 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.5.0] - 2026-09-16
+
+### Added
+- **`core/pi_session_manager.py` — `PiSessionManager`**：按 `session_id` 管理 `PiClient` 生命周期。`ensure_session(session_id, *, factory, create_timeout=60.0)` 命中已有会话直接复用，未命中则在 per-session `asyncio.Lock`（`defaultdict(asyncio.Lock)`）内 `await asyncio.wait_for(factory(), timeout=create_timeout)` 建连并缓存（`factory` 为无参可调用对象，仅在未命中时惰性调用），避免同一会话被并发建出多个客户端；`close_sessions()` 以 `_is_closing` 标志幂等关闭，关闭时先原子替换 `self.sessions = {}` 再逐个 `await session.close()`，关闭期间新请求抛 `SessionManagerClosingError`
+- **`errors/session_manager_closing_error.py`**：新增 `SessionManagerClosingError`（继承 `BaseBotError`），表示 SessionManager 正在关闭仍被请求创建会话；`errors/__init__` 导出
+- **`consts/id_prefix.py`**：新增会话键前缀常量 `GROUP_PREFIX = "group-"` / `PRIVATE_PREFIX = "private-"`，`consts/__init__` 导出
+- **`utils/sugar.py`**：新增 `concatenate_id(session_id, is_group=False) -> str`（群聊加 `group-`、私聊加 `private-` 前缀），`utils/__init__` 导出
+- **`PI_SESSION_MANAGER` 共享键**（`consts/share_store_keys.py`）：值为 `"miaoli_bot/core.pi_session_manager"`，供全局定位会话管理器
+- **`main.py` 新增 `_register_session_manager` / `_close_session_manager`**：在 `_share_store_lock` 保护下注册 / 取出并移除会话管理器（重复注册直接返回），关闭时调用 `close_sessions()`
+
+### Changed
+- **会话隔离落地：移除全局单例 `PiClient`**（`main.py`）：`on_load` 不再创建 `self.pi_client`（删除标注 `# HACK: 为了快速测试将使用全局单例 技术债` 的 `PiClient.open` / `set_model` 块），改为注册 `PiSessionManager`；`on_message` 构造 `session_id = concatenate_id(target_id, is_group=is_group)`，经本地 `_pi_factory`（`PiClient.open(session_id=…)` + `set_model("deepseek-official", "deepseek-flash")`）与 `session_manager.ensure_session(factory=_pi_factory, session_id=session_id)` 取得当前会话的 `PiClient` 后再 `prompt(...)`——不同群 / 私聊各自持有独立客户端与会话，互不串台
+- **`main.py` `_close_tool_backend` 早退写法统一**：`return None` → `return`（与同文件其他早退分支一致）
+- **建会话工厂改为惰性调用**：`main.py` 由 `ensure_session(factory=_pi_factory(), …)` 改为传可调用对象 `factory=_pi_factory`，`core/pi_session_manager.py` 内部由 `wait_for(factory, …)` 改为 `wait_for(factory(), …)`，工厂由 `ensure_session` 在未命中时调用，与 `_FACTORY_TYPE = Callable[[], Awaitable[PiClient]]` 标注一致
+- 常量与导出对齐：`consts/__init__.py` / `core/__init__.py` / `errors/__init__.py` / `utils/__init__.py` 补齐新增符号与 `__all__` 条目
+
+### Fixed
+- **命中已有会话时不再构造无用协程**：调用点先求值 `_pi_factory()` 会在缓存命中时留下一个从未被 await 的协程对象（触发「coroutine … was never awaited」警告且白白构造 `PiClient.open` 调用栈），改为惰性调用后只在真正需要建连时才构造
+
+### Note
+- **SessionManager 并发稳定性未验证**：私聊与群聊的会话创建 / 正常对话已由作者手动验证通过（各会话独立、无串台），但 `PiSessionManager` 在高并发（同一 / 多会话同时 `ensure_session`、关闭与请求竞争）下的行为未做验证，也没有对应的自动化用例；涉及并发时序的场景需先用例验证后再依赖
+
+### Docs
+- README 更新至 0.5.0：新增「会话隔离」特性、`PiSessionManager` 架构与目录说明，数据流补充会话取用步骤（含工厂惰性调用语义），`项目状态` 补充本次变更与并发未验证说明
+
+### Future
+- **`PiClient.prompt` 返回可遍历的 `Prompt` 对象**：将 `prompt` 由「async generator + 调用方 `async for` 后写一串 `if is_agent_error / is_text_delta / is_thinking_delta / is_agent_end`」改为返回 `Prompt` 对象——该对象依旧可被遍历（`async for`），**遍历时行为与现行 `prompt` 逻辑完全一致**（含 `_stream_lock` 忙时分流到 `steer` / `follow_up`、异常日志与锁释放语义），同时提供事件回调注册入口（如 `on(event_type, callback)` / 通用 `add_callback`），由 `Prompt` 在事件到达时派发给已注册的回调。调用方（`main.py` 的 `on_message`）因此不再需要 `if`/`elif` 链与「未被处理的 event」兜底分支，把「事件 → 动作」的映射收敛为声明式注册；需一并定义回调异常隔离（单个回调抛错不影响事件流）、回调注册顺序与重复注册等语义
+
 ## [0.4.0] - 2026-09-16
 
 ### Added
@@ -127,6 +155,8 @@
 - `3a9be1e`：`main.py` 添加 HACK 注释标记测试期技术债（白名单 / 非 @ 过滤 / 缓冲逻辑）
 - `587d9ca`：`manifest.toml` 声明插件级 pip 依赖并带版本约束
 
+[0.5.0]: https://github.com/lyt2011/miaoli_bot/compare/50a3b2e...main
+[0.4.0]: https://github.com/lyt2011/miaoli_bot/commit/50a3b2e
 [0.3.3]: https://github.com/lyt2011/miaoli_bot/compare/f612505...main
 [0.3.2]: https://github.com/lyt2011/miaoli_bot/compare/4ffdf61...f612505
 [0.3.1]: https://github.com/lyt2011/miaoli_bot/compare/ebb8d53...4ffdf61

@@ -21,6 +21,8 @@ from .pi_event_classifier	import (
 	is_text_delta,
 )
 
+from .sugar	import concatenate_id
+
 
 __all__ = [
 	
@@ -42,5 +44,8 @@ __all__ = [
 	"is_agent_error",
 	"is_thinking_delta",
 	"is_text_delta",
+	
+	# sugar
+	"concatenate_id",
 
 ]

@@ -6,7 +6,7 @@ from pi_bridge	import models
 from pathlib	import Path
 
 from .chains	import EventParseChain, SegmentParseChain
-from .core		import PIToolBackend, PiClient
+from .core		import PIToolBackend, PiClient, PiSessionManager
 from .stores	import SHARE_STORE
 from .adapters	import EventAdapter
 from .parsers	import (
@@ -32,6 +32,7 @@ from .utils		import (
 	is_agent_error,
 	is_thinking_delta,
 	is_text_delta,
+	concatenate_id,
 )
 from .consts	import (
 	EVENT_PARSER,
@@ -39,6 +40,7 @@ from .consts	import (
 	NCATBOT_API,
 	TOOL_BACKEND,
 	PLUGIN_CONFIG,
+	PI_SESSION_MANAGER,
 )
 
 import json
@@ -56,6 +58,20 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		self._share_store_lock	= asyncio.Lock()
 		self._plugin_lock		= asyncio.Lock()
+	
+	async def _register_session_manager(self) -> None:
+		
+		"""SessionManager 不会被二次注册"""
+		
+		async with self._share_store_lock:
+			
+			if SHARE_STORE.contains(PI_SESSION_MANAGER):
+				return None
+			
+			session_manager = PiSessionManager()
+			SHARE_STORE.set(PI_SESSION_MANAGER, session_manager)
+		
+		return None
 	
 	async def _register_event_parse_chain(self) -> None:
 		
@@ -121,9 +137,24 @@ class MiaoLiBot(NcatBotPlugin):
 		# double-check并打印日志
 		if tool_backend is None:
 			self.logger.warning("工具后端未启用 跳过关闭逻辑")
-			return None
+			return
 		
 		await tool_backend.close_backend()
+	
+	async def _close_session_manager(self) -> None:
+		
+		async with self._share_store_lock:
+			
+			session_manager = SHARE_STORE.recall(PI_SESSION_MANAGER, None)
+			
+			if session_manager is not None:
+				SHARE_STORE.drop(PI_SESSION_MANAGER)
+		
+		if session_manager is None:
+			self.logger.warning("SessionManager 未启用 跳过关闭逻辑")
+			return
+		
+		await session_manager.close_sessions()
 	
 	async def on_load(self) -> None:
 				
@@ -133,15 +164,8 @@ class MiaoLiBot(NcatBotPlugin):
 		await self._register_event_parse_chain()
 		await self._register_segment_parse_chain()
 		await self._register_tools()
-		
-		# HACK: 为了快速测试将使用全局单例 技术债
-		self.pi_client = await PiClient.open(
-			session_dir		= "/tmp/",
-			system_prompt	= Path("/sdcard/Ncatbot_QQ/plugins/miaoli_bot/data/prompt_v1.1.md").read_text(),
-			buffer_limit	= 32 * 1024 * 1024,
-		)
-		await self.pi_client.set_model("deepseek-official", "deepseek-flash")
-		
+		await self._register_session_manager()
+				
 		self.logger.info(f"{PLUGIN_NAME} 已加载")
 		
 	async def on_close(self) -> None:
@@ -150,6 +174,7 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.drop(PLUGIN_CONFIG)
 		
 		await self._close_tool_backend()
+		await self._close_session_manager()
 				
 		if not SHARE_STORE.is_empty():
 			self.logger.warning(f"共享容器可能存在资源泄露: {list(SHARE_STORE.keys())}")
@@ -163,9 +188,15 @@ class MiaoLiBot(NcatBotPlugin):
 		target_id		= get_id_from_event(event)
 		event_adapter	= EventAdapter.build(event)
 		
+		
 		# HACK: 修复了私聊没法使用的问题(需要@ 但私聊不能@) 这里的逻辑还是测试期专属
 		if is_group and not event.message.is_at("2449906317"):
 			self.logger.warning(f"群消息无3 已跳过")
+			return
+		
+		session_manager = SHARE_STORE.recall(PI_SESSION_MANAGER, None)
+		if session_manager is None:
+			self.logger.warning("SessionManager 不可用 跳过")
 			return
 		
 		segment = getattr(event, "message", None)
@@ -180,11 +211,27 @@ class MiaoLiBot(NcatBotPlugin):
 			"segments"	: parse_result.segments,
 		}, ensure_ascii=False, indent=2)
 		
+		session_id = concatenate_id(target_id, is_group=is_group)
+		
+		async def _pi_factory() -> PiClient:
+			
+			pi_client = await PiClient.open(
+				session_id		= session_id,
+				session_dir		= "/tmp/",
+				system_prompt	= Path("/sdcard/Ncatbot_QQ/plugins/miaoli_bot/data/prompt_v1.1.md").read_text(),
+				buffer_limit	= 32 * 1024 * 1024,
+			)
+			
+			await pi_client.set_model("deepseek-official", "deepseek-flash")
+			
+			return pi_client
+		
+		pi_client = await session_manager.ensure_session(factory=_pi_factory, session_id=session_id)
 		
 		text	: str = ""
 		thinking: str = ""
 		
-		async for pi_event in self.pi_client.prompt(i_data, streamingBehavior="steer"):
+		async for pi_event in pi_client.prompt(i_data, streamingBehavior="steer"):
 			
 			if is_agent_error(pi_event):
 				await event_adapter.send(self.api, f"出现错误: {pi_event.error}")

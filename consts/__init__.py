@@ -4,6 +4,12 @@ from .share_store_keys	import (
 	NCATBOT_API,
 	TOOL_BACKEND,
 	PLUGIN_CONFIG,
+	PI_SESSION_MANAGER,
+)
+
+from .id_prefix	import (
+	PRIVATE_PREFIX,
+	GROUP_PREFIX,
 )
 
 
@@ -15,5 +21,10 @@ __all__ = [
 	"NCATBOT_API",
 	"TOOL_BACKEND",
 	"PLUGIN_CONFIG",
+	"PI_SESSION_MANAGER",
+	
+	# id_prefix
+	"PRIVATE_PREFIX",
+	"GROUP_PREFIX",
 
 ]

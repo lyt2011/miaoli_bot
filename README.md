@@ -2,13 +2,14 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，将 **pi**（`pi_bridge` 桥接的 LLM Agent）接入 QQ 对话服务，让 QQ 消息驱动 agent 思考、回复并调用工具。
 
-- **版本**：0.4.0
+- **版本**：0.5.0
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 
 ## 功能特性
 
-- 🧠 **LLM 接入 QQ**：通过 `pi_bridge.PiClient` 与 pi Agent 通信，QQ 私聊/群聊消息直接进入 agent 会话（`PiClient.open(session_dir="/tmp/", system_prompt=data/prompt_v1.1.md)` + `set_model(...)` 完成初始化）。
+- 🧠 **LLM 接入 QQ**：通过 `pi_bridge.PiClient` 与 pi Agent 通信，QQ 私聊/群聊消息直接进入 agent 会话（`PiClient.open(session_id=…, session_dir="/tmp/", system_prompt=data/prompt_v1.1.md)` + `set_model(...)` 完成初始化）。
+- 🔀 **会话隔离**：`core.PiSessionManager` 按 `session_id` 管理 `PiClient` 实例（`await session_manager.ensure_session(factory=…, session_id=…)`）——群聊键为 `group-<group_id>`、私聊键为 `private-<user_id>`（`utils.concatenate_id`），命中复用、未命中才建客户端，同一会话建连在 per-session `asyncio.Lock` 内串行，各群 / 私聊持有独立客户端与会话。
 - ⚡ **流式事件驱动**：逐帧消费 pi 的事件流，用 `utils/pi_event_classifier.py` 区分正文增量（`TextDeltaEvent`）、思维链增量（`ThinkingDeltaEvent`）、agent 结束（`AgentSettledEvent`）与错误事件。正文按 `\n\n` 分块实时发回 QQ，本轮结束回复 `[DONE]`。
 - 🎭 **角色扮演**：内置猫娘「喵璃」人设提示词（`data/prompt_v1.1.md`），agent 输出由插件自动发送，仅在需要图片/文件/AT/引用/跨会话时才调用发消息工具。
 - 🧭 **流式期间可干预**：agent 正在输出时收到新消息，由客户端本地 `asyncio.Lock` 判定忙闲后以 `steer` 注入而非另起一轮（`prompt(i_data, streamingBehavior="steer")`），避免同一事件流被多个 Task 重复订阅。
@@ -17,7 +18,7 @@
 - 🛠️ **工具调用闭环**：通过 `core.PIToolBackend` 把 QQ 侧能力（发消息 `send_message_to_QQ`、下载文件 `download_qq_file`、查消息 `query_qq_message_id`、撤回消息 `delete_qq_message`）注册为 pi 可调用的工具；后端配置经 `SHARE_STORE`（`PLUGIN_CONFIG`）注入。
 - 🧩 **两级解析链**：`EventParseChain`（群/私聊事件元数据）与 `SegmentParseChain`（文本/AT/图片/文件/引用消息段）双链分发，`utils/easier_parser.parse_message` 一步合并产出完整消息结构（元数据 + message 段数组）喂给 agent。
 - 🦆 **鸭子类型适配**：`adapters/EventAdapter` 不依赖具体 ncatbot 类型，通过属性探测兼容不同消息事件形态。
-- 💾 **共享存储**：`stores/SHARE_STORE` 全局共享容器，键集中定义于 `consts/share_store_keys.py`（EVENT_PARSER / SEGMENT_PARSER / NCATBOT_API / PLUGIN_CONFIG / TOOL_BACKEND）。
+- 💾 **共享存储**：`stores/SHARE_STORE` 全局共享容器，键集中定义于 `consts/share_store_keys.py`（EVENT_PARSER / SEGMENT_PARSER / NCATBOT_API / PLUGIN_CONFIG / TOOL_BACKEND / PI_SESSION_MANAGER）。
 - 🔧 **协议先行**：`protocols/` 定义 `Parser`、`ChainProtocol`、`StoreProtocol` 抽象（Parser 为鸭子类型协议），业务实现均依赖接口。
 - 🧪 **本地测试**：`test/` 目录提供按模块划分的 pytest 用例（不随仓库提交），`utils.easier_parser`、解析链、适配器、工具组装均有覆盖。
 
@@ -36,6 +37,10 @@ parsers/  EventParseChain → Group/PrivateMessageEventParser（事件元数据�
         ▼
 adapters/  EventAdapter（鸭子类型适配 ncatbot 事件：user_id / group_id / is_group / send）
         │
+        ▼
+core/PiSessionManager.ensure_session(session_id)   ← SHARE_STORE(PI_SESSION_MANAGER)
+        │  会话键 = group- / private- + target_id（utils.concatenate_id）
+        │  命中 → 复用已建 PiClient；未命中 → 调用 _pi_factory 建连并缓存
         ▼
 core/PiClient.prompt() ────────────►  pi_bridge.PiClient ──►  pi Agent（LLM）
         │  _stream_lock 已持有时改走 steer() 注入                        │ 工具调用
@@ -62,15 +67,18 @@ miaoli_bot/
 │   ├── event_parse_chain.py       #   EventParseChain
 │   └── segment_parse_chain.py     #   SegmentParseChain
 ├── consts/                        # 常量集中定义
-│   └── share_store_keys.py        #   SHARE_STORE 键名（EVENT_PARSER/SEGMENT_PARSER/...）
+│   ├── id_prefix.py               #   会话键前缀（group- / private-）
+│   └── share_store_keys.py        #   SHARE_STORE 键名（EVENT_PARSER/SEGMENT_PARSER/PI_SESSION_MANAGER/...）
 ├── core/                          # pi 桥接层
 │   ├── pi_client.py               #   PiClient：prompt 流式接口，asyncio.Lock 保证单订阅者，忙时按 streamingBehavior 走 steer/follow_up
+│   ├── pi_session_manager.py      #   PiSessionManager：按 session_id 建/取/关 PiClient，per-session 锁 + 幂等关闭
 │   └── pi_tool_backend.py         #   PIToolBackend：从 SHARE_STORE 读 host/port，记录工具调用
 ├── data/                          # 提示词资产（prompt_v1.0.md / prompt_v1.1.md）
 ├── enums/                         # 枚举定义
 ├── errors/                        # 异常定义
 │   ├── base_bot_error.py          #   BaseBotError 基类
-│   └── pi_prompt_busy_error.py    #   PIPromptBusyError（pi 忙且未指定 streamingBehavior）
+│   ├── pi_prompt_busy_error.py    #   PIPromptBusyError（pi 忙且未指定 streamingBehavior）
+│   └── session_manager_closing_error.py # SessionManagerClosingError（关闭中仍请求建会话）
 ├── models/runtimes/               # 运行时数据模型
 │   ├── dispatch_result.py         #   DispatchResult（链调度结果）
 │   └── parse_result.py            #   ParseResult（parse_message 合并结果：event + segments）
@@ -85,16 +93,18 @@ miaoli_bot/
     ├── easier_parser.py           #   parse_event / parse_segment / parse_message 快捷入口
     ├── easier_sender.py           #   private/group 便捷发送封装
     ├── event_ops.py               #   从事件取 id（群→group_id，私聊→user_id）
-    └── pi_event_classifier.py     #   pi 事件分类（text/thinking 增量、agent 结束/错误）
+    ├── pi_event_classifier.py     #   pi 事件分类（text/thinking 增量、agent 结束/错误）
+    └── sugar.py                   #   concatenate_id（会话键加 group- / private- 前缀）
 ```
 
 ## 数据流
 
 1. QQ 消息经 NapCat → ncatbot → 触发 `MiaoLiBot` 插件。
 2. `on_message` 调用 `parse_message`：`EventParseChain` 解析事件元数据（群 → `GroupMessageEventParser`，私聊 → `PrivateMessageEventParser`），`SegmentParseChain` 逐段解析 `message`（文本 → `TextSegmentParser`，AT → `AtSegmentParser`，图片 → `ImageSegmentParser`，文件 → `FileSegmentParser`，引用 → `ReplySegmentParser`），合并为统一 dict（`platform`、`from_group`、`created_at`、`group`、`sender`、`message: [...]`）。
-3. `PiClient.prompt(i_data, streamingBehavior="steer")` 将解析结果送入 pi Agent，流式返回事件；`prompt` 内部先检查本地 `_stream_lock`，若 agent 正在输出则改走 `steer()` 注入新消息并直接返回（不产生事件流），未指定 `streamingBehavior` 时抛 `PIPromptBusyError`。
-4. `pi_event_classifier` 分类事件：正文增量实时回发 QQ；agent 结束即回复 `[DONE]` 并结束本轮；出错记录日志。
-5. agent 需要调用工具时，经 `PIToolBackend` 执行 `send_message_to_QQ` / `download_qq_file` / `query_qq_message_id` / `delete_qq_message`，结果回流给 agent。
+3. `session_id = concatenate_id(target_id, is_group=is_group)`（群 → `group-<group_id>`，私聊 → `private-<user_id>`）后调用 `PiSessionManager.ensure_session`：命中已有会话直接复用 `PiClient`，未命中则在 per-session 锁内惰性调用传入的 `_pi_factory`（内部执行 `PiClient.open(session_id=…)` + `set_model(...)`）建连并缓存；管理器关闭中会抛 `SessionManagerClosingError`。
+4. `PiClient.prompt(i_data, streamingBehavior="steer")` 将解析结果送入 pi Agent，流式返回事件；`prompt` 内部先检查本地 `_stream_lock`，若 agent 正在输出则改走 `steer()` 注入新消息并直接返回（不产生事件流），未指定 `streamingBehavior` 时抛 `PIPromptBusyError`。
+5. `pi_event_classifier` 分类事件：正文增量实时回发 QQ；agent 结束即回复 `[DONE]` 并结束本轮；出错记录日志。
+6. agent 需要调用工具时，经 `PIToolBackend` 执行 `send_message_to_QQ` / `download_qq_file` / `query_qq_message_id` / `delete_qq_message`，结果回流给 agent。
 
 ## 安装与使用
 
@@ -123,6 +133,8 @@ cd <插件父目录>          # plugins/
 > 注：`manifest.toml` 中 `pip_dependencies` 声明插件依赖（`ncatbot5` / `pi_bridge`），也可在运行环境中自行安装。
 
 ## 项目状态
+
+v0.5.0 — **会话隔离落地**：新增 `PiSessionManager`（`core/pi_session_manager.py`）按会话管理 `PiClient`，会话键 = `group-` / `private-` 前缀 + 目标 id（`utils.sugar.concatenate_id` + `consts/id_prefix.py`），`ensure_session` 命中复用、未命中建连并缓存，`close_sessions` 幂等关闭（关闭中请求抛 `SessionManagerClosingError`）；`on_load` 不再创建全局单例 client（移除原 HACK 技术债），改注册 `PI_SESSION_MANAGER` 共享键并在 `on_close` 关闭全部会话。群聊 / 私聊的建会话与正常对话已手动验证（各会话独立、无串台），**但 SessionManager 在并发场景下的稳定性尚未验证**。Future：让 `PiClient.prompt` 返回可遍历的 `Prompt` 对象并支持事件回调注册，替代调用方 `async for` + 一串 `if` 的分支写法。
 
 v0.4.0 — 新增 `delete_qq_message` 撤回消息工具（`tools/delete_message.py`，`tools/__init__` 导出并在 `main.py` 注册进 `PIToolBackend`）；`on_load` / `on_close` 补充插件上下线日志；`on_message` 事件循环不再在 agent 结束后 `break`，未处理事件改为 warning 记录；`utils/easier_sender.py` 移除未使用的 `*args` / `**kwargs` 透传；本地测试目录由 `pytest/` 更名为 `test/`（`.gitignore` 同步）。
 

@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，将 **pi**（`pi_bridge` 桥接的 LLM Agent）接入 QQ 对话服务，让 QQ 消息驱动 agent 思考、回复并调用工具。
 
-- **版本**：0.5.0
+- **版本**：0.5.1
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 
@@ -20,7 +20,7 @@
 - 🦆 **鸭子类型适配**：`adapters/EventAdapter` 不依赖具体 ncatbot 类型，通过属性探测兼容不同消息事件形态。
 - 💾 **共享存储**：`stores/SHARE_STORE` 全局共享容器，键集中定义于 `consts/share_store_keys.py`（EVENT_PARSER / SEGMENT_PARSER / NCATBOT_API / PLUGIN_CONFIG / TOOL_BACKEND / PI_SESSION_MANAGER）。
 - 🔧 **协议先行**：`protocols/` 定义 `Parser`、`ChainProtocol`、`StoreProtocol` 抽象（Parser 为鸭子类型协议），业务实现均依赖接口。
-- 🧪 **本地测试**：`test/` 目录提供按模块划分的 pytest 用例（不随仓库提交），`utils.easier_parser`、解析链、适配器、工具组装均有覆盖。
+- 🧪 **本地测试**：`tests/` 目录提供按模块划分的 pytest 用例（不随仓库提交），`utils.easier_parser`、解析链、适配器、工具组装、`PiSessionManager` 并发不变量均有覆盖。
 
 ## 架构设计
 
@@ -88,7 +88,7 @@ miaoli_bot/
 ├── protocols/                     # 抽象协议：Parser / ChainProtocol / StoreProtocol
 ├── stores/                        # 全局共享存储（SHARE_STORE）
 ├── tools/                         # 暴露给 pi 的工具（发消息 / 下载 QQ 文件 / 查询消息 / 撤回消息）
-├── test/                          # 本地 pytest 用例（gitignore，不提交）
+├── tests/                         # 本地 pytest 用例（gitignore，不提交）
 └── utils/                         # 工具函数
     ├── easier_parser.py           #   parse_event / parse_segment / parse_message 快捷入口
     ├── easier_sender.py           #   private/group 便捷发送封装
@@ -120,7 +120,7 @@ miaoli_bot/
 
 ```bash
 cd <插件父目录>          # plugins/
-<venv>/bin/python -m pytest miaoli_bot/test/ -v
+<venv>/bin/python -m pytest miaoli_bot/tests/ -v
 ```
 
 ## 依赖
@@ -133,6 +133,8 @@ cd <插件父目录>          # plugins/
 > 注：`manifest.toml` 中 `pip_dependencies` 声明插件依赖（`ncatbot5` / `pi_bridge`），也可在运行环境中自行安装。
 
 ## 项目状态
+
+v0.5.1 — **关闭窗口泄漏修复**：`ensure_session` 在工厂返回后、写缓存前再判一次 `_is_closing`，回收「已通过判定、在关闭期间才建好」的 `PiClient` 并抛 `SessionManagerClosingError`（关闭中不再留下永不 `close` 的会话），进锁前的前置判定保留作快速失败门槛；本地测试目录由 `test/` 更名为 `tests/`（`.gitignore` 同步），并新增 `PiSessionManager` 高并发用例（同会话单例 / 会话隔离 / 失败路径 / 关闭幂等 / 关闭窗口回收，14 例，全量 100 例通过）。用例覆盖的是并发不变量，与真实 PI 进程 / 网络环境下的并发行为不等价。
 
 v0.5.0 — **会话隔离落地**：新增 `PiSessionManager`（`core/pi_session_manager.py`）按会话管理 `PiClient`，会话键 = `group-` / `private-` 前缀 + 目标 id（`utils.sugar.concatenate_id` + `consts/id_prefix.py`），`ensure_session` 命中复用、未命中建连并缓存，`close_sessions` 幂等关闭（关闭中请求抛 `SessionManagerClosingError`）；`on_load` 不再创建全局单例 client（移除原 HACK 技术债），改注册 `PI_SESSION_MANAGER` 共享键并在 `on_close` 关闭全部会话。群聊 / 私聊的建会话与正常对话已手动验证（各会话独立、无串台），**但 SessionManager 在并发场景下的稳定性尚未验证**。Future：让 `PiClient.prompt` 返回可遍历的 `Prompt` 对象并支持事件回调注册，替代调用方 `async for` + 一串 `if` 的分支写法。
 

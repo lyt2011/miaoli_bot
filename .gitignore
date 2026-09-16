@@ -9,7 +9,7 @@ venv/
 *.log
 
 # pytest 测试目录（本地验证用，不提交）
-test/
+tests/
 
 # 本地备份（带时间戳）
 *.bak.*

@@ -3,6 +3,25 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.5.1] - 2026-09-16
+
+### Added
+- **`PiSessionManager` 高并发用例**（`tests/test_core_session_manager.py`，14 例）：同会话 50 并发只建一次、8 会话 × 25 并发互不串台、10 会话工厂 Barrier 汇合（不计时证明无全局锁）、慢会话不阻塞其他会话、200 任务交错负载、工厂超时 / 抛错后的缓存与锁状态、失败不被缓存（20 个等待者各自重试）、关闭幂等与并发关闭 exactly-once、关闭 vs 在途 / 排队请求的回收
+
+### Changed
+- **本地测试目录 `test/` → `tests/`**：`.gitignore` 忽略项与 README 中的目录树、测试命令同步更新（历史条目中的旧名保留）
+
+### Fixed
+- **关闭窗口期建出的 `PiClient` 未被回收（会话泄漏）**（`core/pi_session_manager.py`）：`ensure_session` 此前只在进锁前判一次 `_is_closing`，因此「已通过判定、随后阻塞在 per-session 锁上」或「已进入 `await asyncio.wait_for(factory(), …)`」的请求，会在 `close_sessions()` 完成之后才建连并写回 `self.sessions` —— 该 client 不在关闭快照内，永远不会被 `close()`。现改为在工厂返回后、写入缓存前再判一次 `_is_closing`（判定与写入之间无 await，对外原子），命中则 `await pi_client.close()` 回收已建出的 client 并抛 `SessionManagerClosingError`；进锁前的前置判定保留，作为「关闭后不再接单」的快速失败门槛
+- 两个窗口均有用例钉住：`test_close_during_inflight_request_reclaims_created_client`（工厂窗口）、`test_close_during_queued_request_also_rejected`（排队窗口），xFail 标记随之摘除
+
+### Note
+- **关闭后仍在排队拿锁的请求**会各自白建一次 client 再回收（正确但不经济）；若要省掉这些白建，可再补一处「锁内二次判定」，或在 `close_sessions` 中跟踪并等待在途建连
+- 用例覆盖的是并发不变量，与真实 PI 进程 / 网络环境下的并发行为不等价
+
+### Docs
+- README 更新至 0.5.1：`tests/` 路径同步，项目状态补充关闭窗口修复与高并发用例（全量 100 例通过）
+
 ## [0.5.0] - 2026-09-16
 
 ### Added
@@ -155,6 +174,7 @@
 - `3a9be1e`：`main.py` 添加 HACK 注释标记测试期技术债（白名单 / 非 @ 过滤 / 缓冲逻辑）
 - `587d9ca`：`manifest.toml` 声明插件级 pip 依赖并带版本约束
 
+[0.5.1]: https://github.com/lyt2011/miaoli_bot/compare/5b4140b...main
 [0.5.0]: https://github.com/lyt2011/miaoli_bot/compare/50a3b2e...main
 [0.4.0]: https://github.com/lyt2011/miaoli_bot/commit/50a3b2e
 [0.3.3]: https://github.com/lyt2011/miaoli_bot/compare/f612505...main

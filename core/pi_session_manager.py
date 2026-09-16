@@ -66,8 +66,13 @@ class PiSessionManager:
 			LOGGER.debug(f"{session_id} client 不存在")
 			
 			pi_client = await asyncio.wait_for(factory(), timeout=create_timeout)
-			self.sessions[session_id] = pi_client
 			
+			# 可能等待 open 时 session_manager 被关闭
+			if self._is_closing:
+				await pi_client.close()
+				raise SessionManagerClosingError("SessionManager 正在关闭")
+			
+			self.sessions[session_id] = pi_client
 			LOGGER.debug(f"{session_id} client 创建成功")
 		
 		return pi_client

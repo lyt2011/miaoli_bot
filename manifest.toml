@@ -1,9 +1,9 @@
 name = "miaoli_bot"
-version = "0.5.3"
+version = "0.5.4"
 main = "main.py"
 author = "超·乃依"
 description = "提供LLM接入QQ对话服务"
 entry_class = "MiaoLiBot"
-pip_dependencies = { ncatbot5 = ">=5.5.8", pi_bridge = ">=0.5.5" }
+pip_dependencies = { ncatbot5 = ">=5.5.8", pi_bridge = ">=0.6.0" }
 
 [dependencies]

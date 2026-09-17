@@ -3,6 +3,15 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.5.4] - 2026-09-17
+
+### Changed
+- **`pi_bridge` 依赖下限提到 `>=0.6.0`**（`manifest.toml`）：0.6.0 为行为变更版本 —— `PiClient.prompt` 请求被拒时由「静默零事件」改为抛 `RequestRefuseError`，`PIProcess.build` 的关键字参数 `session` 更名为 `session_id`。本插件经 `PiClient.open(session_id=…, …)` 建连，不使用被更名的参数
+
+### Note
+- **本插件暂未捕获 `RequestRefuseError`**：PI 拒绝请求时异常会冒到 ncatbot 的事件处理器（日志可见 traceback，用户侧无回复）。待后续单独处理
+- README 依赖表原先写作 `v0.5.4+`，与 `manifest.toml` 的 `>=0.5.5` 不一致，本次一并改为 `v0.6.0+`
+
 ## [0.5.3] - 2026-09-17
 
 ### Fixed

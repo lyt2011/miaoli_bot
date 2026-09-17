@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，将 **pi**（`pi_bridge` 桥接的 LLM Agent）接入 QQ 对话服务，让 QQ 消息驱动 agent 思考、回复并调用工具。
 
-- **版本**：0.5.3
+- **版本**：0.5.4
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 
@@ -129,11 +129,14 @@ cd <插件父目录>          # plugins/
 | 包 | 用途 |
 |---|---|
 | `ncatbot` | QQ 机器人框架 / 事件与消息 API |
-| `pi_bridge` | pi 与 Python 的桥接层（`PiClient` / `PIToolBackend`，v0.5.4+） |
+| `pi_bridge` | pi 与 Python 的桥接层（`PiClient` / `PIToolBackend`，v0.6.0+） |
 
 > 注：`manifest.toml` 中 `pip_dependencies` 声明插件依赖（`ncatbot5` / `pi_bridge`），也可在运行环境中自行安装。
+> 注：`pi_bridge` 0.6.0 起 `prompt` 请求被拒时会抛 `RequestRefuseError`，本插件**暂未捕获**（异常会冒到 ncatbot 事件处理器，日志有 traceback、用户侧无回复），详见 CHANGELOG 0.5.4。
 
 ## 项目状态
+
+v0.5.4 — **`pi_bridge` 依赖下限提到 `>=0.6.0`**：0.6.0 是行为变更版本（`PiClient.prompt` 请求被拒时由「静默零事件」改为抛 `RequestRefuseError`；`PIProcess.build` 的 `session` 参数更名为 `session_id`）；本插件经 `PiClient.open(session_id=…, …)` 建连，不受参数更名影响。**暂未捕获 `RequestRefuseError`** —— PI 拒绝时异常会冒到 ncatbot 事件处理器（日志有 traceback、用户侧无回复），留待后续处理。
 
 v0.5.3 — **事件优先级让位，修复插件命令重复响应**：`on_message` 由默认优先级改为 `priority=-100`（`main.py`），让扩展插件先处理消息；`miaoli_like` 的 `赞我` 命令以 `priority=100` 抢先接收，并置 `event.data._propagation_stopped = True` 停止传播，该消息不再进入 LLM —— 修复私聊中发送 `赞我` 时本插件也回复一次的重复响应。跨插件协作已在真实 QQ 环境手动验证。
 

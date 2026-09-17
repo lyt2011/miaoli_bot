@@ -3,6 +3,15 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.5.3] - 2026-09-17
+
+### Fixed
+- **插件命令被当作普通对话、机器人重复回复**（`main.py`）：`on_message` 由默认优先级改为 `priority=-100`，让扩展插件先收到事件并自行决定是否截断。配合 `miaoli_like` 的 `赞我`（`priority=100` + `event.data._propagation_stopped = True`），该消息不再进入 LLM，消除「私聊发送 `赞我` 时本插件也回复一次」的重复响应
+
+### Note
+- 本插件的改动只是「最后处理」；截断本身由上游插件负责，上游不停传播则消息照常进入 LLM
+- 已手动验证：`赞我` 由 `miaoli_like` 接手并回复，本插件不再处理该消息
+
 ## [0.5.2] - 2026-09-16
 
 ### Changed

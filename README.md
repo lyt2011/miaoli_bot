@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，将 **pi**（`pi_bridge` 桥接的 LLM Agent）接入 QQ 对话服务，让 QQ 消息驱动 agent 思考、回复并调用工具。
 
-- **版本**：0.5.2
+- **版本**：0.5.3
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 
@@ -10,6 +10,7 @@
 
 - 🧠 **LLM 接入 QQ**：通过 `pi_bridge.PiClient` 与 pi Agent 通信，QQ 私聊/群聊消息直接进入 agent 会话（`PiClient.open(session_id=…, session_dir="/tmp/", system_prompt=data/prompt_v1.1.md)` + `set_model(...)` 完成初始化）。
 - 🔀 **会话隔离**：`core.PiSessionManager` 按 `session_id` 管理 `PiClient` 实例（`await session_manager.ensure_session(factory=…, session_id=…)`）——群聊键为 `group-<group_id>`、私聊键为 `private-<user_id>`（`utils.concatenate_id`），命中复用、未命中才建客户端，同一会话建连在 per-session `asyncio.Lock` 内串行，各群 / 私聊持有独立客户端与会话。
+- 🔔 **事件优先级让位**：`on_message` 以 `priority=-100` 注册，排在后处理的位置 —— 扩展插件可先用更高优先级接收事件（如 `miaoli_like` 的 `赞我`：`priority=100`）并停止事件传播，被上游截下的消息不会再进入 LLM，修复「私聊发送 `赞我` 时机器人除此之外还当作普通对话重复回复一次」的问题。
 - ⚡ **流式事件驱动**：逐帧消费 pi 的事件流，用 `utils/pi_event_classifier.py` 区分正文增量（`TextDeltaEvent`）、思维链增量（`ThinkingDeltaEvent`）、agent 结束（`AgentSettledEvent`）与错误事件。正文按 `\n\n` 分块实时发回 QQ，本轮结束回复 `[DONE]`。
 - 🎭 **角色扮演**：内置猫娘「喵璃」人设提示词（`data/prompt_v1.1.md`），agent 输出由插件自动发送，仅在需要图片/文件/AT/引用/跨会话时才调用发消息工具。
 - 🧭 **流式期间可干预**：agent 正在输出时收到新消息，由客户端本地 `asyncio.Lock` 判定忙闲后以 `steer` 注入而非另起一轮（`prompt(i_data, streamingBehavior="steer")`），避免同一事件流被多个 Task 重复订阅。
@@ -99,7 +100,7 @@ miaoli_bot/
 
 ## 数据流
 
-1. QQ 消息经 NapCat → ncatbot → 触发 `MiaoLiBot` 插件。
+1. QQ 消息经 NapCat → ncatbot → 按注册优先级分发给各插件：本插件以 `priority=-100` 排在后面，若上游插件（如 `miaoli_like` 的 `赞我`）已停止事件传播，本条消息不会到达这里，流程到此结束。
 2. `on_message` 调用 `parse_message`：`EventParseChain` 解析事件元数据（群 → `GroupMessageEventParser`，私聊 → `PrivateMessageEventParser`），`SegmentParseChain` 逐段解析 `message`（文本 → `TextSegmentParser`，AT → `AtSegmentParser`，图片 → `ImageSegmentParser`，文件 → `FileSegmentParser`，引用 → `ReplySegmentParser`），合并为统一 dict（`platform`、`from_group`、`created_at`、`group`、`sender`、`message: [...]`）。
 3. `session_id = concatenate_id(target_id, is_group=is_group)`（群 → `group-<group_id>`，私聊 → `private-<user_id>`）后调用 `PiSessionManager.ensure_session`：命中已有会话直接复用 `PiClient`，未命中则在 per-session 锁内惰性调用传入的 `_pi_factory`（内部执行 `PiClient.open(session_id=…)` + `set_model(...)`）建连并缓存；管理器关闭中会抛 `SessionManagerClosingError`。
 4. `PiClient.prompt(i_data, streamingBehavior="steer")` 将解析结果送入 pi Agent，流式返回事件；`prompt` 内部先检查本地 `_stream_lock`，若 agent 正在输出则改走 `steer()` 注入新消息并直接返回（不产生事件流），未指定 `streamingBehavior` 时抛 `PIPromptBusyError`。
@@ -133,6 +134,8 @@ cd <插件父目录>          # plugins/
 > 注：`manifest.toml` 中 `pip_dependencies` 声明插件依赖（`ncatbot5` / `pi_bridge`），也可在运行环境中自行安装。
 
 ## 项目状态
+
+v0.5.3 — **事件优先级让位，修复插件命令重复响应**：`on_message` 由默认优先级改为 `priority=-100`（`main.py`），让扩展插件先处理消息；`miaoli_like` 的 `赞我` 命令以 `priority=100` 抢先接收，并置 `event.data._propagation_stopped = True` 停止传播，该消息不再进入 LLM —— 修复私聊中发送 `赞我` 时本插件也回复一次的重复响应。跨插件协作已在真实 QQ 环境手动验证。
 
 v0.5.2 — **关闭流程重构**：`close_sessions` 把「取快照 + 清空缓存」下沉为同步方法 `_pop_sessions()`（普通 `def`，语言层面保证中间不可能插入 `await`），幂等语义仍留在 `close_sessions`，对外行为与 0.5.1 一致；`_locks` 字典按设计保留不清理（清理会让同一 `session_id` 出现两把锁，实测并发建出两个 client 并产生孤儿，代价仅约 105 B/会话且随实例回收）。并发用例增至 16 例、全量 102 例通过。
 

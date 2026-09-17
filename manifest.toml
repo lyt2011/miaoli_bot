@@ -1,5 +1,5 @@
 name = "miaoli_bot"
-version = "0.5.2"
+version = "0.5.3"
 main = "main.py"
 author = "超·乃依"
 description = "提供LLM接入QQ对话服务"

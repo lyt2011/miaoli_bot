@@ -181,7 +181,7 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		self.logger.info(f"{PLUGIN_NAME} 已卸载")
 	
-	@registrar.on_message()
+	@registrar.on_message(priority=-100)
 	async def on_message(self, event: MessageEvent) -> None:
 		
 		is_group		= event.is_group_msg()

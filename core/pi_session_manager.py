@@ -25,12 +25,22 @@ class PiSessionManager:
 	
 	def _pop_sessions(self) -> Tuple[List[str], List[PiClient]]:
 		
+		"""
+		取出并清空会话缓存的同步快照
+		只负责把会话摘出来 不负责 close
+		"""
+		
 		session_ids, sessions	= list(self.sessions.keys()), list(self.sessions.values())
 		self.sessions			= {}
 		
 		return session_ids, sessions	
 	
 	async def close(self) -> None:
+		
+		"""
+		幂等关闭全部会话
+		置位关闭标志后逐个 close 关闭期间建出的 client 由 ensure_session 侧回收
+		"""
 		
 		if self._is_closing :
 			return
@@ -53,8 +63,15 @@ class PiSessionManager:
 		
 		"""
 		创建或直接获取会话
-		自动根据 session_id 上锁
+		自动根据 session_id 上锁 同一会话的建连不会并发
 		不处理任何报错 这是特性喵
+
+		session_id 是会话键（group- / private- 前缀）
+		timeout 是工厂建连的超时上限（秒） 默认 60
+		factory 是无参异步工厂 只在未命中时调用
+		未命中且 factory 缺省抛 MissFactoryError
+		已关闭 / 建连期间被关闭抛 SessionManagerClosingError（已建出的 client 会被回收）
+		工厂超时抛 asyncio.TimeoutError 工厂自身异常原样上抛
 		"""
 		
 		# 先判断是否正在关闭 保证不冲突

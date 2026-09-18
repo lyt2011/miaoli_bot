@@ -2,7 +2,7 @@ from pi_bridge.models	import BaseEvent
 
 from ncatbot.utils		import get_log
 from collections		import defaultdict
-from collections.abc	import AsyncIterable
+from collections.abc	import AsyncIterator
 from typing				import Any, Awaitable, Callable, Dict, List, Self
 
 
@@ -32,7 +32,7 @@ class _Prompt:
 	- 提前退出（break / return）不会收尾底层流，请用 aclose() 或 async with
 	"""
 	
-	def __init__(self, agen: AsyncIterable[BaseEvent]):
+	def __init__(self, agen: AsyncIterator[BaseEvent]):
 		
 		self._agen = agen
 		

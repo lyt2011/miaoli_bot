@@ -29,6 +29,7 @@
 ### Docs
 - README 更新至 0.6.0：新增「配置化建会话」「兜底清理」特性，目录树补 `config.yaml` / `protocols/closable.py` / `errors/miss_factory_error.py` / `core/_prompt.py`，安装章节补配置项说明，`项目状态` 记录本次变更与遗留项
 - 本地测试同步 `close_sessions` / `create_timeout` 更名，`PiSessionManager` 用例增至 18 例（新增 2 例 factory 缺省契约），全量 120 例通过（`tests/` 为本地用例、不随仓库提交）
+- 补齐 `create_pi_factory` / `PiSessionManager`（`_pop_sessions` / `close` / `ensure_session`）/ `Closable` / `MissFactoryError` 的 docstring；修正内层 `pi_factory` 的返回值注解（原写作 `Callable[[], Awaitable[PiClient]]`，实际返回 `PiClient`）、`_Prompt` 的 `agen` 参数注解（`AsyncIterable` → `AsyncIterator`，实现依赖 `__anext__`）
 
 ### Future
 - `core/_prompt.py`（本地 WIP，未接入 `PiClient`）：`_Prompt` 事件流包装（按事件类型注册回调、异常隔离、`aclose` / `async with` 收尾），落地 0.5.0 条目中「让 `prompt` 返回可遍历的 `Prompt` 对象并支持回调注册」的设想

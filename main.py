@@ -160,6 +160,13 @@ class MiaoLiBot(NcatBotPlugin):
 	
 	async def create_pi_factory(self, session_id: str) -> Callable[[], Awaitable[PiClient]]:
 		
+		"""
+		按插件配置闭包出目标会话的无参建连工厂
+		工厂只在会话未命中时被 PiSessionManager 调用
+		session_dir / buffer_limit / prompt_file 或 pi_system_prompt /
+		default_provider / default_model 全部来自插件配置
+		"""
+		
 		session_dir		= self.config.get("session_dir", "/tmp/")
 		buffer_limit	= self.config.get("buffer_limit", 32 * 1024 * 1024)
 		
@@ -172,7 +179,7 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		# NOTE | FIXME: 我知道缺失配置会导致KeyError 我准备把配置做成动态的pydantic模型
 		# 现在只是临时可用
-		async def pi_factory() -> Callable[[], Awaitable[PiClient]]:
+		async def pi_factory() -> PiClient:
 			
 			pi_client = await PiClient.open(
 				session_id		= session_id,
@@ -193,6 +200,9 @@ class MiaoLiBot(NcatBotPlugin):
 		基于 Closable 协议清理共享容器
 		不能保证全部清理 尽力兜底
 		还是建议手动清理已知的
+
+		非 Closable 的键只记 warning 跳过（留在容器里 由显式清理负责）
+		close 抛错的键不影响其余键 close 后 double-check 丢弃残留
 		"""
 		
 		share_keys		= list(SHARE_STORE.keys())

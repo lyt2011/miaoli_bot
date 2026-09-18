@@ -16,10 +16,10 @@ class PIToolBackend(_PIToolBackend):
 	
 	def __init__(self, *args, **kwargs) -> None:
 		
-		config = SHARE_STORE.recall(PLUGIN_CONFIG, {})
+		config = SHARE_STORE.recall(PLUGIN_CONFIG, object())
 		
-		cg_host	= config.get("tool_backend_host")
-		cg_port	= config.get("tool_backend_port")
+		cg_host	= getattr(config, "tool_backend_host", None)
+		cg_port	= getattr(config, "tool_backend_port", None)
 		
 		super().__init__(host=cg_host, port=cg_port)
 	

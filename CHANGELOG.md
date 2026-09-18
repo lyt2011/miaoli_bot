@@ -3,6 +3,41 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.7.0] - 2026-09-18
+
+### Added
+- **`models/plugin_config.py` —— `PluginConfig`（pydantic v2 配置模型）**：把插件配置从「裸 dict + 各处 `get` 取键」升级为声明式模型。字段：`model_id`（`str`，必填）、`provider`（`str`，必填）、`session_dir`（`str`，默认 `tempfile.gettempdir()`）、`system_prompt`（`Optional[str]`）、`prompt_file`（`Optional[str]`）；`model_config = ConfigDict(extra="allow")` 保留未声明的额外键（`buffer_limit` / `tool_backend_host` / `tool_backend_port` 仍可属性访问）；`@model_validator(mode="after")` 中 `prompt_file` 优先 —— 读文件（UTF-8）覆盖 `system_prompt`，验证器始终 `return self`（不触发 pydantic 的「返回值非 self」告警）。`models/__init__` 导出 `PluginConfig`
+- **`RAW_CONFIG` 共享键常量**（`consts/share_store_keys.py`）：`"miaoli_bot/ncatbot.plugin.config"`（即原 `PLUGIN_CONFIG` 的字符串值），用于存放 ncatbot 合并后的原始配置 dict；`consts/__init__` 一并导出
+- **`main.MiaoLiBot.cfg`**：`__init__` 中声明为 `Optional[PluginConfig] = None`，`on_load` 开头由 `PluginConfig.model_validate(self.config)` 赋值，供 `create_pi_factory` 及后续模块按属性取配置
+
+### Changed
+- **配置键名对齐模型字段**（`config.yaml` + `main.py`）：`default_model` → `model_id`、`default_provider` → `provider`、`pi_system_prompt` → `system_prompt`（`session_dir` / `prompt_file` 键名不变）；`config.yaml` 同步为 `model_id: "deepseek-flash"` / `provider: "deepseek-official"` / `session_dir: "/tmp/"` / `prompt_file: data/prompt_v1.1.md`。**破坏性变更**：全局 `plugin_configs.miaoli_bot` 中的旧键名不再生效
+- **`PLUGIN_CONFIG` 共享键的值由原始 dict 改为 `PluginConfig` 实例**（`main.py`）：`on_load` 中 `SHARE_STORE.set(PLUGIN_CONFIG, self.cfg)`，ncatbot 合并后的原始 dict 改存新增的 `RAW_CONFIG` 键；`on_close` 对两个键都显式 `drop`（`clean_share_store()` 兜底清理保持不变）
+- **`create_pi_factory` 改从 `self.cfg` 取配置**（`main.py`）：`session_dir` / `buffer_limit` / `system_prompt` / `provider` / `model_id` 全部 `getattr(self.cfg, …)`（`buffer_limit` 带 32 MiB 兜底 —— 它是 extra 键、不是模型字段）；删除「配置缺失会在建连时 `KeyError`」的 `NOTE | FIXME` 技术债与随之而来的临时实现
+- **`PIToolBackend` 改按属性读配置**（`core/pi_tool_backend.py`）：`config.get("tool_backend_host")` → `getattr(config, "tool_backend_host", None)`（port 同理），`SHARE_STORE.recall` 的默认值改用哨兵 `object()`；键名打错会响亮报错，而不是静默回落环境变量默认值
+- **提示词读盘时机前移**：`prompt_file` 的读取从「每次构造工厂（≈每条消息一次读盘）」改为「插件加载时一次」（`on_load` 的 `model_validate` 内），`create_pi_factory` 直接复用 `self.cfg.system_prompt`
+- **`on_close` 恢复显式 `_close_session_manager()` 调用**：先前实测兜底清理时注释掉的显式关闭改回常态，`clean_share_store()` 仍作为最后一道防线
+
+### Fixed
+- 修正 `create_pi_factory` 中 `getattr(self.cfg, "model")` 的字段名笔误（字段实为 `model_id`）—— 该写法会被 `getattr` 的默认值静默吞掉，向 `set_model` 传入 `model_id=None`
+
+### Note
+- **配置校验前移到加载期（fail-fast）**：`on_load` 第一行即 `PluginConfig.model_validate(self.config)`，必填项缺失 / 类型不符会在插件加载时抛 `ValidationError`；ncatbot 的 `load_plugin` 会捕获并记 error 日志，**只让本插件加载失败，不会拖崩 bot**（不再等到首条消息才 `KeyError`）
+- `buffer_limit` / `tool_backend_host` / `tool_backend_port` 仍是 extra 键（保留在 `model_extra` 中、`model_dump()` 会一并输出），**没有类型校验与默认值保护**，取值方需自带兜底
+- 配置只在加载期解析一次：运行期经 `set_config()` / `update_config()` 改动配置**不会刷新 `self.cfg`**，需重新加载插件
+- `prompt_file` 指向不存在的文件会抛 `FileNotFoundError`（非 `ValueError`，pydantic 不包装成 `ValidationError`）；`prompt_file` 为空字符串时会命中 `Path("").read_text()` 的 `IsADirectoryError`
+- **端到端手工验证**：群 / 私聊对话、工具调用、兜底清理路径均由作者在真实 QQ 环境验证通过
+
+### Docs
+- README 更新至 0.7.0：特性「配置化建会话」改写为配置模型语义，架构图 / 目录树（新增 `models/plugin_config.py`）/ 数据流第 3、7 步 / 配置表（改为模型字段名并补 `RAW_CONFIG` 与 fail-fast 说明）/ 共享键清单 / `项目状态` 全部同步
+- `create_pi_factory` docstring 同步为模型字段名
+- 本地测试 147 例通过：`PluginConfig` 用例 27 例（必填契约 / `session_dir` 默认与覆盖 / `prompt_file` 优先级与 UTF-8 / extra 语义与未知属性 / 与真实 `config.yaml` 的字段对齐守卫 / `PLUGIN_CONFIG` 接线与 `PIToolBackend` 取值回归），合计 `PiSessionManager` 18 例、`_Prompt` 16 例、其余原有用例不变（`tests/` 为本地用例、不随仓库提交）
+
+### Future
+- `buffer_limit` 是否升级为模型字段（当前靠 `extra="allow"` 承载，缺类型校验与统一默认值）
+- 运行期配置热更新：`set_config()` 后重新解析 `self.cfg`（现在必须重载插件）
+- `core/_prompt.py`（本地 WIP，未接入 `PiClient`）与 `RequestRefuseError` 未捕获两项遗留不变
+
 ## [0.6.0] - 2026-09-18
 
 ### Added

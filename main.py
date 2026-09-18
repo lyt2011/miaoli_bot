@@ -11,6 +11,7 @@ from .core		import PIToolBackend, PiClient, PiSessionManager
 from .stores	import SHARE_STORE
 from .adapters	import EventAdapter
 from .protocols	import Closable
+from .models	import PluginConfig
 from .parsers	import (
 	GroupMessageEventParser,
 	PrivateMessageEventParser,
@@ -43,6 +44,7 @@ from .consts	import (
 	TOOL_BACKEND,
 	PLUGIN_CONFIG,
 	PI_SESSION_MANAGER,
+	RAW_CONFIG,
 )
 
 import json
@@ -60,6 +62,8 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		self._share_store_lock	= asyncio.Lock()
 		self._plugin_lock		= asyncio.Lock()
+		
+		self.cfg: Optional[PluginConfig]	= None
 	
 	async def _register_session_manager(self) -> None:
 		
@@ -163,22 +167,16 @@ class MiaoLiBot(NcatBotPlugin):
 		"""
 		按插件配置闭包出目标会话的无参建连工厂
 		工厂只在会话未命中时被 PiSessionManager 调用
-		session_dir / buffer_limit / prompt_file 或 pi_system_prompt /
-		default_provider / default_model 全部来自插件配置
+		session_dir / buffer_limit / system_prompt（由 prompt_file 推导）/
+		provider / model_id 全部来自插件配置模型 self.cfg
 		"""
 		
-		session_dir		= self.config.get("session_dir", "/tmp/")
-		buffer_limit	= self.config.get("buffer_limit", 32 * 1024 * 1024)
+		session_dir		= getattr(self.cfg, "session_dir", "/tmp")
+		buffer_limit	= getattr(self.cfg, "buffer_limit", 32 * 1024 * 1024)
+		system_prompt	= getattr(self.cfg, "system_prompt", None)
+		provider		= getattr(self.cfg, "provider")
+		model_id		= getattr(self.cfg, "model_id")
 		
-		if "prompt_file" in self.config:
-			system_prompt = Path(self.config["prompt_file"]).read_text(encoding="utf-8")
-		
-		else:
-			system_prompt	= self.config.get("pi_system_prompt", None)
-		
-		
-		# NOTE | FIXME: 我知道缺失配置会导致KeyError 我准备把配置做成动态的pydantic模型
-		# 现在只是临时可用
 		async def pi_factory() -> PiClient:
 			
 			pi_client = await PiClient.open(
@@ -188,7 +186,7 @@ class MiaoLiBot(NcatBotPlugin):
 				buffer_limit	= buffer_limit,
 			)
 			
-			await pi_client.set_model(self.config["default_provider"], self.config["default_model"])
+			await pi_client.set_model(provider=provider, model_id=model_id)
 			
 			return pi_client
 		
@@ -235,9 +233,12 @@ class MiaoLiBot(NcatBotPlugin):
 		return
 	
 	async def on_load(self) -> None:
+	
+		self.cfg = PluginConfig.model_validate(self.config)
 				
 		SHARE_STORE.set(NCATBOT_API, self.api)
-		SHARE_STORE.set(PLUGIN_CONFIG, self.config)
+		SHARE_STORE.set(PLUGIN_CONFIG, self.cfg)
+		SHARE_STORE.set(RAW_CONFIG, self.config)
 		
 		await self._register_event_parse_chain()
 		await self._register_segment_parse_chain()
@@ -250,9 +251,10 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		SHARE_STORE.drop(NCATBOT_API)
 		SHARE_STORE.drop(PLUGIN_CONFIG)
+		SHARE_STORE.drop(RAW_CONFIG)
 		
 		await self._close_tool_backend()
-		# await self._close_session_manager() # 测试兜底逻辑
+		await self._close_session_manager()
 		
 		# **兜底清理不代表可以不清理**
 		await self.clean_share_store()

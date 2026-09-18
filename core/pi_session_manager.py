@@ -1,17 +1,17 @@
 from ncatbot.utils	import get_log
 
-from typing			import Dict, Awaitable, Callable, Tuple, List
+from typing			import Dict, Awaitable, Callable, Optional, Tuple, List
 from collections	import defaultdict
 
 from .pi_client	import PiClient
-from ..errors	import SessionManagerClosingError
+from ..errors	import SessionManagerClosingError, MissFactoryError
 
 import asyncio
 
 
 LOGGER = get_log("PiSessionManager")
 
-_FACTORY_TYPE = Callable[[], Awaitable[PiClient]]
+PI_FACTORY = Optional[Callable[[], Awaitable[PiClient]]]
 
 
 class PiSessionManager:
@@ -30,7 +30,7 @@ class PiSessionManager:
 		
 		return session_ids, sessions	
 	
-	async def close_sessions(self) -> None:
+	async def close(self) -> None:
 		
 		if self._is_closing :
 			return
@@ -46,9 +46,9 @@ class PiSessionManager:
 	
 	async def ensure_session(
 		self,
-		session_id		: str, *,
-		factory			: _FACTORY_TYPE,
-		create_timeout	: float = 60.0,
+		session_id	: str, *,
+		timeout		: float			= 60.0,
+		factory		: PI_FACTORY	= None,
 	) -> PiClient:
 		
 		"""
@@ -63,13 +63,16 @@ class PiSessionManager:
 		
 		async with self._locks[session_id]:
 			
+			LOGGER.debug(f"{session_id} client 存在: {session_id in self.sessions}")
+			
 			if session_id in self.sessions:
-				LOGGER.debug(f"{session_id} client 已存在")
 				return self.sessions[session_id]
 			
-			LOGGER.debug(f"{session_id} client 不存在")
+			elif factory is None:
+				raise MissFactoryError(f"工厂缺失")
 			
-			pi_client = await asyncio.wait_for(factory(), timeout=create_timeout)
+			factory_coro	= factory()
+			pi_client		= await asyncio.wait_for(factory_coro, timeout=timeout)
 			
 			# 可能等待 open 时 session_manager 被关闭
 			if self._is_closing:
@@ -77,6 +80,5 @@ class PiSessionManager:
 				raise SessionManagerClosingError("SessionManager 正在关闭")
 			
 			self.sessions[session_id] = pi_client
-			LOGGER.debug(f"{session_id} client 创建成功")
 		
 		return pi_client

@@ -2,14 +2,16 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，将 **pi**（`pi_bridge` 桥接的 LLM Agent）接入 QQ 对话服务，让 QQ 消息驱动 agent 思考、回复并调用工具。
 
-- **版本**：0.5.4
+- **版本**：0.6.0
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 
 ## 功能特性
 
-- 🧠 **LLM 接入 QQ**：通过 `pi_bridge.PiClient` 与 pi Agent 通信，QQ 私聊/群聊消息直接进入 agent 会话（`PiClient.open(session_id=…, session_dir="/tmp/", system_prompt=data/prompt_v1.1.md)` + `set_model(...)` 完成初始化）。
-- 🔀 **会话隔离**：`core.PiSessionManager` 按 `session_id` 管理 `PiClient` 实例（`await session_manager.ensure_session(factory=…, session_id=…)`）——群聊键为 `group-<group_id>`、私聊键为 `private-<user_id>`（`utils.concatenate_id`），命中复用、未命中才建客户端，同一会话建连在 per-session `asyncio.Lock` 内串行，各群 / 私聊持有独立客户端与会话。
+- 🧠 **LLM 接入 QQ**：通过 `pi_bridge.PiClient` 与 pi Agent 通信，QQ 私聊/群聊消息直接进入 agent 会话（`PiClient.open(session_id=…, session_dir=…, system_prompt=…)` + `set_model(provider, model)` 完成初始化，参数全部来自插件配置）。
+- 🎛️ **配置化建会话**：`config.yaml`（插件目录默认值，全局 `plugin_configs.miaoli_bot` 可覆盖）提供 `session_dir` / `buffer_limit` / `prompt_file`（优先读文件）或 `pi_system_prompt`（内联回退）/ `default_provider` / `default_model`；`main.MiaoLiBot.create_pi_factory(session_id)` 把配置闭包成无参异步工厂交给 `ensure_session`，会话命中时工厂不会被调用。
+- 🧹 **关闭兜底清理**：`protocols/closable.py` 的 `Closable` 运行时协议（只声明 `async def close()`）让 `on_close` 能对 `SHARE_STORE` 做统一兜底清理（`main.MiaoLiBot.clean_share_store`）——实现 `Closable` 的逐个 `close()`、close 后 double-check 并 `drop` 残留键、失败只记 warning 不中断；**兜底清理不代表可以不清理**，已知资源的显式清理仍是第一责任。
+- 🔀 **会话隔离**：`core.PiSessionManager` 按 `session_id` 管理 `PiClient` 实例（`await session_manager.ensure_session(session_id, *, timeout=60.0, factory=…)`，未命中且缺 `factory` 抛 `MissFactoryError`；`close()` 幂等关闭）——群聊键为 `group-<group_id>`、私聊键为 `private-<user_id>`（`utils.concatenate_id`），命中复用、未命中才建客户端，同一会话建连在 per-session `asyncio.Lock` 内串行，各群 / 私聊持有独立客户端与会话。
 - 🔔 **事件优先级让位**：`on_message` 以 `priority=-100` 注册，排在后处理的位置 —— 扩展插件可先用更高优先级接收事件（如 `miaoli_like` 的 `赞我`：`priority=100`）并停止事件传播，被上游截下的消息不会再进入 LLM，修复「私聊发送 `赞我` 时机器人除此之外还当作普通对话重复回复一次」的问题。
 - ⚡ **流式事件驱动**：逐帧消费 pi 的事件流，用 `utils/pi_event_classifier.py` 区分正文增量（`TextDeltaEvent`）、思维链增量（`ThinkingDeltaEvent`）、agent 结束（`AgentSettledEvent`）与错误事件。正文按 `\n\n` 分块实时发回 QQ，本轮结束回复 `[DONE]`。
 - 🎭 **角色扮演**：内置猫娘「喵璃」人设提示词（`data/prompt_v1.1.md`），agent 输出由插件自动发送，仅在需要图片/文件/AT/引用/跨会话时才调用发消息工具。
@@ -20,8 +22,8 @@
 - 🧩 **两级解析链**：`EventParseChain`（群/私聊事件元数据）与 `SegmentParseChain`（文本/AT/图片/文件/引用消息段）双链分发，`utils/easier_parser.parse_message` 一步合并产出完整消息结构（元数据 + message 段数组）喂给 agent。
 - 🦆 **鸭子类型适配**：`adapters/EventAdapter` 不依赖具体 ncatbot 类型，通过属性探测兼容不同消息事件形态。
 - 💾 **共享存储**：`stores/SHARE_STORE` 全局共享容器，键集中定义于 `consts/share_store_keys.py`（EVENT_PARSER / SEGMENT_PARSER / NCATBOT_API / PLUGIN_CONFIG / TOOL_BACKEND / PI_SESSION_MANAGER）。
-- 🔧 **协议先行**：`protocols/` 定义 `Parser`、`ChainProtocol`、`StoreProtocol` 抽象（Parser 为鸭子类型协议），业务实现均依赖接口。
-- 🧪 **本地测试**：`tests/` 目录提供按模块划分的 pytest 用例（不随仓库提交），`utils.easier_parser`、解析链、适配器、工具组装、`PiSessionManager` 并发不变量均有覆盖。
+- 🔧 **协议先行**：`protocols/` 定义 `Parser`（鸭子类型协议）、`Closable`、`ChainProtocol`、`StoreProtocol`，其中 `Parser` / `Closable` 带 `@runtime_checkable`（可 `isinstance` 判定，`Closable` 即兜底清理的判定依据），业务实现均依赖接口。
+- 🧪 **本地测试**：`tests/` 目录提供按模块划分的 pytest 用例（不随仓库提交，全量 120 例），`utils.easier_parser`、解析链、适配器、工具组装、`PiSessionManager` 并发不变量与 `_Prompt` 事件流包装（WIP）均有覆盖。
 
 ## 架构设计
 
@@ -29,7 +31,7 @@
 QQ / NapCat (OneBot)
         │ ncatbot 事件
         ▼
-main.py  MiaoLiBot(NcatBotPlugin)
+main.py  MiaoLiBot(NcatBotPlugin)    ← config.yaml（session_dir / prompt / default_provider|model）
         │ parse_message（easier_parser 合并 event + segment 两级解析）
         ▼
 parsers/  EventParseChain → Group/PrivateMessageEventParser（事件元数据）
@@ -41,7 +43,7 @@ adapters/  EventAdapter（鸭子类型适配 ncatbot 事件：user_id / group_id
         ▼
 core/PiSessionManager.ensure_session(session_id)   ← SHARE_STORE(PI_SESSION_MANAGER)
         │  会话键 = group- / private- + target_id（utils.concatenate_id）
-        │  命中 → 复用已建 PiClient；未命中 → 调用 _pi_factory 建连并缓存
+        │  命中 → 复用已建 PiClient；未命中 → 调用 create_pi_factory 产出的工厂建连并缓存
         ▼
 core/PiClient.prompt() ────────────►  pi_bridge.PiClient ──►  pi Agent（LLM）
         │  _stream_lock 已持有时改走 steer() 注入                        │ 工具调用
@@ -60,6 +62,7 @@ utils/pi_event_classifier 分类 ◄───          core/PIToolBackend._execu
 miaoli_bot/
 ├── main.py                        # 插件入口：MiaoLiBot，注册两级解析链与工具后端
 ├── manifest.toml                  # 插件清单（name/version/entry_class）
+├── config.yaml                    # 插件配置默认值（session_dir / prompt_file / default_provider / default_model）
 ├── adapters/                      # ncatbot 事件鸭子类型适配器
 │   ├── base_adapter.py            #   BaseAdapter 基类
 │   └── event_adapter.py           #   EventAdapter（user_id/group_id/is_group/send）
@@ -72,21 +75,23 @@ miaoli_bot/
 │   └── share_store_keys.py        #   SHARE_STORE 键名（EVENT_PARSER/SEGMENT_PARSER/PI_SESSION_MANAGER/...）
 ├── core/                          # pi 桥接层
 │   ├── pi_client.py               #   PiClient：prompt 流式接口，asyncio.Lock 保证单订阅者，忙时按 streamingBehavior 走 steer/follow_up
-│   ├── pi_session_manager.py      #   PiSessionManager：按 session_id 建/取/关 PiClient，per-session 锁 + 幂等关闭
+│   ├── _prompt.py                 #   _Prompt：事件流包装（按类型注册回调 / aclose / async with），WIP 未接入 PiClient
+│   ├── pi_session_manager.py      #   PiSessionManager：按 session_id 建/取/关 PiClient（ensure_session(timeout=, factory=) / close()），per-session 锁 + 内置 MissFactoryError 契约
 │   └── pi_tool_backend.py         #   PIToolBackend：从 SHARE_STORE 读 host/port，记录工具调用
 ├── data/                          # 提示词资产（prompt_v1.0.md / prompt_v1.1.md）
 ├── enums/                         # 枚举定义
 ├── errors/                        # 异常定义
 │   ├── base_bot_error.py          #   BaseBotError 基类
 │   ├── pi_prompt_busy_error.py    #   PIPromptBusyError（pi 忙且未指定 streamingBehavior）
-│   └── session_manager_closing_error.py # SessionManagerClosingError（关闭中仍请求建会话）
+│   ├── session_manager_closing_error.py # SessionManagerClosingError（关闭中仍请求建会话）
+│   └── miss_factory_error.py      #   MissFactoryError（未命中会话且未传 factory）
 ├── models/runtimes/               # 运行时数据模型
 │   ├── dispatch_result.py         #   DispatchResult（链调度结果）
 │   └── parse_result.py            #   ParseResult（parse_message 合并结果：event + segments）
 ├── parsers/                       # 解析器实现
 │   ├── event_parsers/             #   Group/PrivateMessageEventParser
 │   └── segment_parsers/           #   Text/At/Image/File/ReplySegmentParser
-├── protocols/                     # 抽象协议：Parser / ChainProtocol / StoreProtocol
+├── protocols/                     # 抽象协议：Parser / Closable / ChainProtocol / StoreProtocol
 ├── stores/                        # 全局共享存储（SHARE_STORE）
 ├── tools/                         # 暴露给 pi 的工具（发消息 / 下载 QQ 文件 / 查询消息 / 撤回消息）
 ├── tests/                         # 本地 pytest 用例（gitignore，不提交）
@@ -102,10 +107,11 @@ miaoli_bot/
 
 1. QQ 消息经 NapCat → ncatbot → 按注册优先级分发给各插件：本插件以 `priority=-100` 排在后面，若上游插件（如 `miaoli_like` 的 `赞我`）已停止事件传播，本条消息不会到达这里，流程到此结束。
 2. `on_message` 调用 `parse_message`：`EventParseChain` 解析事件元数据（群 → `GroupMessageEventParser`，私聊 → `PrivateMessageEventParser`），`SegmentParseChain` 逐段解析 `message`（文本 → `TextSegmentParser`，AT → `AtSegmentParser`，图片 → `ImageSegmentParser`，文件 → `FileSegmentParser`，引用 → `ReplySegmentParser`），合并为统一 dict（`platform`、`from_group`、`created_at`、`group`、`sender`、`message: [...]`）。
-3. `session_id = concatenate_id(target_id, is_group=is_group)`（群 → `group-<group_id>`，私聊 → `private-<user_id>`）后调用 `PiSessionManager.ensure_session`：命中已有会话直接复用 `PiClient`，未命中则在 per-session 锁内惰性调用传入的 `_pi_factory`（内部执行 `PiClient.open(session_id=…)` + `set_model(...)`）建连并缓存；管理器关闭中会抛 `SessionManagerClosingError`。
+3. `session_id = concatenate_id(target_id, is_group=is_group)`（群 → `group-<group_id>`，私聊 → `private-<user_id>`）后调用 `PiSessionManager.ensure_session`：命中已有会话直接复用 `PiClient`；未命中则在 per-session 锁内惰性调用传入的工厂 —— 工厂由 `create_pi_factory` 依 `config.yaml` 闭包出 `PiClient.open(session_id=…)` + `set_model(...)`，建连超时上限由 `timeout`（默认 60s）控制。未命中且未传 `factory` 抛 `MissFactoryError`，管理器关闭中抛 `SessionManagerClosingError`。
 4. `PiClient.prompt(i_data, streamingBehavior="steer")` 将解析结果送入 pi Agent，流式返回事件；`prompt` 内部先检查本地 `_stream_lock`，若 agent 正在输出则改走 `steer()` 注入新消息并直接返回（不产生事件流），未指定 `streamingBehavior` 时抛 `PIPromptBusyError`。
 5. `pi_event_classifier` 分类事件：正文增量实时回发 QQ；agent 结束即回复 `[DONE]` 并结束本轮；出错记录日志。
 6. agent 需要调用工具时，经 `PIToolBackend` 执行 `send_message_to_QQ` / `download_qq_file` / `query_qq_message_id` / `delete_qq_message`，结果回流给 agent。
+7. 插件卸载（`on_close`）：先显式 `drop` 掉 `NCATBOT_API` / `PLUGIN_CONFIG` 并关闭工具后端，再由 `clean_share_store()` 对 `SHARE_STORE` 做兜底清理 —— 实现 `Closable` 的键逐个 `close()`，close 后仍留在容器的键 `drop` 掉（已被对象自行摘除则记 warning），全程逐键记日志。
 
 ## 安装与使用
 
@@ -114,7 +120,16 @@ miaoli_bot/
    - `ncatbot`
    - `pi_bridge`（参见 [pi-bridge](https://github.com/lyt2011/pi-bridge)）
    - `pytest` / `pytest-asyncio`（仅本地跑测试需要）
-3. 在 ncatbot 配置中为插件提供配置项（`core/PIToolBackend` 经 `SHARE_STORE` 的 `PLUGIN_CONFIG` 读取 `tool_backend_host` / `tool_backend_port`）。
+3. 插件配置（插件目录 `config.yaml` 为默认值，全局 `config.yaml` 的 `plugin.plugin_configs.miaoli_bot` 同键覆盖）：
+
+| 键 | 默认 / 必填 | 用途 |
+|---|---|---|
+| `session_dir` | `/tmp/` | `PiClient.open` 的会话目录（上下文由外部 PI AGENT 进程托管） |
+| `prompt_file` | 优先读 | 系统提示词文件路径（示例配置：`data/prompt_v1.1.md`） |
+| `pi_system_prompt` | 回退 | 内联系统提示词，仅在未配置 `prompt_file` 时使用（可为空） |
+| `default_provider` / `default_model` | **必填** | `set_model(provider, model)` 的两个参数（缺失会在建连时 `KeyError`） |
+| `buffer_limit` | `32 * 1024 * 1024` | `PiClient.open` 的事件缓冲上限（示例配置未显式给出，走默认值） |
+| `tool_backend_host` / `tool_backend_port` | `127.0.0.1:39999`（`PTBACKEND_HOST` / `PTBACKEND_PORT`） | `core/PIToolBackend` 经 `SHARE_STORE` 的 `PLUGIN_CONFIG` 读取，留空则由 pi_bridge 取环境变量默认值 |
 4. 启动 bot，在 QQ 中私聊或群聊即可与 agent 对话。
 
 ### 本地测试
@@ -135,6 +150,8 @@ cd <插件父目录>          # plugins/
 > 注：`pi_bridge` 0.6.0 起 `prompt` 请求被拒时会抛 `RequestRefuseError`，本插件**暂未捕获**（异常会冒到 ncatbot 事件处理器，日志有 traceback、用户侧无回复），详见 CHANGELOG 0.5.4。
 
 ## 项目状态
+
+v0.6.0 — **配置化建会话 + 关闭兜底清理**：建连参数由 `on_message` 内的硬编码改为 `config.yaml` 驱动（`session_dir` / `buffer_limit` / `prompt_file` 或 `pi_system_prompt` / `default_provider` / `default_model`），`create_pi_factory(session_id)` 产出无参工厂供 `ensure_session` 惰性调用；`PiSessionManager` 的 `close_sessions()` 更名为 `close()`、`ensure_session(create_timeout=…)` 更名为 `timeout=…` 且 `factory` 变为可选（未命中且缺省抛新增的 `MissFactoryError`）—— **两处更名为破坏性变更**；`on_close` 改由 `clean_share_store()` 经新增的 `Closable` 运行时协议统一兜底清理 `SHARE_STORE`（显式清理仍是第一责任）。群 / 私聊对话、工具调用与兜底清理路径均已端到端验证。遗留：`create_pi_factory` 未做配置校验（`default_provider` / `default_model` 缺失会在建连时 `KeyError`，计划换 pydantic 动态配置模型）；`core/_prompt.py` 为未接入 `PiClient` 的 WIP；`RequestRefuseError` 仍未捕获（见 v0.5.4）。
 
 v0.5.4 — **`pi_bridge` 依赖下限提到 `>=0.6.0`**：0.6.0 是行为变更版本（`PiClient.prompt` 请求被拒时由「静默零事件」改为抛 `RequestRefuseError`；`PIProcess.build` 的 `session` 参数更名为 `session_id`）；本插件经 `PiClient.open(session_id=…, …)` 建连，不受参数更名影响。**暂未捕获 `RequestRefuseError`** —— PI 拒绝时异常会冒到 ncatbot 事件处理器（日志有 traceback、用户侧无回复），留待后续处理。
 

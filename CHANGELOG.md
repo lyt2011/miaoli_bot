@@ -3,6 +3,36 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.6.0] - 2026-09-18
+
+### Added
+- **插件配置化建会话（`config.yaml` + `main.py` `create_pi_factory`）**：新增插件目录 `config.yaml`，把原先写死在 `on_message` 里的建连参数（`session_dir="/tmp/"`、`data/prompt_v1.1.md`、`set_model("deepseek-official", "deepseek-flash")`）全部改为读配置 —— `session_dir`（默认 `/tmp/`）、`buffer_limit`（默认 `32 * 1024 * 1024`，配置文件未给该键时走默认值）、`prompt_file`（系统提示词文件路径，优先读文件）/ `pi_system_prompt`（内联回退，可为 `None`）、`default_provider` / `default_model`（`set_model` 的两个参数）。`create_pi_factory(session_id)` 返回无参异步工厂 `pi_factory`，`on_message` 仍以 `factory=…` 传给 `ensure_session`，工厂只在会话未命中时被调用
+- **`protocols/closable.py` — `Closable` 运行时协议**：`@runtime_checkable` 的 `Protocol`，只声明 `async def close(self) -> None`，作为「实现 `close()` 的资源可被统一兜底清理」的结构化约定；`protocols/__init__` 导出
+- **`main.py` `clean_share_store` — 兜底清理**：`on_close` 在显式关闭各组件之后，对 `SHARE_STORE` 做一次快照遍历（`keys()` / `values()` 配 `zip`），`isinstance(value, Closable)` 的逐个 `await value.close()`；非 `Closable` 记 warning 跳过，`close()` 抛错只记 warning 且不中断其余清理；close 之后 double-check `contains(key)`，仍在容器里就 `drop(key)`（对象已自行摘除则命中「不存在 但清理完成」的 warning 分支），逐键记 info 便于事后核对
+- **`errors/miss_factory_error.py` — `MissFactoryError`**：`ensure_session` 未命中会话且未传 `factory` 时抛出（`errors/__init__` 导出）
+
+### Changed
+- **`PiSessionManager` 关闭方法更名为 `close()`**（`close_sessions` → `close`，`core/pi_session_manager.py` + `main.py._close_session_manager`）：与本次新增的 `Closable` 协议（`async def close`）同名，便于纳入通用兜底清理；**破坏性更名**，外部调用点需同步
+- **`ensure_session` 签名调整**（`core/pi_session_manager.py`）：`create_timeout` 更名为 `timeout`（**破坏性更名**，默认值仍 `60.0`）；`factory` 由必填改为可选（`factory: PI_FACTORY = None`）并移到 `timeout` 之后，缺省且未命中时抛 `MissFactoryError`；命中缓存时不构造、不调用工厂
+- **`_FACTORY_TYPE` → `PI_FACTORY`**：由 `Callable[[], Awaitable[PiClient]]` 改为 `Optional[Callable[[], Awaitable[PiClient]]]`，与「工厂可缺省」的新契约对齐
+- **`on_close` 清理改走兜底路径**：`_close_session_manager()` 调用点注释掉（方法定义保留），改由 `clean_share_store()` 经 `Closable` 协议关闭 `PiSessionManager`
+- **`protocols/parser.py` 的 `Parser` 加 `@runtime_checkable`**：与 `Closable` 对齐，允许运行时 `isinstance` 判定
+- **建连日志收敛**：`ensure_session` 由「client 不存在 / 已存在 / 创建成功」三条 debug 收敛为进锁后一条 `{session_id} client 存在: True/False`；工厂协程先构造（`factory_coro = factory()`）再交给 `asyncio.wait_for(…, timeout=…)`，超时语义不变
+- `main.py` 移除 `on_message` 中「私聊没法使用（需要 @）」的测试期 HACK 注释（`is_group and not event.message.is_at(…)` 的判定本身保留）
+
+### Note
+- **兜底清理不替代显式清理**：`clean_share_store` 只保证「把实现 `Closable` 的资源都 `close()` 过一遍」，`runtime_checkable` 的 `isinstance` 只判定属性名存在、不校验方法签名，也不保证被调对象真的幂等或可重复调用；失败路径只记 warning。`SHARE_STORE` 中未实现 `Closable` 的键（如 `NCATBOT_API` / `PLUGIN_CONFIG`）仍靠 `on_close` 里的显式 `drop`
+- **`create_pi_factory` 未做配置校验**：`default_provider` / `default_model` 缺失会在建连时 `KeyError`（代码中已标 `NOTE | FIXME`，计划把配置换成 pydantic 动态模型），当前只是「临时可用」
+- `prompt_file` 的读取发生在每次构造工厂时（每条消息一次读盘）
+- **端到端手工验证**：主要功能（群 / 私聊对话、工具调用）与「关闭兜底清理」路径均已由作者在真实 QQ 环境验证通过
+
+### Docs
+- README 更新至 0.6.0：新增「配置化建会话」「兜底清理」特性，目录树补 `config.yaml` / `protocols/closable.py` / `errors/miss_factory_error.py` / `core/_prompt.py`，安装章节补配置项说明，`项目状态` 记录本次变更与遗留项
+- 本地测试同步 `close_sessions` / `create_timeout` 更名，`PiSessionManager` 用例增至 18 例（新增 2 例 factory 缺省契约），全量 120 例通过（`tests/` 为本地用例、不随仓库提交）
+
+### Future
+- `core/_prompt.py`（本地 WIP，未接入 `PiClient`）：`_Prompt` 事件流包装（按事件类型注册回调、异常隔离、`aclose` / `async with` 收尾），落地 0.5.0 条目中「让 `prompt` 返回可遍历的 `Prompt` 对象并支持回调注册」的设想
+
 ## [0.5.4] - 2026-09-17
 
 ### Changed

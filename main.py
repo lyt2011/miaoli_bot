@@ -4,11 +4,13 @@ from ncatbot.event.qq	import MessageEvent
 
 from pi_bridge	import models
 from pathlib	import Path
+from typing		import Callable, Awaitable
 
 from .chains	import EventParseChain, SegmentParseChain
 from .core		import PIToolBackend, PiClient, PiSessionManager
 from .stores	import SHARE_STORE
 from .adapters	import EventAdapter
+from .protocols	import Closable
 from .parsers	import (
 	GroupMessageEventParser,
 	PrivateMessageEventParser,
@@ -154,7 +156,73 @@ class MiaoLiBot(NcatBotPlugin):
 			self.logger.warning("SessionManager 未启用 跳过关闭逻辑")
 			return
 		
-		await session_manager.close_sessions()
+		await session_manager.close()
+	
+	async def create_pi_factory(self, session_id: str) -> Callable[[], Awaitable[PiClient]]:
+		
+		session_dir		= self.config.get("session_dir", "/tmp/")
+		buffer_limit	= self.config.get("buffer_limit", 32 * 1024 * 1024)
+		
+		if "prompt_file" in self.config:
+			system_prompt = Path(self.config["prompt_file"]).read_text(encoding="utf-8")
+		
+		else:
+			system_prompt	= self.config.get("pi_system_prompt", None)
+		
+		
+		# NOTE | FIXME: 我知道缺失配置会导致KeyError 我准备把配置做成动态的pydantic模型
+		# 现在只是临时可用
+		async def pi_factory() -> Callable[[], Awaitable[PiClient]]:
+			
+			pi_client = await PiClient.open(
+				session_id		= session_id,
+				session_dir		= session_dir,
+				system_prompt	= system_prompt,
+				buffer_limit	= buffer_limit,
+			)
+			
+			await pi_client.set_model(self.config["default_provider"], self.config["default_model"])
+			
+			return pi_client
+		
+		return pi_factory
+	
+	async def clean_share_store(self) -> None:
+		
+		"""
+		基于 Closable 协议清理共享容器
+		不能保证全部清理 尽力兜底
+		还是建议手动清理已知的
+		"""
+		
+		share_keys		= list(SHARE_STORE.keys())
+		share_values	= list(SHARE_STORE.values())
+		
+		for key, value in zip(share_keys, share_values):
+			
+			if not isinstance(value, Closable):
+				
+				self.logger.warning(f"{key} 不是 Closable 跳过清理")
+				continue
+			
+			try:
+				await value.close()
+			
+			except Exception as e:
+				self.logger.warning(f"{key} 清理时发生错误: {e}")
+			
+			else:
+				
+				# double-check 防止卡奇奇怪怪的bug
+				if SHARE_STORE.contains(key):
+					SHARE_STORE.drop(key)
+				
+				else:
+					self.logger.warning(f"{key} 不存在 但清理完成")
+				
+				self.logger.info(f"{key} 被兜底逻辑清理")
+		
+		return
 	
 	async def on_load(self) -> None:
 				
@@ -174,7 +242,10 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.drop(PLUGIN_CONFIG)
 		
 		await self._close_tool_backend()
-		await self._close_session_manager()
+		# await self._close_session_manager() # 测试兜底逻辑
+		
+		# **兜底清理不代表可以不清理**
+		await self.clean_share_store()
 				
 		if not SHARE_STORE.is_empty():
 			self.logger.warning(f"共享容器可能存在资源泄露: {list(SHARE_STORE.keys())}")
@@ -189,7 +260,6 @@ class MiaoLiBot(NcatBotPlugin):
 		event_adapter	= EventAdapter.build(event)
 		
 		
-		# HACK: 修复了私聊没法使用的问题(需要@ 但私聊不能@) 这里的逻辑还是测试期专属
 		if is_group and not event.message.is_at("2449906317"):
 			self.logger.warning(f"群消息无3 已跳过")
 			return
@@ -213,20 +283,9 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		session_id = concatenate_id(target_id, is_group=is_group)
 		
-		async def _pi_factory() -> PiClient:
-			
-			pi_client = await PiClient.open(
-				session_id		= session_id,
-				session_dir		= "/tmp/",
-				system_prompt	= Path("/sdcard/Ncatbot_QQ/plugins/miaoli_bot/data/prompt_v1.1.md").read_text(),
-				buffer_limit	= 32 * 1024 * 1024,
-			)
-			
-			await pi_client.set_model("deepseek-official", "deepseek-flash")
-			
-			return pi_client
 		
-		pi_client = await session_manager.ensure_session(factory=_pi_factory, session_id=session_id)
+		factory		= await self.create_pi_factory(session_id)
+		pi_client	= await session_manager.ensure_session(factory=factory, session_id=session_id)
 		
 		text	: str = ""
 		thinking: str = ""

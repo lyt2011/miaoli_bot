@@ -1,0 +1,4 @@
+default_model: "deepseek-flash"
+default_provider: "deepseek-official"
+prompt_file: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/data/prompt_v1.1.md"
+session_dir: "/tmp/"

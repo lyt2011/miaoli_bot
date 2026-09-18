@@ -9,7 +9,7 @@
 - **插件配置化建会话（`config.yaml` + `main.py` `create_pi_factory`）**：新增插件目录 `config.yaml`，把原先写死在 `on_message` 里的建连参数（`session_dir="/tmp/"`、`data/prompt_v1.1.md`、`set_model("deepseek-official", "deepseek-flash")`）全部改为读配置 —— `session_dir`（默认 `/tmp/`）、`buffer_limit`（默认 `32 * 1024 * 1024`，配置文件未给该键时走默认值）、`prompt_file`（系统提示词文件路径，优先读文件）/ `pi_system_prompt`（内联回退，可为 `None`）、`default_provider` / `default_model`（`set_model` 的两个参数）。`create_pi_factory(session_id)` 返回无参异步工厂 `pi_factory`，`on_message` 仍以 `factory=…` 传给 `ensure_session`，工厂只在会话未命中时被调用
 - **`protocols/closable.py` — `Closable` 运行时协议**：`@runtime_checkable` 的 `Protocol`，只声明 `async def close(self) -> None`，作为「实现 `close()` 的资源可被统一兜底清理」的结构化约定；`protocols/__init__` 导出
 - **`main.py` `clean_share_store` — 兜底清理**：`on_close` 在显式关闭各组件之后，对 `SHARE_STORE` 做一次快照遍历（`keys()` / `values()` 配 `zip`），`isinstance(value, Closable)` 的逐个 `await value.close()`；非 `Closable` 记 warning 跳过，`close()` 抛错只记 warning 且不中断其余清理；close 之后 double-check `contains(key)`，仍在容器里就 `drop(key)`（对象已自行摘除则命中「不存在 但清理完成」的 warning 分支），逐键记 info 便于事后核对
-- **`errors/miss_factory_error.py` — `MissFactoryError`**：`ensure_session` 未命中会话且未传 `factory` 时抛出（`errors/__init__` 导出）
+- **`errors/miss_factory_error.py` — `MissFactoryError`**：`ensure_session` 未命中会话且未传 `factory` 时抛出，异常携带 `session_id` 属性（消息为「`<session_id>` 工厂缺失」）便于定位到具体会话（`errors/__init__` 导出）
 
 ### Changed
 - **`PiSessionManager` 关闭方法更名为 `close()`**（`close_sessions` → `close`，`core/pi_session_manager.py` + `main.py._close_session_manager`）：与本次新增的 `Closable` 协议（`async def close`）同名，便于纳入通用兜底清理；**破坏性更名**，外部调用点需同步

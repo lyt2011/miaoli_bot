@@ -86,7 +86,7 @@ class PiSessionManager:
 				return self.sessions[session_id]
 			
 			elif factory is None:
-				raise MissFactoryError(f"工厂缺失")
+				raise MissFactoryError(session_id=session_id)
 			
 			factory_coro	= factory()
 			pi_client		= await asyncio.wait_for(factory_coro, timeout=timeout)

@@ -13,3 +13,6 @@ tests/
 
 # 本地备份（带时间戳）
 *.bak.*
+
+# 本地配置（含密钥，不提交；模板见 config.example.yaml）
+config.yaml

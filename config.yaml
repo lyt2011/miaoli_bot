@@ -1,4 +1,0 @@
-model_id: "deepseek-flash"
-provider: "deepseek-official"
-session_dir: "/root/miaoli_bot-dev/sessions/"
-prompt_file: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/data/prompt_v1.1.md"

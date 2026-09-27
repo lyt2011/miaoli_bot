@@ -1,4 +1,4 @@
-from .send_message		import send_message_to_QQ
+from .send_message		import send_message_to_qq
 from .download_file		import download_qq_file
 from .query_message_id	import query_qq_message_id
 from .delete_message	import delete_qq_message
@@ -6,7 +6,7 @@ from .delete_message	import delete_qq_message
 
 __all__ = [
 
-	"send_message_to_QQ",
+	"send_message_to_qq",
 	"download_qq_file",
 	"query_qq_message_id",
 	"delete_qq_message",

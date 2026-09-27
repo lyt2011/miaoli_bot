@@ -14,13 +14,6 @@ from .event_ops	import (
 	get_id_from_event,
 )
 
-from .pi_event_classifier	import (
-	is_agent_end,
-	is_agent_error,
-	is_thinking_delta,
-	is_text_delta,
-)
-
 from .sugar	import concatenate_id
 
 
@@ -38,12 +31,6 @@ __all__ = [
 	
 	# event_ops
 	"get_id_from_event",
-	
-	# pi_event_classifier
-	"is_agent_end",
-	"is_agent_error",
-	"is_thinking_delta",
-	"is_text_delta",
 	
 	# sugar
 	"concatenate_id",

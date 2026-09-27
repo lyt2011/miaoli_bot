@@ -272,8 +272,8 @@ class MiaoLiBot(NcatBotPlugin):
 		event_adapter	= EventAdapter.build(event)
 		
 		
-		if is_group and not event.message.is_at("2449906317"):
-			self.logger.warning(f"群消息无3 已跳过")
+		if is_group and not event.message.is_at("2449906317", all_except=True):
+			self.logger.warning(f"群消息无@ 已跳过")
 			return
 		
 		session_manager = SHARE_STORE.recall(PI_SESSION_MANAGER, None)
@@ -315,6 +315,9 @@ class MiaoLiBot(NcatBotPlugin):
 				# FIXME: 已知bug 当AI仅回复一句话时，没有`\n\n`，不进入该逻辑，导致最终text被丢弃，可稳定复现
 				if text.endswith("\n\n"):
 					
+					word_time = getattr(self.cfg, "word_time", 0.05)
+					await asyncio.sleep(word_time * len(text))
+					
 					await event_adapter.send(self.api, text.rstrip())
 					text = ""
 			
@@ -327,7 +330,7 @@ class MiaoLiBot(NcatBotPlugin):
 				if text:
 					await event_adapter.send(self.api, text)
 					
-				await event.reply("[DONE]")
+				await event_adapter.send(self.api, "[DONE]")
 			
 			else:
 				self.logger.warning(f"未被处理的 event -> {type(pi_event).__name__}")

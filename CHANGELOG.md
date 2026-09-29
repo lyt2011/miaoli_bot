@@ -3,6 +3,58 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.8.1] - 2026-09-29
+
+> ⚠️ **本版本含破坏性更名**：配置键 `meme_config.sqlite_path` → `db_path`、`send_file_to_qq` 的参数 `file` → `path`、`send_meme_to_qq` 的参数 `path` + `by` → `hash_`。旧 `config.yaml` 与既有调用写法需同步调整。
+>
+> ✅ **仍处优化态**：本次不含架构改动 —— 图管线 / 状态与上下文分离 / 分层配置 / 工具闭环四处骨架保持 0.8.0 定下的形态，改动集中在 meme 子系统从「未写完」落地为可用实现，以及工具层参数收口。
+
+### Removed
+
+- **`core/meme_manager.py` 删除**（`core/__init__` 的导入同步）：meme 子系统的数据访问整体改为 `utils/meme_sqlite.py` 的 `MemeSqlite`
+- **`utils/meme_sqlite_ops.py` 删除**（`utils/__init__` 的导出同步）：连接与建表职责并入 `MemeSqlite`，由 `async with` 统一接管
+- **`send_meme_to_qq` 去掉 `by` 参数与「按路径发图」分支**（**破坏性变更**）：原实现用 `path` + `by ∈ {file, hash}` 区分「本地文件」与「已归档的 hash」，但两个工具（`send_meme_to_qq` / `send_file_to_qq`）的参数表因此几乎同形，实测模型会选错工具；现只保留「按 hash 发已归档表情包」，「按路径发图」交给 `send_file_to_qq`
+
+### Added
+
+- **`utils/meme_sqlite.py` — `MemeSqlite`（`rapsqlite` 驱动，全异步）**：`__init__(path)` 建连接；`async with` 进入时按序执行 `PRAGMA foreign_keys = ON` 与三张 DDL（`memes` 表 / `tags` 表 / `idx_tags_meme` 索引），退出时 `commit` + `close`。查询接口：`query_tags(tags)`（按标签查，返回 `{meme_id: {description, base64, tags}}`）、`fetch_memes()`（列出全部 `(id, description, hash, base64)`）、`fetch_meme_from_hash(hash_)`（返回 `{id, description, hash, base64}`，未命中返回 `None`）、`is_hash_existing(hash_)`；写入接口：`insert_meme(tags, base64, description, hash_)`（一次事务写入表情包与去重后的标签）。三个私有方法（`_fetch_meme_ids_from_tags` / `_fetch_meme_infos_from_tags` / `_fetch_tags_from_meme_ids`）承担「标签 → id → 信息 → 标签」的三段查询
+- **`list_memes` 落地**：该工具原先直接 `fail("工具未写完")`，现经 `MemeSqlite.fetch_memes()` 返回 `{meme_id: {hash, description}}` —— **不返回 base64**，让模型能列出可选表情包而不被图片体积撑爆上下文；未启用或未配置 meme 时仍统一返回 `fail("meme被禁用")`
+- **`manifest.toml` 新增 `rapsqlite = ">=0.5.1"`**：meme 子系统的 sqlite 异步驱动，缺它会直接 `ModuleNotFoundError`
+- **`utils/__init__.py` 导出 `MemeSqlite`**：工具层统一从 `..utils` 取用
+
+### Changed
+
+- **`MemeConfig` 的配置键 `sqlite_path` → `db_path`**（**破坏性变更**）：字段与校验器同步更名，`config.yaml` / 上层配置需改键；`MemeConfig` 未开 `extra="allow"`，键名写错会被 pydantic 静默丢弃，直到取 `meme_config.db_path` 时才 `AttributeError`
+- **`tools/send_meme.py` 收敛为「只发已归档的表情包」**：参数由 `path` + `by` 变为 `hash_`，docstring 首句改为「发送一个**已归档的**表情包到 QQ」，未命中文案改为 `找不到 hash_ 为 <hash> 的表情包`
+- **`tools/send_file.py` 的参数 `file` → `path`**（**破坏性变更**）：`get_size_MB(file)` 一并改为 `get_size_MB(path)`；`ToolSchema.path` 的类型由 `str` 收紧为 `FilePath`，路径不存在在**参数校验期**即被拒绝
+- **`tools/archive_meme.py` 改走 `MemeSqlite`**：`async with` 内先 `is_hash_existing` 判重（命中即 `custom(False, message="该表情包已被归档", …)`），未命中才 `insert_meme`；返回体里的 `hash` 从查询结果取
+- **`tools/query_message_id.py` 工具描述改写**：「查询 `message_id` 对应的 未经过特殊处理或解析的 OB11 协议信息」→「查询 `message_id` 对应的 QQ 消息」（对外描述里不再出现实现细节的协议名）
+- **`models/plugin_config.py` 移除未使用的 `import os`**；`core/__init__.py` 调整导入顺序；`utils/__init__.py` 对齐缩进
+
+### Fixed
+
+- **`Image(url=…)` → `Image(file=…)`（`send_meme.py`）**：`ncatbot` 的 `Image` 模型字段是 `file` / `url` / `file_id` / `file_size` / `file_name`，其中 **`file` 必填**；只传 `url` 会让 pydantic 抛 `ValidationError: file: Field required`，异常被 `ToolNode` 包成 `status="error"` 的 `ToolMessage` 回给模型 —— 表现为「模型报怨工具坏了」，实则是这一行参数名写错
+- **base64 两处类型错误（`send_meme.py`）**：`b64encode(...)` 与 sqlite 取出的 `base64` 都是 **bytes**，直接插进 `f"base64://{base64_data}"` 会拼成 `base64://b'/9j/…'`（`b'` 前缀污染载荷），两处均补 `.decode()`
+- **`archive_meme` 解包 dict 拿到的是键名**：`meme_id, description, base64 = await fetch_meme_from_hash(…)` 对 dict 解包得到的是 `"id"` / `"description"` / `"base64"` 三个**字符串**（不报错、静默错值），改为先接住整个 dict 再按 key 取
+- **`fetch_meme_from_hash` 返回值补 `hash` 键**：查询 SQL 只取了 `id, description, base64`，而调用方要读 `meme_info["hash"]` —— 补齐返回键，消除 `KeyError`
+- **`MemeSqlite.__aexit__` 签名与关闭**：原先只声明 `(self)`，`async with` 退出时会以四个参数调用而抛 `TypeError`；同时补上缺失的 `await self.conn.close()`（原先只 `commit`，连接泄漏）
+- **`is_hash_existing` 恒真**：原实现读 `cur.lastrowid`，而 `SELECT` 之后该值是 `-1`（`bool(-1)` 为 `True`）→ 改成读 `rows[0][0]`
+- **`fetch_memes` 缺 `def`**：`async fetch_memes(...)` 是语法错误，插件整体无法导入
+- **两处 SQL 语法错**：`memes` 建表语句最后一个字段后多一个逗号；`_fetch_tags_from_meme_ids` 的四段 SQL 字符串拼接缺空格（拼出 `'§')FROM tagsWHERE …`）
+- **两处漏 import**：`utils/meme_sqlite.py` 的 `Tuple`（`fetch_memes` 返回值注解）、`tools/send_meme.py` 的 `Image`（取图那一行在用）
+- **命名两处**：`_fetch_meme_ids_form_tags` → `_fetch_meme_ids_from_tags`（拼写）；`MemeSqlite` 三个方法的形参 `hash` → `hash_`（`hash` 遮蔽内建函数）—— 只改形参，SQL 列名与工具返回体里的 `hash` 键保持不变
+
+### Note
+
+- **meme 子系统的数据契约**：`memes(id INTEGER PRIMARY KEY AUTOINCREMENT, description TEXT NOT NULL, base64 TEXT NOT NULL UNIQUE, hash TEXT NOT NULL UNIQUE)` + `tags(tag TEXT NOT NULL CHECK (TRIM(tag) != ''), meme_id INTEGER NOT NULL, PRIMARY KEY (tag, meme_id), FOREIGN KEY (meme_id) REFERENCES memes(id))`；`base64` 实际以 **BLOB（bytes）** 落库（写入方给的是 `b64encode(...)` 的 bytes），读取方需 `.decode()`；`hash` = `md5(base64 文本)`，归档与查询两侧算法一致
+- **验证方式（本地环境，非真机）**：`compileall` 报错数 0；pyflakes 全项目 0 条；导入链（`main` / `tools` / `core` / `utils`）正常；对真实库跑通 `MemeSqlite` 全部接口（建表 / 判重 / 查 hash / 列全部 / 按标签查 / 关连接重开数据仍在）；工具层用假 ncatbot api 端到端跑通 `send_meme_to_qq(hash_=…)` 与 `archive_meme` 的「已归档」分支
+- **仍为占位或已知债**（沿用 0.8.0，本次未动）：`OutputConfig` 字段已定但无消费方；`main.py` 的 `chat_model` 仍是每条消息 new 一个 `ChatOpenAI`（标 `# HACK`）；`GraphPipeline._dispatch` 无错误处理（标 `# NOTE`，「`GraphBubbleUp` 必须放行」的问题仍在）；`_build_graph` 写 `SHARE_STORE` 未持 `store_lock`；`tests/` 里 0.7.0 时代的 147 例仍整体失效
+
+### Docs
+
+- **README 更新至 0.8.1**：版本号 / 工具描述（`send_meme_to_qq` 按 hash、`send_file_to_qq` 按 path）/ 目录树（`core/meme_manager.py` → `utils/meme_sqlite.py`）/ 配置表（`sqlite_path` → `db_path`）/ 依赖表（新增 `rapsqlite`）/ 项目状态全部同步
+- **CHANGELOG 新增本条目**，并按「未实现的计划不留档」的约定移除 0.8.0 的 `Future` 段（该段原文 5 项本次均未实现）
+
 ## [0.8.0] - 2026-09-29
 
 > ⚠️ **本版本为破坏性重构**：移除 `pi_bridge` 与外部 pi Agent 进程，改由插件内自建的 LangGraph 图管线驱动 LLM。依赖、配置结构、共享键、消息段字段全线变更，旧 `config.yaml` 与全局 `plugin_configs.miaoli_bot` 不能直接沿用。
@@ -60,14 +112,6 @@
 
 - **README 更新至 0.8.0**：标题 / 简介 / 版本号改写为「LangGraph 自建图管线」，功能特性、架构图、目录结构、数据流、配置表、依赖表、项目状态全部按重构后的状态重写；`pi_bridge` 相关描述（`PiClient` / `PiSessionManager` / `PIToolBackend` / 流式事件分类 / `RequestRefuseError` 未捕获）整体删除
 - CHANGELOG 新增本条目
-
-### Future
-
-- **`OutputConfig` 落地**：按 `typing_speed`（± `typing_speed_offset`）与 `split_separator` 把 `final_answer` 切块延迟发送，替换 `main.py` 里的两个 `# TODO`
-- **`build_chat_model(cfg)` 收敛 LLM 客户端构造**（建议放 `utils/llm.py`），`providers` / `active_provider` / `active_model` 显式建模，去掉 `main.py` 里的 `# HACK`（显式字段优于 `extra="allow"` 静默收下拼错的键）
-- **`GraphPipeline` 补错误处理与流式**：`_dispatch` 把 `GraphBubbleUp` 放行、其余包成 `HandlerError`；`ainvoke` / `astream` 落进管线类；`models/runtimes/handler.py` 的 `function: Callable[..., ...]` 改为 `Callable[..., Any]`
-- **`core/nodes.py` 的节点注册换成自动发现**（文件头已注明「后续换成自动发现」「这里迟早要迁移的」）
-- **重写本地 pytest 用例**（随本次重构整体失效）
 
 ## [0.7.0] - 2026-09-18
 

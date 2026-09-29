@@ -16,7 +16,7 @@ class ToolSchema(BaseModel):
 async def query_qq_message_id(message_id: str) -> Dict[str, Any]:
 	
 	"""
-	查询 message_id 对应的 未经过特殊处理或解析的 OB11 协议信息
+	查询 message_id 对应的 QQ 消息
 	查询的结果将转为 json 字符串，并作为工具调用结果返回
 	"""
 	

@@ -3,8 +3,6 @@ from typing		import Optional, Self, List, Union
 from tempfile	import gettempdir
 from pathlib	import Path
 
-import os
-
 
 class LLM(BaseModel):
 	name			: str	= Field(..., description="用于请求的模型名")
@@ -19,7 +17,7 @@ class Provider(BaseModel):
 
 class MemeConfig(BaseModel):
 	is_enable	: bool				= Field(default=False, description="是否启用 meme")
-	sqlite_path	: Optional[Path]	= Field(default=None, description="meme 的 sql 数据库路径")
+	db_path		: Optional[Path]	= Field(default=None, description="meme 的 sql 数据库路径")
 	max_memes	: Optional[int]		= Field(default=None, description="最大meme的数量")
 	
 	@model_validator(mode="after")
@@ -30,7 +28,7 @@ class MemeConfig(BaseModel):
 		但不能启用+不传路径
 		"""
 		
-		if self.is_enable is True and not str(self.sqlite_path):
+		if self.is_enable is True and not str(self.db_path):
 			raise ValueError("不能启用 meme 但不传数据库路径")
 		
 		return self

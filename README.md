@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.8.0
+- **版本**：0.8.1
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -14,7 +14,8 @@
 - 🧠 **LLM 接入**：`ChatOpenAI` 经 `models.GraphRuntimeContext` 的 `chat_model` 注入图；`call_llm` 节点用 `bind_tools(TOOLS)` 后请求模型；工具循环由 `tools_condition` 条件边在「有 `tool_calls` → 执行工具 → 回到请求」与「无 `tool_calls` → 收尾」之间自动分流。
 - 📜 **状态与上下文分离**：`models.GraphState`（进 checkpoint 的会话状态）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖）。`context` 不进 checkpoint、不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`；`messages` 是唯一带 reducer（`add_messages`）的键，天然累加，**不需要手动保存历史**。
 - 🎛️ **配置模型化（分层）**：`PluginConfig` 由平铺字段改为分层 —— `providers: [Provider(name / base_url / api_key / models: [LLM(name / context_window / max_tokens)])]` 加 `account_config`（`bot_id` / `root_id` / `bot_nickname` / `root_nickname`，四项全必填）、`meme_config`、`output_config`、`session_dir`（`DirectoryPath`）/ `prompt_file`（`FilePath`）/ `system_prompt`。路径类型让 `prompt_file` 指向不存在的文件在**加载期**就报错，`account_config` 缺失即 `ValidationError`（fail-fast，不再等到首条消息 `KeyError`）。
-- 🛠️ **工具调用闭环**：8 个工具 —— 发消息 `send_message_to_qq`、发文件 `send_file_to_qq`、发表情包 `send_meme_to_qq`、列表情包 `list_memes`、归档表情包 `archive_meme`、下载 QQ 文件 `download_qq_file`、查消息 `query_qq_message_id`、撤回消息 `delete_qq_message`。统一由 `ToolNode` 执行，返回值经 `utils.tool_result_builder` 的 `success` / `fail` / `custom` 收敛成 `{"status": bool, "message": …}`。
+- 🛠️ **工具调用闭环**：8 个工具 —— 发消息 `send_message_to_qq`、发文件 `send_file_to_qq`（按路径）、发表情包 `send_meme_to_qq`（按 hash 发已归档的）、列表情包 `list_memes`、归档表情包 `archive_meme`、下载 QQ 文件 `download_qq_file`、查消息 `query_qq_message_id`、撤回消息 `delete_qq_message`。统一由 `ToolNode` 执行，返回值经 `utils.tool_result_builder` 的 `success` / `fail` / `custom` 收敛成 `{"status": bool, "message": …}`。
+- 💽 **meme 子系统**：`utils.MemeSqlite`（`rapsqlite` 异步驱动，`async with` 内建 `memes` / `tags` 两表 + 自动 commit/close）承担存取，`archive_meme` 归档（带标签去重）、`list_memes` 列举（**不回传 base64**，避免图片体积撑爆上下文）、`send_meme_to_qq` 按 hash 取图发送；`meme_config` 的 `db_path` 指向 sqlite 文件，`is_enable` 为 `false` 时三个工具统一返回 `fail("meme被禁用")`。
 - 🧩 **两级解析链**：`EventParseChain`（群 / 私聊事件元数据）与 `SegmentParseChain`（文本 / AT / 图片 / 文件 / 引用消息段）双链分发，`utils.easier_parser.parse_message` 一步合并产出 `ParseResult(event, segments)` 喂给图。
 - 🖼️ **多类型消息段**：`Text` → `{text}`、`At` → `{at}`、`Image` → `{image, size}`、`File` → `{file, size}`、`Reply` → `{reply}`。
 - 🦆 **鸭子类型适配**：`adapters/EventAdapter` 不依赖具体 ncatbot 类型，通过属性探测兼容不同消息事件形态（`user_id` / `group_id` / `is_group` / `send`）；`utils.get_id_from_event` 群取 `group_id`、私聊取 `user_id`。
@@ -86,8 +87,7 @@ miaoli_bot/
 │   └── share_store_keys.py        #   SHARE_STORE 键名
 ├── core/                          # 图管线与节点
 │   ├── graph_pipeline.py          #   GraphPipeline：register / wire / compile / ainvoke / _dispatch / _merge
-│   ├── nodes.py                   #   5 个图节点（format_input / format_prompt / call_llm / on_tool_calling / last_msg_to_answer）
-│   └── meme_manager.py            #   MemeManager
+│   └── nodes.py                   #   5 个图节点（format_input / format_prompt / call_llm / on_tool_calling / last_msg_to_answer）
 ├── data/prompts/                  # 提示词资产（prompt_v1.0.md ~ prompt_v1.3.md）
 ├── errors/                        # 异常定义
 │   ├── base_bot_error.py          #   BaseBotError 基类
@@ -109,7 +109,7 @@ miaoli_bot/
     ├── easier_parser.py           #   parse_event / parse_segment / parse_message 快捷入口
     ├── easier_sender.py           #   private / group 便捷发送封装
     ├── event_ops.py               #   get_id_from_event（群 → group_id，私聊 → user_id）
-    ├── meme_sqlite_ops.py         #   meme 的 sqlite 连接与建表
+    ├── meme_sqlite.py             #   MemeSqlite（rapsqlite 异步驱动：建表 / 判重 / 增查 / 按标签查）
     ├── sugar.py                   #   concatenate_id（会话键加 group- / private- 前缀）
     └── tool_result_builder.py     #   custom / success / fail（工具返回值统一契约）
 ```
@@ -134,6 +134,7 @@ miaoli_bot/
    - `ncatbot`（`>=5.5.8`）
    - `langgraph`（`>=1.2.12`）
    - `langchain-openai`（`>=1.6.6`）
+   - `rapsqlite`（`>=0.5.1`）
 3. 插件配置：`cp config.example.yaml config.yaml` 后填真实 `api_key`（`config.yaml` 含密钥、已 gitignore）。插件目录的 `config.yaml` 为默认值，全局 `config.yaml` 的 `plugin.plugin_configs.miaoli_bot` 同键覆盖；`on_load` 第一步即 `PluginConfig.model_validate(self.config)`，必填项缺失 / 路径不存在 / 类型不符都会抛 `ValidationError`，本插件加载失败并在日志留下 traceback（机器人其余部分不受影响）。
 
 配置键名与 `models.PluginConfig` 的字段一一对应：
@@ -148,7 +149,7 @@ miaoli_bot/
 | `session_dir` | `gettempdir()`（`/tmp`） | 会话保存路径（`DirectoryPath` 校验存在性） |
 | `prompt_file` | `null` | 系统提示词文件（`FilePath` 校验存在性，加载时按 UTF-8 读入），优先于 `system_prompt` |
 | `system_prompt` | `null` | 内联系统提示词，仅在未配置 `prompt_file` 时使用（可为 `null`） |
-| `meme_config` | `MemeConfig()` | `is_enable`（默认 `false`）/ `sqlite_path` / `max_memes`；**可以关闭 + 传路径，不能启用 + 不传路径**（`model_validator` 拒绝） |
+| `meme_config` | `MemeConfig()` | `is_enable`（默认 `false`）/ `db_path`（sqlite 数据库路径）/ `max_memes`；**可以关闭 + 传路径，不能启用 + 不传路径**（`model_validator` 拒绝）；`archive_meme` / `list_memes` / `send_meme_to_qq` 三个工具都读它 |
 | `output_config` | `OutputConfig()` | **Future 占位**（字段已定，暂无消费方）：`typing_speed`（默认 `0.01`）/ `typing_speed_offset`（默认 `0`）/ `split_separator`（默认 `""`）—— 以后用于把回复切块并按字数模拟打字延迟 |
 
 4. 启动 bot，在 QQ 中私聊或群聊（群聊需 @ 机器人）即可与模型对话。
@@ -169,13 +170,16 @@ cd <插件父目录>          # plugins/
 | `ncatbot`（`>=5.5.8`） | QQ 机器人框架 / 事件与消息 API |
 | `langgraph`（`>=1.2.12`） | 图管线（`StateGraph` / `ToolNode` / `tools_condition` / checkpoint） |
 | `langchain-openai`（`>=1.6.6`） | `ChatOpenAI`（可指向任意 OpenAI 兼容端点） |
+| `rapsqlite`（`>=0.5.1`） | meme 子系统的 sqlite 异步驱动（`utils/meme_sqlite.py`） |
 
 > 注：以上三个由 `manifest.toml` 的 `pip_dependencies` 声明。
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
 
-v0.8.0 — **移除 `pi_bridge`，改用 LangGraph 自建图管线（破坏性重构）**：删除 `core/pi_client.py` / `pi_session_manager.py` / `pi_tool_backend.py` / `_prompt.py`、`utils/pi_event_classifier.py`、`errors/miss_factory_error.py` / `pi_prompt_busy_error.py` 与 `enums/` 目录，`manifest.toml` 的依赖改为 `langgraph` + `langchain-openai`；新增 `core/graph_pipeline.py`（`GraphPipeline`：`register(event, node, priority)` 显式挂载 + `wire()` 一次成型 + `_dispatch` 按优先级串行并对返回值做增量合并）、`consts/graph.py`（8 个图事件 + `MAX/MIN_PRIORITY`）、`core/nodes.py`（5 个节点）、`models/graph_state.py`（进 checkpoint 的会话状态）与 `models/graph_runtime_context.py`（不进 checkpoint 的运行时依赖）；`PluginConfig` 重构为分层结构（`providers` / `account_config`（必填）/ `meme_config` / `output_config` + `session_dir` / `prompt_file` / `system_prompt`），**配置结构与共享键均不向下兼容**（`plugin_configs.miaoli_bot` 需整块重写）；工具由 4 个扩到 8 个（新增 `send_file_to_qq` / `send_meme_to_qq` / `list_memes` / `archive_meme`），返回值统一走 `utils.tool_result_builder`；`config.yaml` 改由 `config.example.yaml` 作入库模板；`parsers` 的 `file_parser` 返回值键由 `image` 修正为 `file`（**破坏性**）；`main.py` / `models` / `utils` / `consts` / `errors` 的导出表全部同步。**重构完成，进入优化态**，后续迭代项：`OutputConfig` 是预留占位（字段已定、暂无消费方，见 Future）；`main.py` 的 `chat_model` 仍是每条消息 new 一个 `ChatOpenAI` 的 `# HACK`；`GraphPipeline._dispatch` 暂无错误处理、`_build_graph` 写 `SHARE_STORE` 未持 `store_lock`；本地 147 例用例整体失效待重写。（另：三处漏 import 的注解 `Union` / `List` 已补齐 —— Python 3.14 的注解延迟求值让「漏 import 类型」不再报 `NameError` 而是静默失效，只有 pydantic 这种必须解析注解建 schema 的使用方才会炸，详见 CHANGELOG 0.8.0 的 Note。）
+v0.8.1 — **meme 子系统落地 + 工具层参数收口（含三处破坏性更名）**：删除 `core/meme_manager.py` 与 `utils/meme_sqlite_ops.py`，新增 `utils/meme_sqlite.py` 的 `MemeSqlite`（`rapsqlite` 异步驱动，`async with` 内建 `memes` / `tags` 两表 + 自动 `commit` / `close`，接口 `query_tags` / `fetch_memes` / `fetch_meme_from_hash` / `is_hash_existing` / `insert_meme`），`manifest.toml` 依赖新增 `rapsqlite`；`list_memes` 由 `fail("工具未写完")` 落地为 `{meme_id: {hash, description}}`。**破坏性更名**：配置键 `meme_config.sqlite_path` → `db_path`、`send_file_to_qq` 的参数 `file` → `path`（类型收紧为 `FilePath`）、`send_meme_to_qq` 的参数 `path` + `by` → `hash_`（不再按路径发图 —— 「已归档的表情包」与「任意文件」分属两个工具，避免模型选错）。修复：`Image(url=…)` 参数名写错（`Image` 的必填字段是 `file`，报 `file: Field required`）、base64 两处 bytes（`b64encode` 与 sqlite 取出的都是 bytes，拼出 `base64://b'…'` 需 `.decode()`）、`archive_meme` 对 dict 解包拿到键名、`fetch_meme_from_hash` 缺 `hash` 键、`MemeSqlite.__aexit__` 签名与漏 `close()`、`is_hash_existing` 恒真、`fetch_memes` 缺 `def`、两处 SQL 语法错、两处漏 import、两处命名。**架构未动，仍处优化态**。
+
+v0.8.0 — **移除 `pi_bridge`，改用 LangGraph 自建图管线（破坏性重构）**：删除 `core/pi_client.py` / `pi_session_manager.py` / `pi_tool_backend.py` / `_prompt.py`、`utils/pi_event_classifier.py`、`errors/miss_factory_error.py` / `pi_prompt_busy_error.py` 与 `enums/` 目录，`manifest.toml` 的依赖改为 `langgraph` + `langchain-openai`；新增 `core/graph_pipeline.py`（`GraphPipeline`：`register(event, node, priority)` 显式挂载 + `wire()` 一次成型 + `_dispatch` 按优先级串行并对返回值做增量合并）、`consts/graph.py`（8 个图事件 + `MAX/MIN_PRIORITY`）、`core/nodes.py`（5 个节点）、`models/graph_state.py`（进 checkpoint 的会话状态）与 `models/graph_runtime_context.py`（不进 checkpoint 的运行时依赖）；`PluginConfig` 重构为分层结构（`providers` / `account_config`（必填）/ `meme_config` / `output_config` + `session_dir` / `prompt_file` / `system_prompt`），**配置结构与共享键均不向下兼容**（`plugin_configs.miaoli_bot` 需整块重写）；工具由 4 个扩到 8 个（新增 `send_file_to_qq` / `send_meme_to_qq` / `list_memes` / `archive_meme`），返回值统一走 `utils.tool_result_builder`；`config.yaml` 改由 `config.example.yaml` 作入库模板；`parsers` 的 `file_parser` 返回值键由 `image` 修正为 `file`（**破坏性**）；`main.py` / `models` / `utils` / `consts` / `errors` 的导出表全部同步。**重构完成，进入优化态**，后续迭代项：`OutputConfig` 是预留占位（字段已定、暂无消费方，见 CHANGELOG 0.8.0 的 Note）；`main.py` 的 `chat_model` 仍是每条消息 new 一个 `ChatOpenAI` 的 `# HACK`；`GraphPipeline._dispatch` 暂无错误处理、`_build_graph` 写 `SHARE_STORE` 未持 `store_lock`；本地 147 例用例整体失效待重写。（另：三处漏 import 的注解 `Union` / `List` 已补齐 —— Python 3.14 的注解延迟求值让「漏 import 类型」不再报 `NameError` 而是静默失效，只有 pydantic 这种必须解析注解建 schema 的使用方才会炸，详见 CHANGELOG 0.8.0 的 Note。）
 
 v0.7.0 — **配置模型化（pydantic）+ 共享键拆分**：新增 `models/plugin_config.py` 的 `PluginConfig`（字段 `model_id` / `provider` / `session_dir` / `system_prompt` / `prompt_file`，`extra="allow"` 放行额外键），`on_load` 里 `PluginConfig.model_validate(self.config)` 把 ncatbot 合并后的配置转成模型实例存入 `self.cfg`；配置键名随之对齐模型字段（`default_model` → `model_id`、`default_provider` → `provider`、`pi_system_prompt` → `system_prompt`，**破坏性变更**，`config.yaml` 已同步）；共享容器的 `PLUGIN_CONFIG` 由「原始 dict」改为「`PluginConfig` 实例」，原始 dict 改存新增的 `RAW_CONFIG` 键（`on_close` 两键都显式 `drop`）；`create_pi_factory` 与 `PIToolBackend` 相应改为按属性取值。配置校验前移到加载期（必填缺失即 `ValidationError`，不再等到首条消息 `KeyError`），提示词读盘从「每条消息」变为「加载时一次」，本地测试 147 例通过。遗留：`buffer_limit` 仍是 extra 键（无类型校验与默认值保护），运行期 `set_config()` 不会重解析 `self.cfg`（需重载插件）；`core/_prompt.py` 仍为 WIP；`RequestRefuseError` 仍未捕获（见 v0.5.4）。
 

@@ -5,25 +5,25 @@ from ..stores	import SHARE_STORE
 from ..consts	import NCATBOT_API
 from ..errors	import APIUnavailableError
 
-from pydantic				import BaseModel, Field
+from pydantic				import BaseModel, Field, FilePath
 from typing					import Union, Dict, Any
 from langchain_core.tools	import tool
 
 import os
 
 
-def get_size_MB(file: str) -> Union[int, float]:
-	return os.path.getsize(file) / (1024 * 1024)
+def get_size_MB(path: str) -> Union[int, float]:
+	return os.path.getsize(path) / (1024 * 1024)
 
 
 class ToolSchema(BaseModel):
-	file	: str	= Field(..., description="文件路径")
-	chat_id	: str	= Field(..., description="接收方ID")
-	to_group: bool	= Field(default=False, description="是否发送到群，布尔类型，默认私聊")
+	path	: FilePath	= Field(..., description="文件路径")
+	chat_id	: str		= Field(..., description="接收方ID")
+	to_group: bool		= Field(default=False, description="是否发送到群，布尔类型，默认私聊")
 
 
 @tool(args_schema=ToolSchema)
-async def send_file_to_qq(file: str, chat_id: str, to_group: bool = False) -> Dict[str, Any]:
+async def send_file_to_qq(path: str, chat_id: str, to_group: bool = False) -> Dict[str, Any]:
 	
 	"""
 	发送一个文件到 QQ
@@ -38,18 +38,18 @@ async def send_file_to_qq(file: str, chat_id: str, to_group: bool = False) -> Di
 	if nc_api is None:
 		raise APIUnavailableError("Ncatbot api is unavailable")
 	
-	if not os.path.isfile(file):
-		return fail(f"{file} 不存在或不是一个文件")
+	if not os.path.isfile(path):
+		return fail(f"{path} 不存在或不是一个文件")
 	
-	size_MB = get_size_MB(file)
+	size_MB = get_size_MB(path)
 	if size_MB >= 20:
-		return fail(f"{file} 过大: {size_MB}MB > 20MB")
+		return fail(f"{path} 过大: {size_MB}MB > 20MB")
 	
 	send_result = await easier_send(
 		ncatbot_api	= nc_api,
 		chat_id		= chat_id,
 		to_group	= to_group,
-		message		= MessageArray([File(file=file)])
+		message		= MessageArray([File(file=path)])
 	)
 	
 	return success(send_result.model_dump())

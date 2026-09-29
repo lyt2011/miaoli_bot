@@ -52,7 +52,7 @@ async def on_tool_calling(state: GraphState, runtime: Runtime[GraphRuntimeContex
 	
 	if "tools" not in runtime.context:
 		return None
-	
+		
 	return await ToolNode(runtime.context["tools"]).ainvoke({"messages": state["messages"]})
 
 async def last_msg_to_answer(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Dict[str, Any]:

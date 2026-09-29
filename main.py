@@ -3,13 +3,25 @@ from ncatbot.core		import registrar
 from ncatbot.event.qq	import MessageEvent
 
 from pathlib	import Path
-from typing		import Callable, Awaitable
+from typing		import List, Optional
 
+from langgraph.checkpoint.memory	import InMemorySaver
+from langchain_core.tools			import BaseTool
+from langchain_openai				import ChatOpenAI
+
+from .core		import (
+	GraphPipeline,
+	call_llm,
+	format_input,
+	format_prompt,
+	last_msg_to_answer,
+	on_tool_calling,
+)
 from .chains	import EventParseChain, SegmentParseChain
 from .stores	import SHARE_STORE
 from .adapters	import EventAdapter
 from .protocols	import Closable
-from .models	import PluginConfig
+from .models	import GraphRuntimeContext, GraphState, PluginConfig
 from .parsers	import (
 	GroupMessageEventParser,
 	PrivateMessageEventParser,
@@ -20,7 +32,6 @@ from .parsers	import (
 	ReplySegmentParser,
 )
 from .utils		import (
-	easier_send,
 	parse_message,
 	get_id_from_event,
 	concatenate_id,
@@ -31,13 +42,41 @@ from .consts	import (
 	NCATBOT_API,
 	PLUGIN_CONFIG,
 	RAW_CONFIG,
+	PLUGIN_DIR as c_PLUGIN_DIR,
+	GRAPH_PIPELINE,
+	ON_REQUEST,
+	ON_TURN_END,
+	ON_TURN_START,
+	WORKSPACE_DIR,
+	ON_TOOL_CALLING,
+)
+from .tools	import (
+	send_message_to_qq,
+	send_meme_to_qq,
+	send_file_to_qq,
+	list_memes,
+	archive_meme,
+	download_qq_file,
+	query_qq_message_id,
+	delete_qq_message,
 )
 
-import json
 import asyncio
 
 
 PLUGIN_NAME	= "喵璃の本体"
+PLUGIN_DIR	= Path(__file__).resolve().parent
+
+TOOLS: List[BaseTool] = [
+	send_message_to_qq,
+	send_meme_to_qq,
+	send_file_to_qq,
+	list_memes,
+	archive_meme,
+	download_qq_file,
+	query_qq_message_id,
+	delete_qq_message,
+]
 
 
 class MiaoLiBot(NcatBotPlugin):
@@ -46,16 +85,35 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		super().__init__(*args, **kwargs)
 		
-		self._share_store_lock	= asyncio.Lock()
-		self._plugin_lock		= asyncio.Lock()
+		self.store_lock	= asyncio.Lock()
 		
-		self.cfg: Optional[PluginConfig]	= None
+		self.cfg: Optional[PluginConfig] = None
+	
+	async def _build_graph(self) -> None:
+		
+		if SHARE_STORE.contains(GRAPH_PIPELINE):
+			return None
+		
+		graph_pipeline = GraphPipeline(GraphState, context_schema=GraphRuntimeContext)
+		
+		graph_pipeline.register(ON_TURN_START, format_input)
+		graph_pipeline.register(ON_TURN_START, format_prompt)
+		graph_pipeline.register(ON_REQUEST, call_llm)
+		graph_pipeline.register(ON_TURN_END, last_msg_to_answer)
+		graph_pipeline.register(ON_TOOL_CALLING, on_tool_calling)
+		
+		graph_pipeline.wire()
+		graph_pipeline.compile(checkpointer=InMemorySaver())
+		
+		# double-check 防止塞垃圾/替换原有对象
+		if not SHARE_STORE.contains(GRAPH_PIPELINE):
+			SHARE_STORE.set(GRAPH_PIPELINE, graph_pipeline)
 	
 	async def _register_event_parse_chain(self) -> None:
 		
 		"""event 解析链已注册后不会重新注册"""
 		
-		async with self._share_store_lock:
+		async with self.store_lock:
 		
 			if SHARE_STORE.contains(EVENT_PARSER):
 				return None
@@ -70,7 +128,7 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		"""segment 解析链已注册后不会重新注册"""
 		
-		async with self._share_store_lock:
+		async with self.store_lock:
 		
 			if SHARE_STORE.contains(SEGMENT_PARSER):
 				return None
@@ -101,7 +159,6 @@ class MiaoLiBot(NcatBotPlugin):
 		for key, value in zip(share_keys, share_values):
 			
 			if not isinstance(value, Closable):
-				
 				self.logger.warning(f"{key} 不是 Closable 跳过清理")
 				continue
 			
@@ -127,11 +184,14 @@ class MiaoLiBot(NcatBotPlugin):
 	async def on_load(self) -> None:
 	
 		self.cfg = PluginConfig.model_validate(self.config)
-				
+		
 		SHARE_STORE.set(NCATBOT_API, self.api)
 		SHARE_STORE.set(PLUGIN_CONFIG, self.cfg)
 		SHARE_STORE.set(RAW_CONFIG, self.config)
+		SHARE_STORE.set(c_PLUGIN_DIR, PLUGIN_DIR)
+		SHARE_STORE.set(WORKSPACE_DIR, self.workspace)
 		
+		await self._build_graph()
 		await self._register_event_parse_chain()
 		await self._register_segment_parse_chain()
 		
@@ -142,6 +202,9 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.drop(NCATBOT_API)
 		SHARE_STORE.drop(PLUGIN_CONFIG)
 		SHARE_STORE.drop(RAW_CONFIG)
+		SHARE_STORE.drop(c_PLUGIN_DIR)
+		SHARE_STORE.drop(GRAPH_PIPELINE)
+		SHARE_STORE.drop(WORKSPACE_DIR)
 		
 		# **兜底清理不代表可以不清理**
 		await self.clean_share_store()
@@ -157,31 +220,34 @@ class MiaoLiBot(NcatBotPlugin):
 		is_group		= event.is_group_msg()
 		target_id		= get_id_from_event(event)
 		event_adapter	= EventAdapter.build(event)
-		
+		session_id		= concatenate_id(target_id, is_group=is_group)
 		
 		if is_group and not event.message.is_at("2449906317", all_except=True):
-			self.logger.warning(f"群消息无@ 已跳过")
+			self.logger.warning("群消息无@ 已跳过")
 			return
 		
 		segment = getattr(event, "message", None)
 		if not segment:
-			self.logger.warning(f"segment 无内容或 event 不含 segment")
+			self.logger.warning("segment 无内容或 event 不含 segment")
 			return
 		
 		parse_result = await parse_message(event, segment)
+		if parse_result is None:
+			self.logger.warning("事件解析失败 跳过")
+			return
 		
-		i_data = json.dumps({
-			"event"		: parse_result.event,
-			"segments"	: parse_result.segments,
-		}, ensure_ascii=False, indent=2)
+		graph_pipeline = SHARE_STORE.recall(GRAPH_PIPELINE, None)
+		if graph_pipeline is None:
+			self.logger.warning("graph_pipeline 未加载 跳过")
+			return
 		
-		session_id = concatenate_id(target_id, is_group=is_group)
+		# HACK: 快速测试技术债 后续改成动态创建
+		chat_model	= ChatOpenAI(model="deepseek-flash", base_url="https://api.deepseek.com/v1", api_key=self.cfg.providers[0].api_key)
+		input		= {"event": parse_result.event, "segments": parse_result.segments}
+		context		= {"plugin_config": self.cfg, "chat_model": chat_model, "tools": TOOLS}
 		
+		output = await graph_pipeline.ainvoke(input, thread_id=session_id, context=context)
 		
-		# TODO: 以下逻辑需要重写
-		# TODO: 以下逻辑需要重写
-		# TODO: 以下逻辑需要重写
-		# TODO: 以下逻辑需要重写
-		# TODO: 以下逻辑需要重写
-		# TODO: 以下逻辑需要重写
-		# TODO: 以下逻辑需要重写
+		# TODO: 添加\n\n分割
+		# TODO: 添加打字时间延迟
+		await event_adapter.send(self.api, output["final_answer"])

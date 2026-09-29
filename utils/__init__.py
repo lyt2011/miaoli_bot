@@ -10,11 +10,14 @@ from .easier_parser	import (
 	parse_message,
 )
 
-from .event_ops	import (
-	get_id_from_event,
+from .tool_result_builder	import (
+	custom,
+	fail,
+	success,
 )
 
-from .sugar	import concatenate_id
+from .event_ops	import get_id_from_event
+from .sugar		import concatenate_id
 
 
 __all__ = [
@@ -29,10 +32,12 @@ __all__ = [
 	"parse_event",
 	"parse_message",
 	
-	# event_ops
-	"get_id_from_event",
+	# tool_result_builder
+	"custom",
+	"fail",
+	"success",
 	
-	# sugar
+	"get_id_from_event",
 	"concatenate_id",
 
 ]

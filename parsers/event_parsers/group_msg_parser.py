@@ -1,6 +1,6 @@
 from ...protocols	import Parser
 
-from typing				import Any, Optional, Dict
+from typing				import Any, Dict
 from datetime			import datetime
 from ncatbot.event.qq	import GroupMessageEvent
 

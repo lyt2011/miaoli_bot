@@ -1,6 +1,6 @@
 from ...protocols	import Parser
 
-from typing			import Any, Dict, Any
+from typing			import Any, Dict
 from ncatbot.types	import Reply
 
 

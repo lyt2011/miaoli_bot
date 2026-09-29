@@ -3,6 +3,72 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.8.0] - 2026-09-29
+
+> ⚠️ **本版本为破坏性重构**：移除 `pi_bridge` 与外部 pi Agent 进程，改由插件内自建的 LangGraph 图管线驱动 LLM。依赖、配置结构、共享键、消息段字段全线变更，旧 `config.yaml` 与全局 `plugin_configs.miaoli_bot` 不能直接沿用。
+>
+> ✅ **重构已完成，项目自此进入优化态**：架构骨架（图管线 / 状态与上下文分离 / 分层配置 / 工具闭环）已经立住，后续以补齐功能、补错误处理、优化体验为主，不再是大改造。
+
+### Removed
+
+- **`pi_bridge` 依赖链整体移除**（**破坏性变更**）：删除 `core/pi_client.py`（`PiClient` 流式接口）、`core/pi_session_manager.py`（`PiSessionManager` 按 `session_id` 管理客户端）、`core/pi_tool_backend.py`（`PIToolBackend` 工具后端）、`core/_prompt.py`（`_Prompt` 事件流包装，0.6.0 起一直是未接入的 WIP）、`utils/pi_event_classifier.py`（pi 事件分类）、`errors/miss_factory_error.py`（`MissFactoryError`）、`errors/pi_prompt_busy_error.py`（`PIPromptBusyError`），`enums/` 目录一并清空删除。`manifest.toml` 的 `pip_dependencies` 由 `pi_bridge = ">=0.6.0"` 换成 `langgraph = ">=1.2.12"` + `langchain-openai = ">=1.6.6"`
+- **`consts/share_store_keys.py` 删除 `TOOL_BACKEND` / `PI_SESSION_MANAGER`**：对应模块已不存在，共享容器不再持有这两类对象（`consts/__init__` 的导出同步移除）
+- **`errors/` 删除两个异常类**：`MissFactoryError`（会话未命中且无工厂）与 `PIPromptBusyError`（pi 忙且未指定 `streamingBehavior`）—— 「建连工厂」与「事件流忙闲」两个概念随 pi 桥接层一起消失；`errors/session_manager_closing_error.py` 的 `SessionManagerClosingError` 保留（改由工具层复用）
+- **提示词资产集中到 `data/prompts/`**：`data/prompt_v1.0.md` / `data/prompt_v1.1.md` 移入子目录，并补充 `prompt_v1.2.md` / `prompt_v1.3.md`，四个版本同处一地
+
+### Added
+
+- **`core/graph_pipeline.py` — `GraphPipeline`（158 行，本次重构的核心）**：把「事件 → 处理器」的编排从 `main.py` 抽成独立泛型类 `GraphPipeline[StateT, ContextT, InputT, OutputT]`（四个 TypeVar 取自 `langgraph.typing`）。`__init__(state_schema, context_schema=None, *, input_schema=None, output_schema=None)` 参数与 `StateGraph` 对齐；`register(event, node, priority=0)` 把处理函数登记为 `Handler` 并即时按 `priority` 排序（**同一事件可挂多个处理器**）；`wire()` 一次性产出 8 个节点 + 8 条边（含 `ON_AFTER_REQUEST` 经 `tools_condition` 分流到 `ON_TOOL_CALLING` / `ON_TURN_END` 的条件边）；`compile(checkpointer=…)` 返回 `CompiledStateGraph`；`ainvoke(input, thread_id, *, context)` 完成一次调用。**同事件多处理器的合并语义**：`_dispatch` 按优先级串行执行，把每个返回值当**增量**逐次合入，返回 `None` 视为「只读」跳过、返回 `dict` 视为「更新」；`_merge`（静态方法）借 `_graph.channels` 上各 channel 的 `operator`（如 `messages` 的 `add_messages`）做 reducer 合并，取不到 `operator` 的键直接赋值 —— 因此 `messages` 累加、普通键覆盖
+- **`consts/graph.py` — 8 个图事件常量 + 2 个优先级边界**：`ON_AGENT_START` / `ON_TURN_START` / `ON_BEFORE_REQUEST` / `ON_REQUEST` / `ON_AFTER_REQUEST` / `ON_TOOL_CALLING` / `ON_TURN_END` / `ON_AGENT_END`（值形如 `miaoli_bot/graph.event.on_turn_start`）与 `MAX_PRIORITY = 200` / `MIN_PRIORITY = -200`，`consts/__init__` 全部导出。拓扑：`START → ON_AGENT_START → ON_TURN_START → ON_BEFORE_REQUEST → ON_REQUEST → ON_AFTER_REQUEST`，此后按有无 `tool_calls` 走 `ON_TOOL_CALLING → ON_BEFORE_REQUEST`（回到请求）或 `ON_TURN_END → ON_AGENT_END → END`
+- **`core/nodes.py` — 5 个图节点**（文件头注明「先在这瞎写，后续换成自动发现」）：`format_input`（`ON_TURN_START`：把 `event` + `segments` 序列化成 JSON 文本包成 `HumanMessage` **追加**进 `messages`）、`format_prompt`（`ON_TURN_START`：用 `<account>` 标签块拼出管理员 / 机器人的 QQ 号与昵称，接上 `cfg.system_prompt` 写入 `system_prompt` 状态键）、`call_llm`（`ON_REQUEST`：`runtime.context["chat_model"].bind_tools(runtime.context["tools"])` 后以 `[SystemMessage(state["system_prompt"]), *state["messages"]]` 请求模型）、`on_tool_calling`（`ON_TOOL_CALLING`：`ToolNode(runtime.context["tools"]).ainvoke({"messages": …})`，`context` 无 `tools` 键时返回 `None` 跳过）、`last_msg_to_answer`（`ON_TURN_END`：取 `messages[-1]`，是 `AIMessage` 则写入 `final_answer`）
+- **`models/graph_state.py` — `GraphState`**：`event` / `segments` / `messages`（`Annotated[list, add_messages]`，**唯一带 reducer 的键**）/ `final_answer` / `system_prompt` 五键。**静态人设不进 `messages`** —— `messages` 是「每轮追加通道」，`system_prompt` 走普通键（覆盖），否则每轮多留一份人设（实测第 3 轮人设出现 3 次）
+- **`models/graph_runtime_context.py` — `GraphRuntimeContext`**：`plugin_config: PluginConfig` / `chat_model: BaseChatModel` / `tools: List[BaseTool]`。**LLM 客户端与工具列表走 `context` 不走图** —— `context` 不进 checkpoint、不做浅拷贝、结果保持原引用，放不可序列化对象（客户端、锁）才安全
+- **`models/runtimes/handler.py` — `Handler`**：`@dataclass`，字段 `priority: int` + `function`，`GraphPipeline.register` 的登记单元
+- **`models/plugin_config.py` 配置模型重构（**破坏性变更**）**：顶层由平铺的 `model_id` / `provider` 改为分层结构 —— 新增 `Provider`（`name` / `base_url` / `api_key` / `models: List[LLM]`）、`LLM`（`name` / `context_window` / `max_tokens`）、`AccountConfig`（`bot_id` / `root_id` / `bot_nickname` / `root_nickname`，**四项全必填**）、`MemeConfig`（`is_enable` / `sqlite_path` / `max_memes`，带「可以关闭+传路径，不能启用+不传路径」的 `model_validator`）、`OutputConfig`（**Future 占位**：`typing_speed` / `typing_speed_offset` / `split_separator`，字段先落地、消费方待实现）。`PluginConfig` 顶层变为 `providers` / `session_dir`（`DirectoryPath`）/ `prompt_file`（`FilePath`）/ `system_prompt` / `account_config`（**必填**）/ `meme_config` / `output_config`；`FilePath` / `DirectoryPath` 让路径在加载期就被校验。**`plugin_configs.miaoli_bot` 整块需按新结构重写**
+- **`utils/tool_result_builder.py` — 工具返回值构造器**：`custom(status, **kwargs)` / `success(message)` / `fail(message)`，把工具的统一返回契约收敛成三个函数
+- **`errors/api_unavailable_error.py` — `APIUnavailableError`**：api 不可用时在工具里抛出（`errors/__init__` 导出）
+- **工具层由 4 个扩充到 8 个**：新增 `tools/send_meme.py`（`send_meme_to_qq`，`by` 参数决定 `meme` 是路径还是 uuid）、`tools/send_file.py`（`send_file_to_qq`，带 `get_size_MB` 体积判断）、`tools/list_memes.py`（`list_memes`，零参数工具直接用裸 `@tool`）、`tools/archive_meme.py`（`archive_meme`，`meme` 路径 + 非空 `tags`）；`tools/__init__` 导出 8 个，`main.py` 的 `TOOLS` 列表供 `bind_tools` 与 `ToolNode` 共用同一份
+- **`config.example.yaml` 入版本控制**（**破坏性变更**）：`config.yaml` 由 `.gitignore` 排除（含密钥），仓库改以 `config.example.yaml` 作入库模板；模板按新的分层 schema 给全（`providers` + `prompt_file` + 必填的 `account_config`，`output_config` 以注释形式作占位），照模板 `cp` 出的配置可通过加载期校验
+- **`consts/share_store_keys.py` 新增三键**：`PLUGIN_DIR`（`miaoli_bot/main_py_dir`）、`WORKSPACE_DIR`（`miaoli_bot/workspace_path`，ncatbot 分配的插件数据目录）、`GRAPH_PIPELINE`（`miaoli_bot/core.graph_pipeline`）
+
+### Changed
+
+- **`manifest.toml` 依赖声明**：`pip_dependencies` 改为 `ncatbot5 = ">=5.5.8"` + `langgraph = ">=1.2.12"` + `langchain-openai = ">=1.6.6"`
+- **`main.py._build_graph` 接线**：`GraphPipeline(GraphState, context_schema=GraphRuntimeContext)` 后**显式**注册五个节点（`ON_TURN_START` × 2 = `format_input` + `format_prompt`、`ON_REQUEST` = `call_llm`、`ON_TOOL_CALLING` = `on_tool_calling`、`ON_TURN_END` = `last_msg_to_answer`），再 `wire()` + `compile(checkpointer=InMemorySaver())`，double-check 后存入 `SHARE_STORE` 的 `GRAPH_PIPELINE` 键。**「谁挂在哪个事件上」在 `main.py` 里一眼可见**（一个「装饰器自动发现」方案曾实现后被否决，理由是控制感不足）
+- **`main.py.on_message` 改走图**：`parse_message` → `graph_pipeline.ainvoke({"event": …, "segments": …}, thread_id=session_id, context=…)` → `event_adapter.send(self.api, output["final_answer"])`；`context` 携带 `plugin_config` / `chat_model` / `tools`
+- **`main.py.on_load` / `on_close` 共享键清单更新**：`on_load` 依次写入 `NCATBOT_API` / `PLUGIN_CONFIG` / `RAW_CONFIG` / `PLUGIN_DIR` / `WORKSPACE_DIR`，再建图、注册两级解析链；`on_close` 逐个 `drop` 六个键（原先的 `PI_SESSION_MANAGER` 换成 `GRAPH_PIPELINE`），最后 `clean_share_store()` 兜底
+- **未使用导入清理**：`parsers/event_parsers/{group,private}_msg_parser.py` 去掉 `Optional`；`parsers/segment_parsers/{image,reply,file}_parser.py` 去掉重复的 `Any` 与未用的 `Optional`
+- **`utils/__init__.py` 导出表重排**：移除 `pi_event_classifier` 的四个分类函数（`is_agent_end` / `is_agent_error` / `is_thinking_delta` / `is_text_delta`），改导出 `tool_result_builder` 的 `custom` / `fail` / `success`
+- **`models/__init__.py`** 新增导出 `Handler` / `GraphRuntimeContext` / `GraphState`
+
+### Fixed
+
+- **`parsers/segment_parsers/file_parser.py` 返回值键名改对**（**破坏性变更**）：`{"image": data.url or data.file, "size": data.file_size}` → `{"file": …}` —— 原来文件段和图片段返回同一个 `image` 键，下游无法区分
+- **三处漏 import 的注解补齐**：`models/plugin_config.py` 的 `Union`（`OutputConfig` 用 `Union[int, float]` 但只导入了 `Optional, Self, List`）、`main.py` 与 `models/graph_runtime_context.py` 的 `List`。三者都不报 `NameError`，详见 Note
+
+### Note
+
+- **本次为重构收尾**：下面各项都是优化态下的改进点（架构本身已成立），不阻塞使用与后续迭代。
+- **Python 3.14 的注解延迟求值（PEP 649）把「漏 import 类型」从「立刻 `NameError`」变成了「静默失效」**：`main.py` 的模块级注解 `TOOLS: List[BaseTool]` 与 `models/graph_runtime_context.py` 的 `TypedDict` 注解都没人解析，漏 `List` 也能正常 import、运行无感；**只有 pydantic 这种必须解析注解来建 schema 的使用方才炸** —— `OutputConfig` 漏 `Union` 会让 `PluginConfig.model_validate()` 抛 `PydanticUserError: 'PluginConfig' is not fully defined; you should define 'Union', then call 'PluginConfig.model_rebuild()'`，而这一句正是 `on_load` 的第一行，**插件直接加载不上**。已修复；`Union[int, float]` 也可直接写成 `float`（pydantic 本身会把 `int` 收成 `float`），保留 `Union` 是为了不动原写法
+- **`OutputConfig` 是预留占位**：字段已定、类型校验正常，但当前没有消费方 —— `main.py` 里对应位置留着 `# TODO: 添加\n\n分割` / `# TODO: 添加打字时间延迟`，落地计划见 Future
+- **`main.py` 的 `chat_model` 是临时实现**：`on_message` 里每条消息 new 一个 `ChatOpenAI(model="deepseek-flash", base_url="https://api.deepseek.com/v1", api_key=self.cfg.providers[0].api_key)`，代码标了 `# HACK: 快速测试技术债 后续改成动态创建`；供应商 / 模型的选择尚未接 `PluginConfig.providers`
+- **`GraphPipeline._dispatch` 暂无错误处理**（代码标 `# NOTE: 先不写错误处理`）：某处理器的异常会直接冒到 `ainvoke` 调用方；后续需注意 `GraphBubbleUp` 必须放行（`except Exception` 会吞掉 `interrupt` —— `GraphInterrupt` 的 MRO 是 `GraphInterrupt → GraphBubbleUp → Exception`）
+- **`GraphPipeline.compile()` 不返回 app**：`_app` 由 `compile` 写入实例自身，`main.py` 不接返回值；`_build_graph` 的写入路径（`SHARE_STORE.contains` 判定 → 建 → `compile` → double-check 后 `SHARE_STORE.set`）**未持 `self.store_lock`**，与 `_register_*_parse_chain` 的整段持锁风格不一致
+- **旧测试全量失效**：0.7.0 记录的 147 例本地 pytest 用例（`PiSessionManager` / `_Prompt` / `PluginConfig` 等）针对的是 pi 桥接层，随本次重构整体作废，待重写
+
+### Docs
+
+- **README 更新至 0.8.0**：标题 / 简介 / 版本号改写为「LangGraph 自建图管线」，功能特性、架构图、目录结构、数据流、配置表、依赖表、项目状态全部按重构后的状态重写；`pi_bridge` 相关描述（`PiClient` / `PiSessionManager` / `PIToolBackend` / 流式事件分类 / `RequestRefuseError` 未捕获）整体删除
+- CHANGELOG 新增本条目
+
+### Future
+
+- **`OutputConfig` 落地**：按 `typing_speed`（± `typing_speed_offset`）与 `split_separator` 把 `final_answer` 切块延迟发送，替换 `main.py` 里的两个 `# TODO`
+- **`build_chat_model(cfg)` 收敛 LLM 客户端构造**（建议放 `utils/llm.py`），`providers` / `active_provider` / `active_model` 显式建模，去掉 `main.py` 里的 `# HACK`（显式字段优于 `extra="allow"` 静默收下拼错的键）
+- **`GraphPipeline` 补错误处理与流式**：`_dispatch` 把 `GraphBubbleUp` 放行、其余包成 `HandlerError`；`ainvoke` / `astream` 落进管线类；`models/runtimes/handler.py` 的 `function: Callable[..., ...]` 改为 `Callable[..., Any]`
+- **`core/nodes.py` 的节点注册换成自动发现**（文件头已注明「后续换成自动发现」「这里迟早要迁移的」）
+- **重写本地 pytest 用例**（随本次重构整体失效）
+
 ## [0.7.0] - 2026-09-18
 
 ### Added

@@ -1,18 +1,19 @@
 from ..stores	import SHARE_STORE
 from ..consts	import NCATBOT_API
-
-from typing	import Dict, Any
+from ..errors	import APIUnavailableError
+from ..utils	import success
 
 from pydantic				import BaseModel, Field
+from typing					import Dict, Any
 from langchain_core.tools	import tool
 
 
-class ToolSchema(Tool):
+class ToolSchema(BaseModel):
 	message_id: str = Field(..., description="目标信息ID")
 
 
 @tool(args_schema=ToolSchema)
-async def query_qq_message_id(message_id: int) -> str:
+async def query_qq_message_id(message_id: str) -> Dict[str, Any]:
 	
 	"""
 	查询 message_id 对应的 未经过特殊处理或解析的 OB11 协议信息
@@ -21,8 +22,8 @@ async def query_qq_message_id(message_id: int) -> str:
 	
 	nc_api = SHARE_STORE.recall(NCATBOT_API, None)
 	if nc_api is None:
-		return "Ncatbot api is unavailable"
+		raise APIUnavailableError("Ncatbot api is unavailable")
 	
 	msg_data = await nc_api.qq.query.get_msg(message_id)
 	
-	return msg_data.model_dump_json()
+	return success(msg_data.model_dump())

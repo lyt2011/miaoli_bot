@@ -1,6 +1,7 @@
 from .base_bot_error	import BaseBotError
 
 from .session_manager_closing_error	import SessionManagerClosingError
+from .api_unavailable_error			import APIUnavailableError
 
 
 __all__ = [
@@ -9,5 +10,6 @@ __all__ = [
 	"BaseBotError",
 	
 	"SessionManagerClosingError",
+	"APIUnavailableError",
 
 ]

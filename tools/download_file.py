@@ -1,7 +1,10 @@
 from ..stores	import SHARE_STORE
 from ..consts	import NCATBOT_API
+from ..errors	import APIUnavailableError
+from ..utils	import success
 
 from pydantic				import BaseModel, Field
+from typing					import Dict, Any
 from langchain_core.tools	import tool
 
 
@@ -10,7 +13,7 @@ class ToolSchema(BaseModel):
 
 
 @tool(args_schema=ToolSchema)
-async def download_qq_file(url: str) -> str:
+async def download_qq_file(url: str) -> Dict[str, Any]:
 	
 	"""
 	下载从 QQ 平台发来的文件
@@ -20,8 +23,8 @@ async def download_qq_file(url: str) -> str:
 	
 	nc_api = SHARE_STORE.recall(NCATBOT_API, None)
 	if nc_api is None:
-		return "Ncatbot api is unavailable"
+		raise APIUnavailableError("Ncatbot api is unavailable")
 	
 	download_result = await nc_api.qq.file.download_file(url=url)
 	
-	return download_result.model_dump_json()
+	return success(download_result.model_dump())

@@ -5,7 +5,7 @@
 
 ## [0.9.10] - 2026-10-01
 
-> 🛑 **`_dispatch` 加错误处理，并新增「停止分发」信号 `PipelineStopDispatch`**：此前 `_dispatch` 明确标着「先不写错误处理」（`# NOTE`），handler 里抛任何异常都会直接冒到 langgraph。现在每个 handler 被 `try` 包住，并按三类分流 —— 抛 `PipelineStopDispatch` 即**停止本事件剩余 handler**（已累积的增量照常返回，后续事件不受影响）；langgraph 的控制流异常（`GraphBubbleUp`，含 `GraphInterrupt` 等）**原样透传**；其它异常**记录 traceback 后跳过该 handler，继续执行本事件剩余 handler**（**行为变更**：旧行为是直接冒到 langgraph）。
+> 🛑 **`_dispatch` 加错误处理，并新增「停止分发」信号 `PipelineStopDispatch`**：此前 `_dispatch` 明确标着「先不写错误处理」（`# NOTE`），handler 里抛任何异常都会直接冒到 langgraph。现在每个 handler 被 `try` 包住，并按三类分流 —— 抛 `PipelineStopDispatch` 即**停止本事件剩余 handler**（已累积的增量照常返回，后续事件不受影响）；langgraph 的控制流异常（`GraphBubbleUp`，含 `GraphInterrupt` 等）**原样透传**；其它异常**记录 traceback 后跳过该 handler，继续执行本事件剩余 handler**（**行为变更**：旧行为是直接冒到 langgraph）。**另外修复 `attach_image` 的优先级倒挂** —— 它此前排在 `invoke_tools` **之前**（`10 > 0`，而 dispatch 是降序执行），导致「把图片从 ToolMessage 搬进 HumanMessage」的逻辑永远扫不到本轮工具消息、完全空转；改为负数后恢复生效。
 
 ### Added
 
@@ -24,6 +24,7 @@
 ### Fixed
 
 - **`_dispatch` 异常日志里的 `handler.__name__`**：`Handler` 是 dataclass、没有 `__name__`，异常分支自身会抛 `AttributeError`（把原始异常替换掉，且「记录后继续」完全失效）；改为 `handler.function.__name__`
+- **`plugins/base_nodes/main.py` 的 `attach_image` 优先级倒挂**：`attach_image` 原注册为 `priority=10`、`invoke_tools` 为 `0`，而 dispatch 按 `priority` **降序**执行（大的先跑），于是 `attach_image` 总在 `invoke_tools` **之前**被调用 —— 此时本轮工具消息还没产生，它扫描「末尾连续 `ToolMessage`」恒为 0、直接 `return None`，图片搬运逻辑**从未生效**（`read_image` 等工具返回的 `image_url` 块一直原样留在 `ToolMessage` 里，而它自己的注释写明「AI Platform 的 tool 消息 content 只能是字符串」）。改为 `priority=-10`，排在 `invoke_tools` 之后执行
 
 ### Removed
 
@@ -32,8 +33,9 @@
 ### Note
 
 - **验证**（真实 `GraphPipeline` 实测，`/tmp/ckpt_probe/dispatch_err_test.py`）：① priority 100 的 handler 增量在 `break` 后**被保留**（`system_prompt` 为改写值）；② priority 50 抛 `PipelineStopDispatch` 后 priority 0 的 handler **被跳过**；③ 同一请求的后续事件（`ON_AGENT_END`）**照常执行**，图正常完成；④ 对照实验：`ValueError` **不再冒泡**，日志出现 traceback，且同事件后续 handler 照常执行并生效
+- **验证（`attach_image` 优先级修复）**（`/tmp/ckpt_probe/attach_fix_test.py`、`base_nodes_order_test.py`）：① 用真实 `BaseNodes.on_load` 注册后，`ON_TOOL_CALLING` 的排序为 `[invoke_tools(0), attach_image(-10)]`；② 真实 `GraphPipeline` + 真实 `invoke_tools` / `attach_image` 跑完整图 —— `priority=10`（旧）时图片**仍残留在 `ToolMessage`**、未进 `HumanMessage`（空转），`priority=-10`（新）时图片**已搬进 `HumanMessage`**、`ToolMessage` 变纯文本，且图正常终止
 - **未验证**：`PipelineStopDispatch` 目前尚无实际业务消费方（属基础设施先行）；NcatBot 运行时下的端到端未跑；`GraphBubbleUp` 分支只验证了「不误吞」的代码路径，未构造真实 `GraphInterrupt` 场景
-- **待确认（非阻塞）**：`PipelineStopDispatch` 直接继承 `Exception`，而 `errors/` 下其它异常（`SessionManagerClosingError`）都继承 `BaseBotError` —— 若是刻意为之（控制流信号不该被 `except BaseBotError` 顺手捕获）则保持现状即可
+- **设计说明**：`PipelineStopDispatch` 直接继承 `Exception` 而非 `BaseBotError` —— 它是「控制流标志」而非「错误」，且只在本模块 `_dispatch` 内被捕获消费，不需要也不应被 `except BaseBotError` 之类顺手接住（已确认按此保持）
 
 ### Docs
 

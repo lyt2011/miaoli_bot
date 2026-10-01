@@ -28,7 +28,7 @@ class BaseNodes(PluginProtocol):
 		self.registry.on_request(compact, priority=1)
 		self.registry.on_request(call_llm, priority=0)
 		self.registry.on_tool_call(invoke_tools, priority=0)
-		self.registry.on_tool_call(attach_image, priority=10)
+		self.registry.on_tool_call(attach_image, priority=-10)
 		self.registry.on_agent_end(latest_to_answer, priority=0)
 
 	async def on_close(self) -> None: ...

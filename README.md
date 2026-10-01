@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.9.2
+- **版本**：0.9.3
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -157,11 +157,14 @@ miaoli_bot/
 2. 确认运行环境已安装依赖（`manifest.toml` 的 `pip_dependencies` 会在 `plugin.auto_install_pip_deps` 打开时自动安装）：
    - `ncatbot`（`>=5.5.8`）
    - `langgraph`（`>=1.2.12`）
+   - `langchain-core`（`>=1.6.5`）：`@tool` 工具定义 / `BaseMessage` / `BaseChatModel` 等基础类型
    - `langchain-openai`（`>=1.6.6`）
    - `langgraph-checkpoint-sqlite`（`>=3.1.1`，`database: sqlite` 时用到）
    - `langgraph-checkpoint-postgres`（`>=3.1.2`，`database: postgresql` 时用到）
    - `aiosqlite`（`>=0.22.1`）/ `psycopg`（`>=3.3.6`）/ `psycopg-pool`（`>=3.3.3`）：直接 import 的驱动与连接池（`SQLiteAdapter` / `PostgresqlAdapter` / `MemeSqlite`）
    - `aiofiles`（`>=24.1.0`）：`base_system_tools` 的 `write` / `replace` 工具异步写盘
+   - `pydantic`（`>=2.13.5`）：配置模型（`models/config/`）与各工具的参数 schema
+   - `pyyaml`（`>=6.0.3`）：子插件 `config.yaml` 解析（`core/plugin_loader.py` 的 `yaml.safe_load`）
    - `filetype`（`>=1.2.0`）
 3. 插件配置：`cp config.example.yaml config.yaml` 后填真实 `api_key`（`config.yaml` 含密钥、已 gitignore）。插件目录的 `config.yaml` 为默认值，全局 `config.yaml` 的 `plugin.plugin_configs.miaoli_bot` 同键覆盖；`on_load` 第一步即 `PluginConfig.model_validate(self.config)`，必填项缺失 / 路径不存在 / 类型不符都会抛 `ValidationError`，本插件加载失败并在日志留下 traceback（机器人其余部分不受影响）。
 
@@ -199,17 +202,22 @@ cd <插件父目录>          # plugins/
 | `ncatbot`（`>=5.5.8`） | QQ 机器人框架 / 事件与消息 API |
 | `langgraph`（`>=1.2.12`） | 图管线（`StateGraph` / `ToolNode` / `tools_condition` / checkpoint） |
 | `langchain-openai`（`>=1.6.6`） | `ChatOpenAI`（可指向任意 OpenAI 兼容端点） |
+| `langchain-core`（`>=1.6.5`） | `@tool` 工具定义、`BaseMessage` / `BaseChatModel` 等基础类型（主包与子插件都用） |
 | `langgraph-checkpoint-sqlite`（`>=3.1.1`） | `AsyncSqliteSaver`（`checkpointer.database: sqlite`），带 `aiosqlite` / `sqlite-vec` |
 | `langgraph-checkpoint-postgres`（`>=3.1.2`） | `AsyncPostgresSaver`（`checkpointer.database: postgresql`），带 `psycopg` / `psycopg-pool` |
 | `aiosqlite`（`>=0.22.1`） | `SQLiteAdapter` 与 `meme_extension.MemeSqlite` 共用的异步 sqlite 驱动（连接分别由 `close()` / `__aexit__` 关） |
 | `aiofiles`（`>=24.1.0`） | `base_system_tools` 的 `write` / `replace` 工具异步写盘（`aiofiles.open` + `async with`） |
 | `psycopg`（`>=3.3.6`）/ `psycopg-pool`（`>=3.3.3`） | `PostgresqlAdapter` 直接 import 的驱动与连接池（`AsyncConnectionPool`） |
+| `pydantic`（`>=2.13.5`） | 配置模型（`BaseModel` / `Field` / `model_validator`）与工具参数 schema |
+| `pyyaml`（`>=6.0.3`） | `core/plugin_loader.py` 读子插件 `config.yaml` 的 `yaml.safe_load` |
 | `filetype`（`>=1.2.0`） | `base_system_tools` 的图片类型嗅探（`read_image`） |
 
 > 注：以上依赖由 `manifest.toml` 的 `pip_dependencies` 声明。
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.9.3 — **补齐 `langchain-core` / `pydantic` / `pyyaml` 三个依赖声明**：这三个包本插件都是直接 import（`@tool` 工具定义、配置层 `BaseModel` / `Field`、`core/plugin_loader.py` 的 `yaml.safe_load`），却一直靠 `ncatbot`（pydantic / PyYAML）与 `langgraph` / `langchain-openai`（langchain-core）的传递依赖混进来 —— 上游一旦改依赖树，本插件就会在导入期 `ModuleNotFoundError`；`pip_dependencies` 10 → 13，版本下限取当前环境实测版本（1.6.5 / 2.13.5 / 6.0.3）。**验证**：`ast` 扫全仓顶层绝对 import 对照清单，未声明项归零（0.9.2 时还剩这三个）；`manifest.toml` 经 `tomllib` 解析通过（0.9.3 / 13 项）。**未验证**：插件整体 `on_load` 与各子插件在 NcatBot 运行时下的端到端调用未跑。
 
 v0.9.2 — **补齐 `aiofiles` 依赖声明**：子插件 `base_system_tools` 的 `write` / `replace` 两个工具一直用 `aiofiles` 异步写盘，`manifest.toml` 却没声明它 —— 开发机环境里恰好装着所以没暴露，干净环境会在子插件导入时 `ModuleNotFoundError: aiofiles`（0.9.0 起 `load_all()` 一处抛错会连带排在后面的子插件一起不加载）；`pip_dependencies` 9 → 10（`aiofiles >=24.1.0`）。**验证**：`ast` 扫全仓顶层 import 比对清单，`aiofiles` 已消除；两个工具端到端跑通（写入落盘 / 全量替换 / `count=1` 只换第一处 / `encoding=gbk` 读写 / 目标不可写返回 `fail` 而不抛）。**未验证**：`base_system_tools` 在 NcatBot 运行时下的工具端到端调用未跑。**仍缺声明（本次未动）**：`langchain_core` / `pydantic` / `yaml` 也是直接 import 但未声明，目前靠 `ncatbot` / `langgraph` / `langchain-openai` 的传递依赖进来。
 

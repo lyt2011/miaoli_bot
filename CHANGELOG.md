@@ -3,6 +3,27 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.9.3] - 2026-10-01
+
+> 📦 **把三个「直接 import 却靠传递依赖混进来」的包正式声明**：`langchain-core` / `pydantic` / `pyyaml` —— 0.9.2 的扫描把这三个点出来了，它们目前分别是 `ncatbot`（pydantic / PyYAML）与 `langgraph` / `langchain-openai`（langchain-core）的传递依赖，上游一旦改依赖树本插件就会在导入期炸。`pip_dependencies` 10 → 13 项。
+
+### Fixed
+
+- **`manifest.toml` 补 `langchain-core = ">=1.6.5"`**：`core/registry.py` / `core/tool_registry.py` 与各子插件用 `@tool`，`models/graph_runtime_context.py` 等用 `BaseMessage` / `BaseChatModel`
+- **`manifest.toml` 补 `pydantic = ">=2.13.5"`**：配置层（`models/config/` 全套的 `BaseModel` / `Field` / `model_validator`）与各工具的参数 schema 都直接依赖它
+- **`manifest.toml` 补 `pyyaml = ">=6.0.3"`**：`core/plugin_loader.py` 用 `yaml.safe_load` 读子插件的 `config.yaml`
+
+### Note
+
+- 三者的版本下限都取当前环境实测版本（`langchain-core` 1.6.5 / `pydantic` 2.13.5 / `PyYAML` 6.0.3），与清单里其余依赖「下限 = 实测版本」的写法一致
+- **验证**：`ast` 扫全仓顶层绝对 import（排除 stdlib 与本地包）对照 `pip_dependencies`，**未声明项归零**（0.9.2 扫描时还剩这三个）；`manifest.toml` 经 `tomllib` 解析通过（0.9.3 / 13 项依赖）
+- **未验证**：插件整体 `on_load` 与各子插件在 NcatBot 运行时下的端到端调用未跑（延续 0.9.0 的未验证项）
+
+### Docs
+
+- **README 更新至 0.9.3**：版本号 / 安装依赖列表与依赖表新增 `langchain-core` / `pydantic` / `pyyaml` / 项目状态新增本版段
+- **CHANGELOG 新增本条目**
+
 ## [0.9.2] - 2026-10-01
 
 > 📦 **补齐 `aiofiles` 依赖声明**：`base_system_tools` 的 `write` / `replace` 两个工具一直在用 `aiofiles` 异步写盘，但 `manifest.toml` 从未声明它 —— 开发机上恰好装着所以没暴露；干净环境（或 `plugin.auto_install_pip_deps` 自动装依赖时）会在导入 `base_system_tools` 时 `ModuleNotFoundError: aiofiles`。

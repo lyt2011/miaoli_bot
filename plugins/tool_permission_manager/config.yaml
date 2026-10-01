@@ -44,6 +44,6 @@ permissions:
   - tool_name: "list_memes"
     permission: "anyone"
   - tool_name: "remove_meme_by_hash"
-    permission: "adnin"
+    permission: "admin"
   - tool_name: "search_memes_by_tags"
     permission: "anyone"

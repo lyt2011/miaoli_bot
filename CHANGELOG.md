@@ -15,7 +15,7 @@
   - 三种权限语义：`admin`（比对根配置 `account.admin_id`）/ `white_list`（比对条目内名单）/ `anyone`（放行）
   - 未声明的工具 → **摘除 + warning**（默认拒绝，新增工具后必须补配置）
   - `enable: false` 时不注册节点，不做任何过滤
-- **`plugins/tool_permission_manager/config.yaml`（内含权限模板）**：把当前全部 **15 个真实注册工具**写进权限表（`base_system_tools` / `base_platform_tools` / `meme_extension` 各 5 个），默认仅 `bash` 为 `admin`、其余 `anyone`，并附 `white_list` 写法示例。
+- **`plugins/tool_permission_manager/config.yaml`（内含权限模板）**：把当前全部 **15 个真实注册工具**写进权限表（`base_system_tools` / `base_platform_tools` / `meme_extension` 各 5 个），默认对可读写与执行类工具（`bash` / `read_file` / `write` / `replace` / `remove_meme_by_hash`）收紧为 `admin`，其余 `anyone`，并附 `white_list` 写法示例。
 - **`plugins/base_system_tools/README.md`**：只列 5 个工具的用途（权限说明移交给 `tool_permission_manager`）。
 
 ### Changed

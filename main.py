@@ -93,7 +93,7 @@ class MiaoLiBot(NcatBotPlugin):
 			config		= plugin_config,
 			registry	= registry,
 		)
-		await self.plugin_loader.load_all()
+		await self.plugin_loader.load_all() # NOTE: 一个插件错误会全炸完
 		
 		self.logger.info(f"{PLUGIN_NAME} 已加载")
 		

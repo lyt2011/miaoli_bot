@@ -3,6 +3,44 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.9.6] - 2026-10-01
+
+> 🛡️ **新增 `tool_permission_manager` 子插件 —— 工具级权限控制**：按自带 `config.yaml` 的权限表（`admin` / `white_list` / `anyone`），在 `ON_BEFORE_REQUEST`（`priority=1`）把当前身份无权使用的工具从 `runtime.context["tools"]` 里摘掉。因为 `call_llm`（`bind_tools`）与 `invoke_tools`（`ToolNode`）读的是同一个 context，摘掉之后**模型看不见、执行器也拿不到** —— 这是一条真实的执行层白名单，不只是提示层过滤。未在权限表里声明的工具默认拒绝并打一条 warning。
+>
+> 🔨 **破坏性：`account` 字段改名** —— `root_id` → `admin_id`、`root_nickname` → `admin_nickname`；模型文件 `models/config/accounts.py` → `account.py`、类名 `Accounts` → `Account`（与 `Provider` / `LLM` 的实体命名一致，也避免被误读为 `List[Accounts]`）。**根目录 `config.yaml` 需同步改键名**，否则 `on_load` 校验会抛 `ValidationError`。
+
+### Added
+
+- **`plugins/tool_permission_manager/`（新增子插件）**：`config.yaml` 权限表 + `nodes/pick_tools.py`（`ON_BEFORE_REQUEST` 摘工具、`is_allowed` 纯函数判定）、`models/permission.py`（`Permission`：`tool_name` / `permission` / `white_list`）、`models/plugin_config.py`（`enable` / `permissions`）、`consts/share_store_keys.py`、`plugin.toml`、`README.md`
+  - 三种权限语义：`admin`（比对根配置 `account.admin_id`）/ `white_list`（比对条目内名单）/ `anyone`（放行）
+  - 未声明的工具 → **摘除 + warning**（默认拒绝，新增工具后必须补配置）
+  - `enable: false` 时不注册节点，不做任何过滤
+- **`plugins/tool_permission_manager/config.yaml`（内含权限模板）**：把当前全部 **15 个真实注册工具**写进权限表（`base_system_tools` / `base_platform_tools` / `meme_extension` 各 5 个），默认仅 `bash` 为 `admin`、其余 `anyone`，并附 `white_list` 写法示例。
+- **`plugins/base_system_tools/README.md`**：只列 5 个工具的用途（权限说明移交给 `tool_permission_manager`）。
+
+### Changed
+
+- **`models/config/account.py`（原 `accounts.py`）**：类名 `Accounts` → `Account`，字段 `root_id` → `admin_id`、`root_nickname` → `admin_nickname`
+- **`models/config/plugin.py`**：`account` 字段类型 `Accounts` → `Account`，导入路径同步
+- **`plugins/base_nodes/nodes/format_prompt.py`**：提示词块改用 `account.admin_id` / `account.admin_nickname`
+- **`config.example.yaml`**：`account` 段的 `root_id` / `root_nickname` → `admin_id` / `admin_nickname`（此前模板已与模型脱节，照抄会直接 `ValidationError`）
+- **`plugins/base_system_tools/README.md`**：删去「所有工具都没有管理员校验」段落（该责任移交给权限插件）
+
+### Removed
+
+- **`models/config/accounts.py`**：被 `account.py` 取代
+
+### Note
+
+- **验证**（真跑，非静态核对）：15 个真实注册工具名与权限表逐字比对（**无漏声明 / 无多余死条目 / 无重复**）；`Permission` 三种分支单测（`admin` 命中与落空、`white_list` 命中、`anyone`）；真实 `GraphPipeline` 端到端 —— 管理员 / 白名单 / 路人三种身份下，下游请求节点（站在 `call_llm` 位置）实际拿到的工具列表均符合权限表；`on_load` → 注册 `('pick_tools', 2)` → `on_close` 全流程无异常；根 `config.yaml` 与 `config.example.yaml` 均通过 `PluginConfig` 校验。
+- **未验证**：插件整体在 NcatBot 运行时下的端到端对话未跑；未声明工具的 warning 未做去重（每次请求都打印，日志中重复属预期行为，按决定不处理）。
+- **已知边界**：只覆盖「模型经 `call_llm` 请求工具」这条路径；若有节点或子插件直接 `await` 工具的 `ainvoke`，会绕过本插件。`enable: false` / 插件未加载 / 加载抛错时完全不过滤（全部工具放行），权限的强制力依赖本插件正常运行。
+
+### Docs
+
+- **README 更新至 0.9.6**：版本号 / 功能特性（工具权限控制）/ 目录树（新增 `tool_permission_manager/`）/ 内置子插件表（新增一行、修正 `base_system_tools` 行、五个 → 六个）/ 配置表（`account` 字段名）/ 项目状态新增本版段
+- **CHANGELOG 新增本条目**
+
 ## [0.9.5] - 2026-10-01
 
 > 📄 **子插件文档补齐（第二份）**：`base_system_tools` 新增 `README.md` —— 列清 5 个系统工具，并**明写当前的安全缺口**：所有工具都没有管理员校验，数据将完全公开，权限控制后续再加入。与 `meme_extension` 的隐私提示同一思路：把风险写在插件自己家门口。

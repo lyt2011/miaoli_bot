@@ -24,9 +24,9 @@ providers:
 # 账号信息（四项全必填）：format_prompt 节点用它拼 <account> 提示词块
 account:
   bot_id: "机器人QQ号"
-  root_id: "管理员QQ号"
+  admin_id: "管理员QQ号"
   bot_nickname: "喵璃"
-  root_nickname: "主人"
+  admin_nickname: "主人"
 
 # output：回复切块与打字延迟已落地消费（on_message），下面全是默认值，不用配也能跑。
 # output:

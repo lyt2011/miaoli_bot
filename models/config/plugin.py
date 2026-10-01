@@ -4,7 +4,7 @@ from tempfile	import gettempdir
 from pathlib	import Path
 
 from .provider		import Provider
-from .accounts		import Accounts
+from .account		import Account
 from .output		import OutputConfig
 from .sub_plugin	import SubPluginConfig
 from .check_pointer	import CheckPointerConfig
@@ -20,7 +20,7 @@ class PluginConfig(BaseModel):
 	prompt_file		: Optional[FilePath]	= Field(default=None, description="系统提示词文件")
 	system_prompt	: Optional[str] 		= Field(default=None, description="系统提示词")
 	
-	account			: Accounts				= Field(..., description="账号信息配置")
+	account			: Account				= Field(..., description="账号信息配置")
 	output			: OutputConfig			= Field(default_factory=OutputConfig, description="AI输出配置")
 	checkpointer	: CheckPointerConfig	= Field(default_factory=CheckPointerConfig, description="check_pointer 数据库配置")
 	sub_plugin		: SubPluginConfig		= Field(default_factory=SubPluginConfig, description="插件配置")

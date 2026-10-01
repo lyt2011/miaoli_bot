@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.9.5
+- **版本**：0.9.6
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -14,8 +14,8 @@
 - 🔌 **子插件系统**：`core.PluginLoader` 扫描 `sub_plugin.load_from` 下带 `plugin.toml` 的子目录，把每个子目录注册成 Python 包后实例化入口类并调 `on_load()`；子插件通过 `core.Registry` 注册工具 / 解析器 / 图节点；卸载时 `on_close()` 并把整包从 `sys.modules` 抹掉，改完代码重载立即生效。
 - 🧠 **LLM 接入**：`ChatOpenAI` 经 `models.GraphRuntimeContext` 的 `chat_model` 注入图；`call_llm` 节点用 `runtime.context["tools"]`（来自 `ToolRegistry`）`bind_tools` 后请求模型；工具循环由 `tools_condition` 条件边在「有 `tool_calls` → 执行工具 → 回到请求」与「无 `tool_calls` → 收尾」之间自动分流。
 - 📜 **状态与运行时分离**：`models.GraphState`（进 checkpoint 的会话状态：`event` / `segments` / `messages` / `final_answer` / `system_prompt`）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖：`plugin_config` / `chat_model` / `tools`）分离 —— `context` 不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`。
-- 🎛️ **配置模型化（分层 + 更名）**：`PluginConfig` 含 `providers`（`Provider(name / base_url / api_key / models: [LLM(name / context_window / max_tokens / visions / protocol)])`）、`account`（`bot_id` / `root_id` / `bot_nickname` / `root_nickname`，四项全必填）、`output`、`checkpointer`、`sub_plugin` 与 `session_dir` / `prompt_file` / `system_prompt`；`DirectoryPath` / `FilePath` 让路径在**加载期**就被校验，缺失即 `ValidationError`。
-- 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolNode` 执行，返回值经 `utils.tool_result_builder` 的 `success` / `fail` / `custom` 收敛成 `{"status": bool, "message": …}`；主包不再内置任何工具，平台 / 系统 / meme 工具全部由内置子插件注册。
+- 🎛️ **配置模型化（分层 + 更名）**：`PluginConfig` 含 `providers`（`Provider(name / base_url / api_key / models: [LLM(name / context_window / max_tokens / visions / protocol)])`）、`account`（`bot_id` / `admin_id` / `bot_nickname` / `admin_nickname`，四项全必填）、`output`、`checkpointer`、`sub_plugin` 与 `session_dir` / `prompt_file` / `system_prompt`；`DirectoryPath` / `FilePath` 让路径在**加载期**就被校验，缺失即 `ValidationError`。
+- 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolNode` 执行，返回值经 `utils.tool_result_builder` 的 `success` / `fail` / `custom` 收敛成 `{"status": bool, "message": …}`；主包不再内置任何工具，平台 / 系统 / meme 工具全部由内置子插件注册；`tool_permission_manager` 子插件可在此基础上按身份做工具级权限控制（`on_before_request` 摘 `runtime.context["tools"]`，未声明即拒绝）。
 - 🧩 **两级解析链**：`EventParseChain`（群 / 私聊事件元数据）与 `SegmentParseChain`（文本 / AT / 图片 / 文件 / 引用消息段）双链分发，`utils.easier_parser.parse_message` 一步合并产出 `ParseResult(event, segments)` 喂给图；解析器由 `base_parsers` 子插件注册。
 - 🖼️ **多类型消息段**：`Text` → `{text}`、`At` → `{at}`、`Image` → `{image, size, is_meme}`（`QQImageSegmentParser` 只接受 QQ 平台侧 `ncatbot.types.qq.QQImage`，`is_meme` 即其 `sub_type` 非 0）、`File` → `{file, size}`、`Reply` → `{reply}`。
 - 🦆 **鸭子类型适配**：`adapters/EventAdapter` 不依赖具体 ncatbot 类型，通过属性探测兼容不同消息事件形态（`user_id` / `group_id` / `is_group` / `send`）；`utils.get_id_from_event` 群取 `group_id`、私聊取 `user_id`。
@@ -101,7 +101,7 @@ miaoli_bot/
 │   ├── api_unavailable_error.py   #   APIUnavailableError（工具里 api 不可用时抛）
 │   └── session_manager_closing_error.py # SessionManagerClosingError
 ├── models/                        # 数据模型
-│   ├── config/                    #   PluginConfig / Provider / LLM / Accounts / OutputConfig / SubPluginConfig / CheckPointerConfig
+│   ├── config/                    #   PluginConfig / Provider / LLM / Account / OutputConfig / SubPluginConfig / CheckPointerConfig
 │   ├── graph_state.py             #   GraphState（进 checkpoint：event / segments / messages / final_answer / system_prompt）
 │   ├── graph_runtime_context.py   #   GraphRuntimeContext（不进 checkpoint：plugin_config / chat_model / tools）
 │   └── runtime/                   #   Handler（图处理器登记单元）/ ParseResult / DispatchResult
@@ -110,7 +110,8 @@ miaoli_bot/
 │   ├── base_parsers/              #   两级解析器（event_parsers/ + segment_parsers/）
 │   ├── base_platform_tools/       #   平台工具（file_ops/ + message_ops/）
 │   ├── base_system_tools/         #   系统工具（tools/ + models/ + consts/ + config.yaml 默认值 + README）
-│   └── meme_extension/            #   meme 工具（tools/ + core/ + models/ + consts/ + config.yaml 默认值 + README）
+│   ├── meme_extension/            #   meme 工具（tools/ + core/ + models/ + consts/ + config.yaml 默认值 + README）
+│   └── tool_permission_manager/   #   工具权限控制（nodes/ + models/ + consts/ + config.yaml 权限表 + README）
 ├── protocols/                     # 抽象协议
 │   ├── abc/                       #   编译期抽象：PluginProtocol / ChainProtocol / StoreProtocol / BaseCheckpointerSaverAdapter
 │   └── runtime/                   #   运行时检查：Parser（@runtime_checkable）
@@ -131,7 +132,7 @@ miaoli_bot/
 3. `session_id = concatenate_id(target_id, is_group=is_group)`（群 → `group-<group_id>`，私聊 → `private-<user_id>`），作为 LangGraph 的 `thread_id` —— 同一会话共享同一个 checkpointer（由 `checkpointer.database` 选中的 memory / sqlite / postgresql 实现）里的 checkpoint，跨轮记忆不串台。
 4. `graph_pipeline.ainvoke({"event": …, "segments": …}, thread_id=session_id, context={"plugin_config": …, "chat_model": …, "tools": tool_registry.tools})`。
 5. `ON_AGENT_START` 的 `format_input` 把 `event` + `segments` 序列化成 JSON 文本包成 `HumanMessage` **追加**进 `messages`；`ON_BEFORE_REQUEST` 的 `format_prompt` 把 `<account>` 信息块 + 人设写进 `system_prompt` 键（普通键，每轮覆盖而不是追加，否则每轮多留一份人设）。
-6. `ON_REQUEST` 先跑 `compact`（`priority=-10`：token 超窗时把历史压成一条 `<compaction>` 摘要，`RemoveMessage(REMOVE_ALL_MESSAGES)` 清空后放回摘要与保留窗口），再由 `call_llm` 以 `[SystemMessage(state["system_prompt"]), *state["messages"]]` 请求模型，返回的 `AIMessage` 追加进 `messages`。
+6. 同一批次里，`tool_permission_manager`（`priority=1`）按 `config.yaml` 权限表与 `event.sender.user_id` 摘掉无权使用的工具（未声明的工具默认拒绝并打 warning）；`ON_REQUEST` 先跑 `compact`（`priority=-10`：token 超窗时把历史压成一条 `<compaction>` 摘要，`RemoveMessage(REMOVE_ALL_MESSAGES)` 清空后放回摘要与保留窗口），再由 `call_llm` 以 `[SystemMessage(state["system_prompt"]), *state["messages"]]` 请求模型，返回的 `AIMessage` 追加进 `messages`。
 7. `ON_AFTER_REQUEST` 由 `tools_condition` 分流：有 `tool_calls` → `ON_TOOL_CALLING` 的 `invoke_tools` 用 `ToolNode` 执行工具、`ToolMessage` 追加进 `messages`（若工具结果带图片，`attach_image` 会把图片块挪成一条 `HumanMessage`），回到 `ON_BEFORE_REQUEST` 再请求一次；无 `tool_calls` → `ON_TURN_END`。
 8. `ON_TURN_END` 无节点；`ON_AGENT_END` 的 `latest_to_answer` 取 `messages[-1]`，是 `AIMessage` 就把 `content` 写进 `final_answer`（否则回退成固定文案）。
 9. `on_message` 拿 `output["final_answer"]`，按 `output.split_separator` 切块并跳过空块，每块按 `len(块) * typing_speed ± typing_speed_offset` 随机 sleep 后交给 `EventAdapter.send(self.api, …)` 发回 QQ。
@@ -139,15 +140,16 @@ miaoli_bot/
 
 ## 内置子插件
 
-主包只保留图管线与加载框架，业务能力由子插件提供。以下五个内置子插件位于本仓库的 `plugins/` 目录，`plugin.toml` 与子插件自带的 `config.yaml` 默认值都随仓库提交（根目录的 `config.yaml` 仍 gitignore，不进版本控制）：
+主包只保留图管线与加载框架，业务能力由子插件提供。以下六个内置子插件位于本仓库的 `plugins/` 目录，`plugin.toml` 与子插件自带的 `config.yaml` 默认值都随仓库提交（根目录的 `config.yaml` 仍 gitignore，不进版本控制）：
 
 | 子插件 | 提供 |
 |---|---|
 | `base_nodes` | 图节点：`format_input` / `format_prompt` / `compact` / `call_llm` / `invoke_tools` / `attach_image` / `latest_to_answer`；含上下文压缩与图片附加 |
 | `base_parsers` | 两级解析器：群 / 私聊事件 + 文本 / AT / 图片 / 文件 / 引用消息段 |
 | `base_platform_tools` | 平台工具：发消息 / 发文件 / 下载文件 / 查消息 ID / 撤回消息 |
-| `base_system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml`）；自带 `README.md` 声明**所有工具均无管理员校验、数据完全公开**（权限控制待加入） |
+| `base_system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml` 与 `README.md`） |
 | `meme_extension` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除（自带 `config.yaml`）；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
+| `tool_permission_manager` | 工具权限控制：按自带 `config.yaml` 的权限表（`admin` / `white_list` / `anyone`），在 `on_before_request` 把当前身份无权使用的工具从 `runtime.context["tools"]` 摘掉；未声明的工具默认拒绝并打 warning。自带 `README.md` |
 
 子插件约定：目录下放 `plugin.toml`（`enter_class` / `enter_file`）与可选 `config.yaml`；入口类继承 `PluginProtocol`，在 `on_load` 里用 `Registry` 注册工具 / 解析器 / 图节点，在 `on_close` 里释放资源。
 
@@ -176,7 +178,7 @@ miaoli_bot/
 | `providers[].base_url` | **必填** | 请求地址（**不会拼路径**，填到 `/v1` 这一层） |
 | `providers[].api_key` | **必填** | 鉴权密钥 |
 | `providers[].models` | `[]` | 模型列表，每项 `LLM(name / context_window / max_tokens)` |
-| `account` | **必填** | `bot_id` / `root_id` / `bot_nickname` / `root_nickname`，四项全必填；`format_prompt` 用它拼 `<account>` 提示词块 |
+| `account` | **必填** | `bot_id` / `admin_id` / `bot_nickname` / `admin_nickname`，四项全必填；`format_prompt` 用它拼 `<account>` 提示词块，`admin_id` 也是工具权限插件判定管理员的依据 |
 | `session_dir` | `gettempdir()`（`/tmp`） | 会话保存路径（`DirectoryPath` 校验存在性） |
 | `prompt_file` | `null` | 系统提示词文件（`FilePath` 校验存在性，加载时按 UTF-8 读入），优先于 `system_prompt` |
 | `system_prompt` | `null` | 内联系统提示词，仅在未配置 `prompt_file` 时使用（可为 `null`） |
@@ -216,6 +218,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.9.6 — **新增 `tool_permission_manager` 子插件（工具级权限控制）**：按自带 `config.yaml` 的权限表（`admin` / `white_list` / `anyone` 三种），在 `ON_BEFORE_REQUEST`（`priority=1`）把当前身份无权使用的工具从 `runtime.context["tools"]` 摘掉 —— 摘掉后 `call_llm` 与 `invoke_tools` 两侧都拿不到（模型看不见、执行器也拿不到），未声明的工具默认拒绝并打 warning。配套补齐 `base_system_tools` 与 `tool_permission_manager` 两份子插件 `README.md`（前者只讲工具用途，权限说明移交给后者）。**破坏性**：主包配置模型的 `account` 字段改名 —— `root_id` → `admin_id`、`root_nickname` → `admin_nickname`（模型文件 `models/config/accounts.py` → `account.py`、类名 `Accounts` → `Account`），根 `config.yaml` / `config.example.yaml` / `format_prompt` 节点同步。**验证**：15 个真实注册工具逐字比对权限表（无漏声明 / 无多余条目 / 无重复）、`Permission` 三种分支单测、真实 `GraphPipeline` 端到端确认摘除确实传到下游请求节点、`config.example.yaml` 过 `PluginConfig` 校验。**未验证**：warning 去重（用户明确不做）、插件整体在 NcatBot 运行时下的端到端对话未跑。
 
 v0.9.5 — **子插件文档补齐**：`base_system_tools` 新增 `README.md`，列清 5 个系统工具（`bash` / `read_file` / `read_image` / `replace` / `write`）并**明确写出当前的安全缺口** —— 所有工具都没有管理员校验、数据完全公开，权限控制后续再加入；与 `meme_extension` 的隐私提示同一思路（把风险写在插件自己家门口）。**验证**：README 里 5 个工具名与 `tools/__init__.py` 的导出、各 `@tool(args_schema=ToolSchema)` 函数名逐一对照（5/5，无遗漏无多余）；「无管理员校验」对照全目录 `grep`（`admin` / `permission` / `权限`）零命中，声明属实。**未验证**：权限控制仍未实现（README 中标注为后续计划），本版无代码改动。
 

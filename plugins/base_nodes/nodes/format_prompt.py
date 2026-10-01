@@ -11,8 +11,8 @@ async def format_prompt(state: GraphState, runtime: Runtime[GraphRuntimeContext]
 	account	= cfg.account
 
 	account_info = "\n".join([
-		f"<administrator_QQ_number>{account.root_id}</administrator_QQ_number>",
-		f"<administrator_nickname>{account.root_nickname}</administrator_nickname>",
+		f"<administrator_QQ_number>{account.admin_id}</administrator_QQ_number>",
+		f"<administrator_nickname>{account.admin_nickname}</administrator_nickname>",
 		f"<bot_QQ_number>{account.bot_id}</bot_QQ_number>",
 		f"<bot_nickname>{account.bot_nickname}</bot_nickname>",
 	])

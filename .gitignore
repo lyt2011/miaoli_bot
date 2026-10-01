@@ -16,3 +16,5 @@ tests/
 
 # 本地配置（含密钥，不提交；模板见 config.example.yaml）
 config.yaml
+# 但子插件目录下的 config.yaml 是随包发布的默认值，需要入库
+!plugins/*/config.yaml

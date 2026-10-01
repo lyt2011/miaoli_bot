@@ -22,7 +22,7 @@ class PluginConfig(BaseModel):
 	
 	account			: Accounts				= Field(..., description="账号信息配置")
 	output			: OutputConfig			= Field(default_factory=OutputConfig, description="AI输出配置")
-	check_pointer	: CheckPointerConfig	= Field(default_factory=CheckPointerConfig, description="check_pointer 数据库配置")
+	checkpointer	: CheckPointerConfig	= Field(default_factory=CheckPointerConfig, description="check_pointer 数据库配置")
 	sub_plugin		: SubPluginConfig		= Field(default_factory=SubPluginConfig, description="插件配置")
 	
 	@model_validator(mode="after")

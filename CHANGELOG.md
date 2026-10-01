@@ -3,6 +3,61 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.9.0] - 2026-10-01
+
+> 🔌 **`checkpointer` 真正接线（本次为架构级新增）**：`config.yaml` 的 `checkpointer.database` 现在能在 `memory` / `sqlite` / `postgresql` 之间切换，`main.py` 不再写死 `InMemorySaver()` —— 新增 `protocols/abc/checkpointer_adapter.py` 的适配器基类与 `adapters/check_pointers/` 的三个实现，把 `BaseCheckpointSaver` 的协议方法 1:1 转发给底层 saver。
+>
+> 📦 **内置子插件改为随仓库提交**：五个子插件由 `/sdcard/python/miaoli_bot_plugins` 迁入本仓库 `plugins/`。
+>
+> ⚠️ **配置键更名（破坏性）**：`check_pointer` → `checkpointer`，并新增 `extra` 键，`plugin_configs.miaoli_bot` 需同步调整。
+>
+> 🧹 **兜底清理机制删除（破坏性）**：`Closable` 协议与 `main.MiaoLiBot.clean_share_store()` 移除，资源释放回到显式 `close()`。
+
+### Added
+
+- **`protocols/abc/checkpointer_adapter.py`（新增）**：`BaseCheckpointerSaverAdapter(ABC, BaseCheckpointSaver)` —— memory / sqlite / postgresql 三类 checkpointer 的统一门面，逐个显式转发 19 个协议方法（`config_specs` / `get_next_version` / `with_allowlist` + `get_tuple` `list` `put` `put_writes` `delete_thread` `delete_for_runs` `copy_thread` `prune` + 8 个 `a*` 异步版本），另定义抽象 `connect(cls, connect_to, **kwargs)` 与 `close()`；同步转同步、异步转异步，inner 不支持哪一侧就照旧抛 `NotImplementedError`。`get` / `aget` 不转发（基类已实现为转调 `get_tuple` / `aget_tuple`），`get_delta_channel_history` / `aget_delta_channel_history` 也不转发（基类默认实现同样是走祖先链）。
+- **`adapters/check_pointers/`（新增）**：`InMemoryAdapter`（`InMemorySaver`，无状态）、`SQLiteAdapter`（`aiosqlite.connect` + `AsyncSqliteSaver` + `setup()`，`close()` 关连接）、`PostgresqlAdapter`（`AsyncConnectionPool(open=False)` + `AsyncPostgresSaver` + `setup()`，`close()` 关池；`extra` 认 `max_size` / `min_size` / `autocommit` / `row_factory`），以及 `__init__.py` 导出。
+- **`CheckPointerConfig.extra`（新增）**：`Dict[str, Any]`，默认 `{}`，透传给适配器的 `connect(**kwargs)`。
+- **`plugins/`（新增，随仓库提交）**：`base_nodes` / `base_parsers` / `base_platform_tools` / `base_system_tools` / `meme_extension` 五个内置子插件（`plugin.toml` + 子插件自带 `config.yaml` 默认值）。
+- **`manifest.toml` 依赖新增**：`langgraph-checkpoint-sqlite`（`>=3.1.1`）/ `langgraph-checkpoint-postgres`（`>=3.1.2`）/ `aiosqlite`（`>=0.22.1`）/ `psycopg`（`>=3.3.6`）/ `psycopg-pool`（`>=3.3.3`）。
+
+### Changed
+
+- **`main.py`**：新增 `CPA_MAPPING`（`database` → 适配器类）；`_build_graph(checkpointer)` 不再写死 `InMemorySaver()`；`on_load` 开头按 `plugin_config.checkpointer` 的 `database` / `connect_to` / `extra` 建连并注入图；`on_close` 改为 `await self.cpa.close()`（并移除 `clean_share_store()` 调用）。
+- **`models/config/plugin.py`：`check_pointer` → `checkpointer`（破坏性）**，与 `main.py` 的取值统一。
+- **`models/config/check_pointer.py`**：新增 `extra` 字段并补齐 `Any` / `Dict` 导入（原先注解用到未导入的名字，pydantic 会把模型标成 `not fully defined`，实例化即 `PydanticUserError`）。
+- **`adapters/__init__.py` / `protocols/__init__.py` / `protocols/abc/__init__.py`**：导出表同步（新增 `BaseCheckpointerSaverAdapter` 与三个适配器，移除 `Closable`）。
+- **`config.example.yaml`**：`sub_plugin.load_from` 更新为入仓后的 `plugins/` 目录；`checkpointer` 段落解注释并补充 `extra` 说明。
+- **`.gitignore`**：新增 `!plugins/*/config.yaml` 例外（子插件默认值需要入库，根目录 `config.yaml` 仍忽略）。
+
+### Removed
+
+- **`protocols/runtime/closable.py`（`Closable` 协议）删除**：`protocols/runtime/__init__.py` 同步移除导出
+- **`main.MiaoLiBot.clean_share_store()` 删除**：关闭流程不再做 `SHARE_STORE` 兜底遍历，改为显式 `drop` + `await self.cpa.close()`
+
+### Fixed
+
+- `InMemoryAdapter.connect` 首个形参写成 `self` 但内部用 `cls(...)`，作为 classmethod 会 `NameError`
+- `SQLiteAdapter.connect` 的 `aiosqlite.connect(path)` 未 `await`：拿到的是未启动的连接代理，`setup()` 执行 SQL 时抛 `ValueError: Connection closed`
+- `PostgresqlAdapter` 只暴露 `max_size` 而 `min_size` 固定为连接池默认值 4，`max_size < 4` 时抛 `ValueError: max_size must be greater or equal than min_size`（现在 `min_size` 收敛为 `min(kwargs.get("min_size", 4), max_size)` 并真正传入池）
+- `BaseCheckpointerSaverAdapter.connect` 的 `@abstractmethod` / `@classmethod` 顺序（Python 3.14 下类定义阶段即 `AttributeError: attribute '__isabstractmethod__' of 'classmethod' objects is not writable`）
+
+### Note
+
+- **验证**（真环境 / 真库，非静态核对）：memory 与 sqlite 端到端跑通（同 thread 两轮续存 / `aget_state_history` / `close`）；postgresql 对 `127.0.0.1:15432/miaoli`（PostgreSQL 14.24）跑通 26 项断言 —— 建表与重复 `setup` 幂等、`checkpoints` / `checkpoint_writes` 真落行、`parent_config` 链完整、`adelete_thread` 后归零、`close()` 关池、同步路径抛 `asyncio.InvalidStateError` 并原样透传、`prune` / `copy_thread` / `delete_for_runs` 抛 `NotImplementedError`、`extra` 的 `max_size` / `min_size` / `row_factory` 确实落到连接池，跑完探针 thread 无残留。
+- **未验证**：插件整体 `on_load` 未在 NcatBot 运行时跑过（本轮只到「`PluginConfig` 校验 → `CPA_MAPPING` 建连 → `MiaoLiBot._build_graph(adapter)` 能 `compile`」），五个子插件（`plugins/`）未做运行验证。
+- **转发约束（后续改这个基类时别踩）**：协议方法必须逐个显式定义（基类自带同名空壳，`__getattr__` 转不到 inner）；签名必须与 `BaseCheckpointSaver` 逐字一致（Pregel 会用 `signature(checkpointer.aput_writes).parameters.get("task_path")` 内省，签名丢了 `task_path` 会被静默判定为「不支持」）；`with_allowlist` 必须重写（基类实现只换门面自己的 serde，inner 拿不到 allowlist）。
+
+### Docs
+
+- **README 更新至 0.9.0**：版本号 / 功能特性（新增 checkpointer 适配层，协议列表去 `Closable`，删除「关闭兜底清理」）/ 目录树（新增 `adapters/check_pointers/` 与 `plugins/`，`protocols/` 去 `Closable`）/ 数据流（`thread_id` 说明改为按 `database` 选实现，卸载流程改为显式 `close()`）/ 内置子插件章节（改为入仓 `plugins/` 并说明默认值入库）/ 安装依赖列表 / 配置表（`check_pointer` → `checkpointer`，补 `extra`，去掉「尚未接线」）/ 依赖表 / 项目状态新增本版段
+- **`config.example.yaml` 与 `manifest.toml` 同步**，**CHANGELOG 新增本条目**
+
+### Future
+
+- **`PluginLoader` 收口**：消费 `SubPluginConfig.is_enable`；给 `load_from=None` 一个明确行为（跳过加载或抛清晰错误）；`load_from` 路径不存在时给可读报错而不是裸 `FileNotFoundError`
+- **checkpointer 补完**：`sqlite` 侧 `extra` 目前无参数可配；`prune` / `copy_thread` / `delete_for_runs` 等线程管理能力待真正需要时再评估
+
 ## [0.8.3] - 2026-10-01
 
 > 📦 **meme 子系统整体迁出主包**：`tools/` 与 `utils/meme_sqlite.py` 删除、`MemeConfig` 配置模型移除，meme 能力改由新增的内置子插件 `meme_extension` 提供；同时修复 0.8.2 遗留的 `CheckPointerConfig` 导入 `NameError` 与 `split_separator` 空串风险。

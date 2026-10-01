@@ -1,0 +1,8 @@
+bash:
+  limit: 65535
+  reader_timeout: 5.0 # 不用设置太长 进程结束以后等待读取器的
+read_image:
+  support_image:
+    - "png"
+    - "jpeg"
+    - "jpg"

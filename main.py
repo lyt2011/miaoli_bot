@@ -7,12 +7,12 @@ from typing		import Optional
 
 from langgraph.checkpoint.memory	import InMemorySaver
 from langchain_openai				import ChatOpenAI
+from langgraph.checkpoint.base		import BaseCheckpointSaver
 
 from .core		import GraphPipeline, ToolRegistry, PluginLoader, registry
 from .chains	import EventParseChain, SegmentParseChain
 from .stores	import SHARE_STORE
-from .adapters	import EventAdapter
-from .protocols	import Closable
+from .protocols	import BaseCheckpointerSaverAdapter as BCSA
 from .models	import GraphRuntimeContext, GraphState, PluginConfig
 from .utils		import (
 	parse_message,
@@ -30,12 +30,23 @@ from .consts	import (
 	TOOL_REGISTRY,
 	WORKSPACE_DIR,
 )
+from .adapters	import (
+	EventAdapter,
+	InMemoryAdapter,
+	SQLiteAdapter,
+	PostgresqlAdapter,
+)
 
 import asyncio
 import random
 
 
 PLUGIN_NAME	= "喵璃の本体"
+CPA_MAPPING	= {
+	"sqlite"	: SQLiteAdapter,
+	"postgresql": PostgresqlAdapter,
+	"memory"	: InMemoryAdapter,
+}
 
 
 class MiaoLiBot(NcatBotPlugin):
@@ -43,59 +54,26 @@ class MiaoLiBot(NcatBotPlugin):
 	def __init__(self, *args, **kwargs) -> None:
 		super().__init__(*args, **kwargs)
 		
-		self.plugin_loader: Optional[PluginLoader] = None
+		self.plugin_loader	: Optional[PluginLoader]	= None
+		self.cpa			: Optional[BCSA]			= None
 	
 	@staticmethod
-	def _build_graph() -> GraphPipeline:
+	def _build_graph(checkpointer: BaseCheckpointSaver) -> GraphPipeline:
 		
 		graph_pipeline = GraphPipeline(GraphState, context_schema=GraphRuntimeContext)
 		graph_pipeline.wire()
-		graph_pipeline.compile(checkpointer=InMemorySaver())
+		graph_pipeline.compile(checkpointer=checkpointer)
 		
 		return graph_pipeline
-	
-	async def clean_share_store(self) -> None:
-		
-		"""
-		基于 Closable 协议清理共享容器
-		不能保证全部清理 尽力兜底
-		还是建议手动清理已知的
-
-		非 Closable 的键只记 warning 跳过（留在容器里 由显式清理负责）
-		close 抛错的键不影响其余键 close 后 double-check 丢弃残留
-		"""
-		
-		share_keys		= list(SHARE_STORE.keys())
-		share_values	= list(SHARE_STORE.values())
-		
-		for key, value in zip(share_keys, share_values):
-			
-			if not isinstance(value, Closable):
-				self.logger.warning(f"{key} 不是 Closable 跳过清理")
-				continue
-			
-			try:
-				await value.close()
-			
-			except Exception as e:
-				self.logger.warning(f"{key} 清理时发生错误: {e}")
-			
-			else:
-				
-				# double-check 防止卡奇奇怪怪的bug
-				if SHARE_STORE.contains(key):
-					SHARE_STORE.drop(key)
-				
-				else:
-					self.logger.warning(f"{key} 不存在 但清理完成")
-				
-				self.logger.info(f"{key} 被兜底逻辑清理")
-		
-		return
 	
 	async def on_load(self) -> None:
 		
 		plugin_config = PluginConfig.model_validate(self.config)
+		
+		database	= plugin_config.checkpointer.database
+		connect_to	= plugin_config.checkpointer.connect_to
+		extra		= plugin_config.checkpointer.extra
+		self.cpa	= await CPA_MAPPING[database].connect(connect_to, **extra)
 		
 		SHARE_STORE.set(NCATBOT_API, self.api)
 		
@@ -108,7 +86,7 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.set(TOOL_REGISTRY, ToolRegistry())
 		SHARE_STORE.set(SEGMENT_PARSER, SegmentParseChain())
 		SHARE_STORE.set(EVENT_PARSER, EventParseChain())
-		SHARE_STORE.set(GRAPH_PIPELINE, self._build_graph())
+		SHARE_STORE.set(GRAPH_PIPELINE, self._build_graph(checkpointer=self.cpa))
 		
 		self.plugin_loader = PluginLoader(
 			path		= plugin_config.sub_plugin.load_from,
@@ -134,8 +112,8 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.drop(EVENT_PARSER)
 		SHARE_STORE.drop(GRAPH_PIPELINE)
 		
-		await self.clean_share_store()
 		await self.plugin_loader.unload_all()
+		await self.cpa.close()
 				
 		if not SHARE_STORE.is_empty():
 			self.logger.warning(f"共享容器可能存在资源泄露: {list(SHARE_STORE.keys())}")

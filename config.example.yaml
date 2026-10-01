@@ -36,8 +36,16 @@ account:
 
 sub_plugin:                    # 子插件加载（缺失 load_from 会报 TypeError）
   is_enable: false             # 当前未被消费（PluginLoader 无条件加载）
-  load_from: "/sdcard/python/miaoli_bot_plugins"   # 内置子插件所在目录
+  load_from: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins"   # 内置子插件所在目录（随本仓库提交）
 
-# check_pointer:                 # checkpoint 数据库（当前尚未接线，见 README）
+# checkpointer：checkpoint 数据库（0.8.4 起已接线，on_load 按 database 选适配器）
+#   memory     进程内内存，重启即丢（默认，不需要 connect_to）
+#   sqlite     connect_to 填 db 文件路径
+#   postgresql connect_to 填 DSN（postgresql://user:pass@host:port/db）
+# checkpointer:
 #   database: "memory"           # memory / sqlite / postgresql
 #   connect_to: null             # database 非 memory 时必填
+#   extra: {}                    # 额外参数，透传给适配器的 connect(**kwargs)
+#                                #   memory：暂未使用
+#                                #   sqlite：暂未使用
+#                                #   postgresql：max_size（默认 8）/ min_size（默认 4）/ autocommit（默认 true）/ row_factory（默认 dict_row）

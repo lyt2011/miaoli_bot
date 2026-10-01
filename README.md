@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.9.1
+- **版本**：0.9.2
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -161,6 +161,7 @@ miaoli_bot/
    - `langgraph-checkpoint-sqlite`（`>=3.1.1`，`database: sqlite` 时用到）
    - `langgraph-checkpoint-postgres`（`>=3.1.2`，`database: postgresql` 时用到）
    - `aiosqlite`（`>=0.22.1`）/ `psycopg`（`>=3.3.6`）/ `psycopg-pool`（`>=3.3.3`）：直接 import 的驱动与连接池（`SQLiteAdapter` / `PostgresqlAdapter` / `MemeSqlite`）
+   - `aiofiles`（`>=24.1.0`）：`base_system_tools` 的 `write` / `replace` 工具异步写盘
    - `filetype`（`>=1.2.0`）
 3. 插件配置：`cp config.example.yaml config.yaml` 后填真实 `api_key`（`config.yaml` 含密钥、已 gitignore）。插件目录的 `config.yaml` 为默认值，全局 `config.yaml` 的 `plugin.plugin_configs.miaoli_bot` 同键覆盖；`on_load` 第一步即 `PluginConfig.model_validate(self.config)`，必填项缺失 / 路径不存在 / 类型不符都会抛 `ValidationError`，本插件加载失败并在日志留下 traceback（机器人其余部分不受影响）。
 
@@ -201,6 +202,7 @@ cd <插件父目录>          # plugins/
 | `langgraph-checkpoint-sqlite`（`>=3.1.1`） | `AsyncSqliteSaver`（`checkpointer.database: sqlite`），带 `aiosqlite` / `sqlite-vec` |
 | `langgraph-checkpoint-postgres`（`>=3.1.2`） | `AsyncPostgresSaver`（`checkpointer.database: postgresql`），带 `psycopg` / `psycopg-pool` |
 | `aiosqlite`（`>=0.22.1`） | `SQLiteAdapter` 与 `meme_extension.MemeSqlite` 共用的异步 sqlite 驱动（连接分别由 `close()` / `__aexit__` 关） |
+| `aiofiles`（`>=24.1.0`） | `base_system_tools` 的 `write` / `replace` 工具异步写盘（`aiofiles.open` + `async with`） |
 | `psycopg`（`>=3.3.6`）/ `psycopg-pool`（`>=3.3.3`） | `PostgresqlAdapter` 直接 import 的驱动与连接池（`AsyncConnectionPool`） |
 | `filetype`（`>=1.2.0`） | `base_system_tools` 的图片类型嗅探（`read_image`） |
 
@@ -208,6 +210,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.9.2 — **补齐 `aiofiles` 依赖声明**：子插件 `base_system_tools` 的 `write` / `replace` 两个工具一直用 `aiofiles` 异步写盘，`manifest.toml` 却没声明它 —— 开发机环境里恰好装着所以没暴露，干净环境会在子插件导入时 `ModuleNotFoundError: aiofiles`（0.9.0 起 `load_all()` 一处抛错会连带排在后面的子插件一起不加载）；`pip_dependencies` 9 → 10（`aiofiles >=24.1.0`）。**验证**：`ast` 扫全仓顶层 import 比对清单，`aiofiles` 已消除；两个工具端到端跑通（写入落盘 / 全量替换 / `count=1` 只换第一处 / `encoding=gbk` 读写 / 目标不可写返回 `fail` 而不抛）。**未验证**：`base_system_tools` 在 NcatBot 运行时下的工具端到端调用未跑。**仍缺声明（本次未动）**：`langchain_core` / `pydantic` / `yaml` 也是直接 import 但未声明，目前靠 `ncatbot` / `langgraph` / `langchain-openai` 的传递依赖进来。
 
 v0.9.1 — **meme 子系统的 sqlite 驱动换成 `aiosqlite`**：`rapsqlite` 在 x86_64 上没有预编译轮子（要现场编译），而 `MemeSqlite` 用到的能力 `aiosqlite` 全都有 —— `plugins/meme_extension/core/meme_sqlite.py` 改为 `import aiosqlite`，建连从 `__init__`（`rapsqlite.connect` 是同步的）挪到 `__aenter__`（`await aiosqlite.connect(self.path)`，在 DDL 之前），`manifest.toml` 移除 `rapsqlite`（`pip_dependencies` 10 → 9，`aiosqlite` 由 `SQLiteAdapter` 与 `MemeSqlite` 共用）；对外接口与 `async with` 用法不变。**验证**：对真实 sqlite 文件跑通 `MemeSqlite` 全部接口（建表 / 索引 / 外键 / 插入 / 判重 / 列全部 / 按 hash 取 / 按标签查含多标签交集 / 按 hash 删 / 级联清 tag）并跨 `async with` 重开确认落盘，14 项断言全 PASS。**未验证**：`meme_extension` 在 NcatBot 运行时下的工具端到端调用未跑。
 

@@ -3,6 +3,25 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.9.2] - 2026-10-01
+
+> 📦 **补齐 `aiofiles` 依赖声明**：`base_system_tools` 的 `write` / `replace` 两个工具一直在用 `aiofiles` 异步写盘，但 `manifest.toml` 从未声明它 —— 开发机上恰好装着所以没暴露；干净环境（或 `plugin.auto_install_pip_deps` 自动装依赖时）会在导入 `base_system_tools` 时 `ModuleNotFoundError: aiofiles`。
+
+### Fixed
+
+- **`manifest.toml` 补 `aiofiles = ">=24.1.0"`**（`pip_dependencies` 9 → 10）：`plugins/base_system_tools/tools/write.py` 与 `replace.py` 都以 `import aiofiles` + `async with aiofiles.open(...)` 写文件，而 `base_system_tools/main.py` 在 `on_load` 里 `from .tools import write, replace, …` —— 缺包时该子插件整体加载失败，并因 0.9.0 的 NOTE（`load_all()` 一处抛错即中断整批）连带排在它后面的子插件也不再加载。
+
+### Note
+
+- **验证**：`ast` 扫全仓顶层绝对 import 比对 `pip_dependencies`，`aiofiles` 已消除；两个工具端到端跑通 —— 写入落盘、全量替换、`count=1` 只替换第一处、`encoding=gbk` 读写、目标不可写时返回 `fail(...)`（`FileNotFoundError`）而不抛异常。
+- **未验证**：`base_system_tools` 在 NcatBot 运行时下的工具端到端调用未跑。
+- **仍缺声明（本次未动）**：扫描同时发现 `langchain_core`（`core/registry.py` / `core/tool_registry.py` / `models/graph_runtime_context.py` 等）、`pydantic`（`models/config/` 等）、`yaml`（`core/plugin_loader.py`）也是直接 import 但未在 `manifest.toml` 声明，目前靠 `ncatbot` / `langgraph` / `langchain-openai` 的传递依赖进来。
+
+### Docs
+
+- **README 更新至 0.9.2**：版本号 / 安装依赖列表与依赖表新增 `aiofiles` / 项目状态新增本版段
+- **CHANGELOG 新增本条目**
+
 ## [0.9.1] - 2026-10-01
 
 > 🔄 **meme 子系统的 sqlite 驱动由 `rapsqlite` 换成 `aiosqlite`**：`rapsqlite` 在 x86_64 上没有预编译轮子（要现场编译），而 `MemeSqlite` 用到的那点能力 `aiosqlite` 全都有 —— 取消该依赖，`manifest.toml` 的 `pip_dependencies` 由 10 项减到 9 项。

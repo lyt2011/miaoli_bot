@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.9.3
+- **版本**：0.9.4
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -17,7 +17,7 @@
 - 🎛️ **配置模型化（分层 + 更名）**：`PluginConfig` 含 `providers`（`Provider(name / base_url / api_key / models: [LLM(name / context_window / max_tokens / visions / protocol)])`）、`account`（`bot_id` / `root_id` / `bot_nickname` / `root_nickname`，四项全必填）、`output`、`checkpointer`、`sub_plugin` 与 `session_dir` / `prompt_file` / `system_prompt`；`DirectoryPath` / `FilePath` 让路径在**加载期**就被校验，缺失即 `ValidationError`。
 - 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolNode` 执行，返回值经 `utils.tool_result_builder` 的 `success` / `fail` / `custom` 收敛成 `{"status": bool, "message": …}`；主包不再内置任何工具，平台 / 系统 / meme 工具全部由内置子插件注册。
 - 🧩 **两级解析链**：`EventParseChain`（群 / 私聊事件元数据）与 `SegmentParseChain`（文本 / AT / 图片 / 文件 / 引用消息段）双链分发，`utils.easier_parser.parse_message` 一步合并产出 `ParseResult(event, segments)` 喂给图；解析器由 `base_parsers` 子插件注册。
-- 🖼️ **多类型消息段**：`Text` → `{text}`、`At` → `{at}`、`Image` → `{image, size}`、`File` → `{file, size}`、`Reply` → `{reply}`。
+- 🖼️ **多类型消息段**：`Text` → `{text}`、`At` → `{at}`、`Image` → `{image, size, is_meme}`（`QQImageSegmentParser` 只接受 QQ 平台侧 `ncatbot.types.qq.QQImage`，`is_meme` 即其 `sub_type` 非 0）、`File` → `{file, size}`、`Reply` → `{reply}`。
 - 🦆 **鸭子类型适配**：`adapters/EventAdapter` 不依赖具体 ncatbot 类型，通过属性探测兼容不同消息事件形态（`user_id` / `group_id` / `is_group` / `send`）；`utils.get_id_from_event` 群取 `group_id`、私聊取 `user_id`。
 - 🔧 **协议先行**：`protocols/abc/` 定义编译期抽象（`PluginProtocol` / `ChainProtocol` / `StoreProtocol` / `BaseCheckpointerSaverAdapter`），`protocols/runtime/` 定义运行时检查协议（`Parser`，带 `@runtime_checkable`，可 `isinstance` 判定）。
 - 🗄️ **checkpointer 适配层**：`checkpointer.database` 在 `memory` / `sqlite` / `postgresql` 之间切换 checkpoint 存储 —— `adapters/check_pointers/` 的三个适配器把 `InMemorySaver` / `AsyncSqliteSaver` / `AsyncPostgresSaver` 收拢成同一门面（`protocols.BaseCheckpointerSaverAdapter`：1:1 转发 `BaseCheckpointSaver` 的同步 / 异步协议方法，`connect(connect_to, **extra)` 建连、`close()` 释放），`main.py` 的 `CPA_MAPPING` 按 `database` 取类，`on_load` 注入图、`on_close` 统一关闭。
@@ -110,7 +110,7 @@ miaoli_bot/
 │   ├── base_parsers/              #   两级解析器（event_parsers/ + segment_parsers/）
 │   ├── base_platform_tools/       #   平台工具（file_ops/ + message_ops/）
 │   ├── base_system_tools/         #   系统工具（tools/ + models/ + consts/ + config.yaml 默认值）
-│   └── meme_extension/            #   meme 工具（tools/ + core/ + models/ + consts/ + config.yaml 默认值）
+│   └── meme_extension/            #   meme 工具（tools/ + core/ + models/ + consts/ + config.yaml 默认值 + README）
 ├── protocols/                     # 抽象协议
 │   ├── abc/                       #   编译期抽象：PluginProtocol / ChainProtocol / StoreProtocol / BaseCheckpointerSaverAdapter
 │   └── runtime/                   #   运行时检查：Parser（@runtime_checkable）
@@ -147,7 +147,7 @@ miaoli_bot/
 | `base_parsers` | 两级解析器：群 / 私聊事件 + 文本 / AT / 图片 / 文件 / 引用消息段 |
 | `base_platform_tools` | 平台工具：发消息 / 发文件 / 下载文件 / 查消息 ID / 撤回消息 |
 | `base_system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml`） |
-| `meme_extension` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除（自带 `config.yaml`） |
+| `meme_extension` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除（自带 `config.yaml`）；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
 
 子插件约定：目录下放 `plugin.toml`（`enter_class` / `enter_file`）与可选 `config.yaml`；入口类继承 `PluginProtocol`，在 `on_load` 里用 `Registry` 注册工具 / 解析器 / 图节点，在 `on_close` 里释放资源。
 
@@ -216,6 +216,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.9.4 — **image 段解析新增 `is_meme`，并收窄到 QQ 平台**：`image_parser.py` 更名 `qq_image_parser.py`、`ImageSegmentParser` 更名 `QQImageSegmentParser`，`is_accept` 从 `isinstance(data, Image)` 收紧为 `isinstance(data, QQImage)`（`QQImage` 声明 `sub_type: int = 0`，于是 `handle()` 不必再 `getattr` 兜底），返回体从 `{image, size}` 变为 `{image, size, is_meme}`（`is_meme = bool(data.sub_type)`，非 0 视为表情包），让模型能区分表情包与用户发的普通图片；子插件 `meme_extension` 新增 `README.md`，写明「模型可能把普通图片误归档成表情包」的隐私风险；`base_system_tools/tools/bash.py` 删掉一段已无意义的进程泄漏 NOTE 注释（纯注释，行为未变）。**验证**：七种形态真跑（`sub_type=1` / `=0` / 缺键 / 驼峰 `subType` / 缺 `url` / common `Image` / 直接构造），`is_meme`、`url` 回退与拒收行为均符合预期，全程无日志输出；旧类名/旧模块名无残留引用。**已知限制**：只认 QQ 平台 —— 非 QQ 适配器下的 image 段会无人 accept，`segments` 里会出现 `null`；驼峰 `subType` 与「上游不发 `sub_type`」都静默为 `false`（已按「确认不会缺」的决定去掉日志）。**未验证**：`is_meme` 进提示词后的识别效果与真机 `sub_type` 取值分布。
 
 v0.9.3 — **补齐 `langchain-core` / `pydantic` / `pyyaml` 三个依赖声明**：这三个包本插件都是直接 import（`@tool` 工具定义、配置层 `BaseModel` / `Field`、`core/plugin_loader.py` 的 `yaml.safe_load`），却一直靠 `ncatbot`（pydantic / PyYAML）与 `langgraph` / `langchain-openai`（langchain-core）的传递依赖混进来 —— 上游一旦改依赖树，本插件就会在导入期 `ModuleNotFoundError`；`pip_dependencies` 10 → 13，版本下限取当前环境实测版本（1.6.5 / 2.13.5 / 6.0.3）。**验证**：`ast` 扫全仓顶层绝对 import 对照清单，未声明项归零（0.9.2 时还剩这三个）；`manifest.toml` 经 `tomllib` 解析通过（0.9.3 / 13 项）。**未验证**：插件整体 `on_load` 与各子插件在 NcatBot 运行时下的端到端调用未跑。
 

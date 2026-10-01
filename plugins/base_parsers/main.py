@@ -6,7 +6,7 @@ from typing				import Any, Dict
 from .segment_parsers	import (
 	AtSegmentParser,
 	TextSegmentParser,
-	ImageSegmentParser,
+	QQImageSegmentParser,
 	FileSegmentParser,
 	ReplySegmentParser,
 )
@@ -27,7 +27,7 @@ class BaseParsers(PluginProtocol):
 				
 		self.registry.register_segment_parser(AtSegmentParser())
 		self.registry.register_segment_parser(TextSegmentParser())
-		self.registry.register_segment_parser(ImageSegmentParser())
+		self.registry.register_segment_parser(QQImageSegmentParser())
 		self.registry.register_segment_parser(FileSegmentParser())
 		self.registry.register_segment_parser(ReplySegmentParser())
 		

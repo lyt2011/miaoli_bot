@@ -52,8 +52,6 @@ async def bash(
 	
 	bash_config = SHARE_STORE.recall(PLUGIN_CONFIG).bash
 	
-	# NOTE: 这里可能有bug 创建进程之后报错的话会导致进程自己跑 但是工具告诉AI报错了
-	# 然后导致进程没人管了
 	try:
 		
 		# 测试编码是否可用

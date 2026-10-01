@@ -3,6 +3,31 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.9.4] - 2026-10-01
+
+> 🖼️ **image 段解析新增 `is_meme`，并把它收窄到 QQ 平台（同时更名）**：`ImageSegmentParser` → `QQImageSegmentParser`（文件 `image_parser.py` → `qq_image_parser.py`），`is_accept` 由 `isinstance(data, Image)` 收紧为 `isinstance(data, QQImage)`（`QQImage` 声明了 `sub_type: int = 0`，于是 `handle()` 里不再需要 `getattr` 兜底），`sub_type` 被消费成布尔 `is_meme` 交给模型，让 LLM 能区分「表情包」与「用户发的普通图片」；`meme_extension` 同时新增 README，写明「模型可能把普通图片误归档成表情包」的隐私风险。
+
+### Added
+
+- **`plugins/meme_extension/README.md`（新增）**：写明该子插件定位与风险 —— 「大模型可能会将用户发送的普通图片归档为表情包，导致用户隐私被泄露」。
+
+### Changed
+
+- **`plugins/base_parsers/segment_parsers/image_parser.py` → `qq_image_parser.py`（更名）**：类名 `ImageSegmentParser` → `QQImageSegmentParser`，`segment_parsers/__init__.py` 的导入与 `__all__`、`base_parsers/main.py` 的导入与 `register_segment_parser` 调用同步（注册顺序未变：At / Text / QQImage / File / Reply）；`is_accept` 由 `isinstance(data, Image)` 收紧为 `isinstance(data, QQImage)`，`handle()` 返回体由 `{image, size}` 变为 `{image, size, is_meme}` —— `is_meme = bool(data.sub_type)`（非 0 视为表情包，直接取属性，不再 `getattr`），`image` 仍为 `data.url or data.file`、`size` 仍为 `data.file_size`。
+- **`plugins/base_system_tools/tools/bash.py`**：删除 `bash` 工具里那段描述「创建进程后报错会导致进程自己跑、工具却告诉 AI 报错」的 NOTE 注释（纯注释删改，行为不变）。
+
+### Note
+
+- **验证**（真对象，非静态核对）：用 `sub_type=1` / `sub_type=0` / 缺 `sub_type` 键 / 驼峰 `subType` / 缺 `url` / common `Image` / 直接构造 `QQImage` 七种形态跑 `QQImageSegmentParser` —— 前两种 → `is_meme: true` / `false`；缺键与驼峰 → `false`；缺 `url` 回退 `file`；common `Image` 被 `is_accept` 拒收；全程无日志输出。旧类名 `ImageSegmentParser` / 旧模块名 `image_parser` 在 `.py` 与文档中已无残留引用（`grep` 过 `.py` 与文档；CHANGELOG 0.8.0 条目里那处同名记录属史实，未改）。
+- **已知限制一（平台耦合）**：解析器现在只接受 QQ 平台的 `QQImage` —— 若哪天换非 QQ 适配器（lark / ai / …）跑本插件，image 段会无人 accept：`BaseParserChain.dispatch` 返回 `DispatchResult(is_handled=False)`（`result` 默认 `None`），`parse_message` 会把这个 `None` 塞进 `segments`，`format_input` 于是输出一条 `null`（丢图，不报错）。QQ 专用插件下这是有意的耦合，本仓库也已有先例（`adapters/event_adapter.py` 直接用 `ncatbot.types.napcat.message`）。
+- **已知限制二（静默 `false`）**：`QQImage.from_dict` 不做键名转换，payload 若用驼峰 `subType`，`sub_type` 会保持默认 `0` → `is_meme` 静默为 `false`；上游报文若压根不带 `sub_type`，结果同样是静默 `false`（属性有默认值 0，`hasattr` 判断不出「没发」—— 本版按「已确认不会缺」去掉日志，若日后要恢复这个信号，应改用 `"sub_type" not in data.model_fields_set`）。真机上若发现表情包识别不出来，先确认 NapCat 发的是哪种键名 / 到底发没发。
+- **未验证**：`is_meme` 进入提示词后模型的识别效果，以及 NapCat 真机上 `sub_type` 的实际取值分布（本轮靠构造 payload 验证，没有真实报文）。
+
+### Docs
+
+- **README 更新至 0.9.4**：版本号 / 多类型消息段（`Image` → `{image, size, is_meme}`，注明解析器只收 `QQImage`）/ 目录树与内置子插件表（`meme_extension` 补 README）/ 项目状态新增本版段
+- **CHANGELOG 新增本条目**
+
 ## [0.9.3] - 2026-10-01
 
 > 📦 **把三个「直接 import 却靠传递依赖混进来」的包正式声明**：`langchain-core` / `pydantic` / `pyyaml` —— 0.9.2 的扫描把这三个点出来了，它们目前分别是 `ncatbot`（pydantic / PyYAML）与 `langgraph` / `langchain-openai`（langchain-core）的传递依赖，上游一旦改依赖树本插件就会在导入期炸。`pip_dependencies` 10 → 13 项。

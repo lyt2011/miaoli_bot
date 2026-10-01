@@ -3,6 +3,24 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.9.5] - 2026-10-01
+
+> 📄 **子插件文档补齐（第二份）**：`base_system_tools` 新增 `README.md` —— 列清 5 个系统工具，并**明写当前的安全缺口**：所有工具都没有管理员校验，数据将完全公开，权限控制后续再加入。与 `meme_extension` 的隐私提示同一思路：把风险写在插件自己家门口。
+
+### Added
+
+- **`plugins/base_system_tools/README.md`（新增）**：列出该子插件提供的 5 个工具（`bash` / `read_file` / `read_image` / `replace` / `write`），并写明已知漏洞 —— 「所有工具都没有管理员校验，这意味着你的数据将被完全公开；后续将加入权限控制，粒度按实际需求而定」。
+
+### Note
+
+- **验证**：README 里的 5 个工具名与 `tools/__init__.py` 的导入 / `__all__` 以及各文件里 `@tool(args_schema=ToolSchema)` 的函数名逐一对得上（5/5，无遗漏无多余）；「无管理员校验」这条声明对照实际代码核对 —— `base_system_tools/` 全目录 `grep` `admin` / `permission` / `权限` 零命中，声明属实。
+- **未验证**：权限控制尚未实现（README 里的「后续将加入」仍是计划，本版无任何代码改动）。
+
+### Docs
+
+- **README 更新至 0.9.5**：版本号 / 目录树（`base_system_tools` 行补 `+ README`）/ 内置子插件表（该行补 README 与「无管理员校验」提示）/ 项目状态新增本版段
+- **CHANGELOG 新增本条目**
+
 ## [0.9.4] - 2026-10-01
 
 > 🖼️ **image 段解析新增 `is_meme`，并把它收窄到 QQ 平台（同时更名）**：`ImageSegmentParser` → `QQImageSegmentParser`（文件 `image_parser.py` → `qq_image_parser.py`），`is_accept` 由 `isinstance(data, Image)` 收紧为 `isinstance(data, QQImage)`（`QQImage` 声明了 `sub_type: int = 0`，于是 `handle()` 里不再需要 `getattr` 兜底），`sub_type` 被消费成布尔 `is_meme` 交给模型，让 LLM 能区分「表情包」与「用户发的普通图片」；`meme_extension` 同时新增 README，写明「模型可能把普通图片误归档成表情包」的隐私风险。

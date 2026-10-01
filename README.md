@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.9.4
+- **版本**：0.9.5
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -109,7 +109,7 @@ miaoli_bot/
 │   ├── base_nodes/                #   图节点（nodes/ + plugin.toml）
 │   ├── base_parsers/              #   两级解析器（event_parsers/ + segment_parsers/）
 │   ├── base_platform_tools/       #   平台工具（file_ops/ + message_ops/）
-│   ├── base_system_tools/         #   系统工具（tools/ + models/ + consts/ + config.yaml 默认值）
+│   ├── base_system_tools/         #   系统工具（tools/ + models/ + consts/ + config.yaml 默认值 + README）
 │   └── meme_extension/            #   meme 工具（tools/ + core/ + models/ + consts/ + config.yaml 默认值 + README）
 ├── protocols/                     # 抽象协议
 │   ├── abc/                       #   编译期抽象：PluginProtocol / ChainProtocol / StoreProtocol / BaseCheckpointerSaverAdapter
@@ -146,7 +146,7 @@ miaoli_bot/
 | `base_nodes` | 图节点：`format_input` / `format_prompt` / `compact` / `call_llm` / `invoke_tools` / `attach_image` / `latest_to_answer`；含上下文压缩与图片附加 |
 | `base_parsers` | 两级解析器：群 / 私聊事件 + 文本 / AT / 图片 / 文件 / 引用消息段 |
 | `base_platform_tools` | 平台工具：发消息 / 发文件 / 下载文件 / 查消息 ID / 撤回消息 |
-| `base_system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml`） |
+| `base_system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml`）；自带 `README.md` 声明**所有工具均无管理员校验、数据完全公开**（权限控制待加入） |
 | `meme_extension` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除（自带 `config.yaml`）；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
 
 子插件约定：目录下放 `plugin.toml`（`enter_class` / `enter_file`）与可选 `config.yaml`；入口类继承 `PluginProtocol`，在 `on_load` 里用 `Registry` 注册工具 / 解析器 / 图节点，在 `on_close` 里释放资源。
@@ -216,6 +216,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.9.5 — **子插件文档补齐**：`base_system_tools` 新增 `README.md`，列清 5 个系统工具（`bash` / `read_file` / `read_image` / `replace` / `write`）并**明确写出当前的安全缺口** —— 所有工具都没有管理员校验、数据完全公开，权限控制后续再加入；与 `meme_extension` 的隐私提示同一思路（把风险写在插件自己家门口）。**验证**：README 里 5 个工具名与 `tools/__init__.py` 的导出、各 `@tool(args_schema=ToolSchema)` 函数名逐一对照（5/5，无遗漏无多余）；「无管理员校验」对照全目录 `grep`（`admin` / `permission` / `权限`）零命中，声明属实。**未验证**：权限控制仍未实现（README 中标注为后续计划），本版无代码改动。
 
 v0.9.4 — **image 段解析新增 `is_meme`，并收窄到 QQ 平台**：`image_parser.py` 更名 `qq_image_parser.py`、`ImageSegmentParser` 更名 `QQImageSegmentParser`，`is_accept` 从 `isinstance(data, Image)` 收紧为 `isinstance(data, QQImage)`（`QQImage` 声明 `sub_type: int = 0`，于是 `handle()` 不必再 `getattr` 兜底），返回体从 `{image, size}` 变为 `{image, size, is_meme}`（`is_meme = bool(data.sub_type)`，非 0 视为表情包），让模型能区分表情包与用户发的普通图片；子插件 `meme_extension` 新增 `README.md`，写明「模型可能把普通图片误归档成表情包」的隐私风险；`base_system_tools/tools/bash.py` 删掉一段已无意义的进程泄漏 NOTE 注释（纯注释，行为未变）。**验证**：七种形态真跑（`sub_type=1` / `=0` / 缺键 / 驼峰 `subType` / 缺 `url` / common `Image` / 直接构造），`is_meme`、`url` 回退与拒收行为均符合预期，全程无日志输出；旧类名/旧模块名无残留引用。**已知限制**：只认 QQ 平台 —— 非 QQ 适配器下的 image 段会无人 accept，`segments` 里会出现 `null`；驼峰 `subType` 与「上游不发 `sub_type`」都静默为 `false`（已按「确认不会缺」的决定去掉日志）。**未验证**：`is_meme` 进提示词后的识别效果与真机 `sub_type` 取值分布。
 

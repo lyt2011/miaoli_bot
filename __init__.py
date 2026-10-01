@@ -5,8 +5,8 @@ from .stores	import SHARE_STORE
 from .models	import GraphState, GraphRuntimeContext
 
 from .errors	import (
-	APIUnavailableError,
 	BaseBotError,
+	PipelineStopDispatch
 )
 
 from .protocols	import (
@@ -36,6 +36,11 @@ __all__ = [
 	"ChainProtocol",
 	"Parser",
 	
+	# stores
 	"SHARE_STORE",
+	
+	# errors
+	"BaseBotError",
+	"PipelineStopDispatch",
 	
 ]

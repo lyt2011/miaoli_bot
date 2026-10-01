@@ -1,15 +1,18 @@
 from collections	import defaultdict
 from typing			import Callable, Awaitable, Dict, List, Mapping, Any, Generic, Optional, Union
+from ncatbot.utils	import get_log
 
 from langgraph.graph			import StateGraph, START, END
 from langgraph.graph.state		import CompiledStateGraph
 from langgraph.prebuilt			import tools_condition
 from langgraph.runtime			import Runtime
+from langgraph.errors			import GraphBubbleUp
 from langgraph.typing			import StateT, ContextT, InputT, OutputT
 from langgraph.types			import Command
 from langgraph.checkpoint.base	import BaseCheckpointSaver
 
 from ..models		import Handler
+from ..errors		import PipelineStopDispatch
 from ..consts		import (
 	ON_AGENT_START,
 	ON_TURN_START,
@@ -20,6 +23,9 @@ from ..consts		import (
 	ON_TURN_END,
 	ON_AGENT_END,
 )
+
+
+LOGGER = get_log(__file__)
 
 
 Function			= Callable[[StateT, Runtime[ContextT]], Awaitable[Dict[str, Any]]]
@@ -120,8 +126,18 @@ class GraphPipeline(Generic[StateT, ContextT, InputT, OutputT]):
 		
 		for handler in tuple(self.handlers[event]):
 			
-			# NOTE: 先不写错误处理
-			result = await handler.function(state=_view, runtime=runtime)
+			try:
+				result = await handler.function(state=_view, runtime=runtime)
+			
+			except GraphBubbleUp:
+				raise
+			
+			except PipelineStopDispatch:
+				break
+			
+			except Exception as e:
+				LOGGER.exception(f"{handler.function.__name__} 出现错误 {type(e).__name__}: {e}")
+				continue
 			
 			if result is not None:
 				# 先更新增量 view从头重算
@@ -146,13 +162,12 @@ class GraphPipeline(Generic[StateT, ContextT, InputT, OutputT]):
 			channel		= channels.get(key)
 			operator	= getattr(channel, "operator", None)
 			
+			# 有特殊操作+增量信息->通过 operator 获取新量并返回
 			if operator is not None and key in merged:
-				# 有特殊操作+增量信息->通过 operator 获取新量并返回
 				merged[key] = operator(merged[key], value)
 			
+			# 无操作/不是增量 直接赋值
 			else:
-				# 无操作/不是增量 直接赋值
 				merged[key] = value
 		
-		# 返回已经合并了的字典
 		return merged

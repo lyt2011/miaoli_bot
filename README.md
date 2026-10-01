@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.9.8
+- **版本**：0.9.10
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -91,14 +91,14 @@ miaoli_bot/
 │   ├── id_prefix.py               #   会话键前缀（group- / private-）
 │   └── share_store_keys.py        #   SHARE_STORE 键名（含 TOOL_REGISTRY）
 ├── core/                          # 图管线与子插件加载
-│   ├── graph_pipeline.py          #   GraphPipeline：register / wire / compile / ainvoke / _dispatch / _merge
+│   ├── graph_pipeline.py          #   GraphPipeline：register / wire / compile / ainvoke / _dispatch（含错误处理）/ _merge
 │   ├── plugin_loader.py           #   PluginLoader：扫 plugin.toml → 注册成包 → 加载 / 卸载子插件
 │   ├── registry.py                #   Registry：子插件的注册门面（工具 / 解析器 / 图节点），含全局单例 registry
 │   └── tool_registry.py           #   ToolRegistry：按名字存工具（register / remove / tools）
 ├── data/prompts/                  # 提示词资产（prompt_v1.0.md ~ prompt_v1.3.md）
 ├── errors/                        # 异常定义
 │   ├── base_bot_error.py          #   BaseBotError 基类
-│   ├── api_unavailable_error.py   #   APIUnavailableError（工具里 api 不可用时抛）
+│   ├── pipeline_stop_dispatch.py  #   PipelineStopDispatch（抛它即停止当前事件的后续 handler）
 │   └── session_manager_closing_error.py # SessionManagerClosingError
 ├── models/                        # 数据模型
 │   ├── config/                    #   PluginConfig / Provider / LLM / Account / OutputConfig / SubPluginConfig / CheckPointerConfig
@@ -218,6 +218,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.9.10 — **`_dispatch` 加错误处理，并新增 `PipelineStopDispatch` 停止分发信号**：此前 `_dispatch` 明确标着「先不写错误处理」（`# NOTE`），handler 里抛任何异常都会直接冒到 langgraph。现在每个 handler 被 `try` 包住，分三类处理 —— ① `PipelineStopDispatch` → `break`，**停止本事件剩余 handler**（已累积的增量照常返回，后续事件不受影响）；② `langgraph.errors.GraphBubbleUp`（含 `GraphInterrupt` 等 langgraph 控制流）→ 原样 `raise`，保证中断/命令语义不被误吞；③ 其它 `Exception` → `LOGGER.exception(...)` 记录 traceback 后 `continue`，**跳过该 handler 继续执行本事件剩余 handler**（注意：这与旧行为不同，旧行为是直接冒到 langgraph）。同时清理：删除已无用的 `APIUnavailableError`（`errors/api_unavailable_error.py`），根包与 `errors` 包的导出表同步。**验证**：真实 `GraphPipeline` 实测 —— priority 100 的 handler 增量在 stop 后**被保留**、priority 50 抛停后 priority 0 的 handler **被跳过**、同一请求的后续事件（`ON_AGENT_END`）**照常执行**且图正常完成；对照实验确认普通异常（`ValueError`）**不再冒泡**而是记录后跳过、本事件后续 handler 照常跑完。**未验证**：`PipelineStopDispatch` 尚无实际业务消费方；NcatBot 运行时下的端到端未跑。
 
 v0.9.8 — **发送循环加调试日志 + 变量语义化更名**：`on_message` 的发送段把图返回值改称 `raw_output`、正文提为 `answer_string`、切块结果提为 `answer_chunks`、循环变量改称 `chunk`，并在发送前加两条 `logger.debug`（本次输出字符数、分隔符与切出的块数），便于排查「一条回复被发成几条」类问题。**顺带修掉一次改名遗漏**：`answer_chunks` 误写成引用已不存在的 `raw_ot`（`NameError`，每条消息都会崩），已改为直接复用 `answer_string`。**验证**：AST 扫描确认无未定义名；模拟两种分隔符场景（`None` → 1 块、`"\n\n"` → 2 块）打印与发送条数正确；全仓 `compileall` 通过。**注意**：`logger.debug` 默认级别为 INFO，且你的 `/sdcard/Ncatbot_QQ/config.yaml` 是 `debug: false` + `logging.log_level: "ERROR"` —— 当前配置下这两条日志不会输出，需要 debug 模式才会显示。
 

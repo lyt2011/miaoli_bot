@@ -3,6 +3,43 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.9.10] - 2026-10-01
+
+> 🛑 **`_dispatch` 加错误处理，并新增「停止分发」信号 `PipelineStopDispatch`**：此前 `_dispatch` 明确标着「先不写错误处理」（`# NOTE`），handler 里抛任何异常都会直接冒到 langgraph。现在每个 handler 被 `try` 包住，并按三类分流 —— 抛 `PipelineStopDispatch` 即**停止本事件剩余 handler**（已累积的增量照常返回，后续事件不受影响）；langgraph 的控制流异常（`GraphBubbleUp`，含 `GraphInterrupt` 等）**原样透传**；其它异常**记录 traceback 后跳过该 handler，继续执行本事件剩余 handler**（**行为变更**：旧行为是直接冒到 langgraph）。
+
+### Added
+
+- **`errors/pipeline_stop_dispatch.py` 的 `PipelineStopDispatch`**：handler 抛它即可停止当前事件的后续 handler，用于「本事件到此为止」这类受控提前退出。经 `errors/__init__.py` 与根 `__init__.py` 导出（根包 `__all__` 顺带补上 `BaseBotError`，并加了 `# stores` / `# errors` 分组注释）
+- **`core/graph_pipeline.py` 的模块级 `LOGGER`**：`get_log(__file__)`（`ncatbot.utils.logger` 的 `BoundLogger`，`exception()` 自带 traceback）
+
+### Changed
+
+- **`core/graph_pipeline.py` 的 `_dispatch` 错误处理**（三分类）：
+  - `except GraphBubbleUp: raise` —— 显式放行 langgraph 控制流（`GraphInterrupt` / `ParentCommand` 等都是它的子类；若不单独列出会被下面的 `except Exception` 捕获）
+  - `except PipelineStopDispatch: break` —— 停止本事件剩余 handler，已累积的 `_updates` 照常返回
+  - `except Exception as e: LOGGER.exception(...); continue` —— 记录 traceback 后跳过当前 handler，**不中断**本事件，后续 handler 继续执行
+- **行为变更**：普通 handler 异常此前会冒到 langgraph（中断整张图），现在被记录并跳过 —— 单个 handler 出错不再影响同一事件内的其它 handler
+- **`core/graph_pipeline.py` 的 `_merge`**：注释从分支内部提到分支上方（纯注释调整，逻辑未变）
+
+### Fixed
+
+- **`_dispatch` 异常日志里的 `handler.__name__`**：`Handler` 是 dataclass、没有 `__name__`，异常分支自身会抛 `AttributeError`（把原始异常替换掉，且「记录后继续」完全失效）；改为 `handler.function.__name__`
+
+### Removed
+
+- **`errors/api_unavailable_error.py`**：`APIUnavailableError` 全仓已无引用，删除；`errors/__init__.py` 的导入与 `__all__` 同步
+
+### Note
+
+- **验证**（真实 `GraphPipeline` 实测，`/tmp/ckpt_probe/dispatch_err_test.py`）：① priority 100 的 handler 增量在 `break` 后**被保留**（`system_prompt` 为改写值）；② priority 50 抛 `PipelineStopDispatch` 后 priority 0 的 handler **被跳过**；③ 同一请求的后续事件（`ON_AGENT_END`）**照常执行**，图正常完成；④ 对照实验：`ValueError` **不再冒泡**，日志出现 traceback，且同事件后续 handler 照常执行并生效
+- **未验证**：`PipelineStopDispatch` 目前尚无实际业务消费方（属基础设施先行）；NcatBot 运行时下的端到端未跑；`GraphBubbleUp` 分支只验证了「不误吞」的代码路径，未构造真实 `GraphInterrupt` 场景
+- **待确认（非阻塞）**：`PipelineStopDispatch` 直接继承 `Exception`，而 `errors/` 下其它异常（`SessionManagerClosingError`）都继承 `BaseBotError` —— 若是刻意为之（控制流信号不该被 `except BaseBotError` 顺手捕获）则保持现状即可
+
+### Docs
+
+- **README 更新至 0.9.10**：版本号 / `errors` 目录树（`api_unavailable_error.py` → `pipeline_stop_dispatch.py`）/ `graph_pipeline.py` 职责补「含错误处理」/ 项目状态新增本版段
+- **CHANGELOG 新增本条目**
+
 ## [0.9.8] - 2026-10-01
 
 > 🔍 **发送循环加调试日志**：`on_message` 在发送前打印两条 `logger.debug` —— 本次输出的字符数与「分隔符 + 切出的块数」，用来排查「一条回复被发成几条 / 没被切块」这类问题。

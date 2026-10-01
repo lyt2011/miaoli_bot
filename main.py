@@ -18,6 +18,7 @@ from .utils		import (
 	parse_message,
 	get_id_from_event,
 	concatenate_id,
+	split_string,
 )
 from .consts	import (
 	EVENT_PARSER,
@@ -151,23 +152,17 @@ class MiaoLiBot(NcatBotPlugin):
 		input		= {"event": parse_result.event, "segments": parse_result.segments}
 		context		= {"plugin_config": plugin_cfg, "chat_model": chat_model, "tools": tool_registry.tools}
 		
-		output = await graph_pipeline.ainvoke(input, thread_id=session_id, context=context)
+		raw_ot		= await graph_pipeline.ainvoke(input, thread_id=session_id, context=context)
+		final_ot	= split_string(string=raw_ot["final_answer"], separator=plugin_cfg.output.split_separator)
 		
-		# 修复空 split_separator 导致的 TypeError 问题
-		if plugin_cfg.output.split_separator is None:
-			final_answer = output["final_answer"]
-		
-		else:
-			final_answer = output["final_answer"].split(plugin_cfg.output.split_separator)
-		
-		for answer in final_answer:
+		for line in final_ot:
 			
-			if not answer:
+			if not line:
 				continue
 			
-			total_char_time	= len(answer) * plugin_cfg.output.typing_speed
+			total_char_time	= len(line) * plugin_cfg.output.typing_speed
 			max_char_time	= total_char_time + plugin_cfg.output.typing_speed_offset
 			mim_char_time	= total_char_time - plugin_cfg.output.typing_speed_offset
 			
 			await asyncio.sleep(random.uniform(mim_char_time, max_char_time))
-			await event_adapter.send(self.api, answer)
+			await event_adapter.send(self.api, line)

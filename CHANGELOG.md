@@ -3,6 +3,34 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.9.7] - 2026-10-01
+
+> 🐞 **修复「未设置分隔符时回复被逐字拆成 N 条消息」**：`on_message` 的发送循环此前把两条分支混进同一个 `for` —— 有分隔符时 `.split()` 得到 `list`，无分隔符时直接用整个 `str`。当 `output.split_separator` 为 `null`（默认值）时，`for answer in final_answer` **迭代的是字符串本身，即逐字符**：一句话被拆成几十条 QQ 消息逐字发出，且每个字符都要 sleep 一次打字延迟。现已把切块收口到新增的 `utils.split_string`，它**恒返回 `List[str]`** —— `for` 拿到的必然是「块」而非「字符」。
+
+### Fixed
+
+- **`main.py`（`on_message` 发送循环）**：`output.split_separator` 为 `null` 时回复被逐字符拆分发送的问题。实测同一段 13 字文本：修复前发出 **13 条**、修复后 **1 条**。切块改由 `utils.split_string` 统一负责，不再把「整条」和「切好的块」两种类型混进同一个循环
+- **`utils/sugar.py`**：补齐 `Optional` / `List` 类型导入 —— 此前靠 Python 3.14 的注解延迟求值（PEP 649）侥幸不在导入期报错，但 `typing.get_type_hints(split_string)` 会 `NameError`，任何做注解内省的调用方都会炸
+
+### Added
+
+- **`utils/sugar.py` 的 `split_string(string, separator=None) -> List[str]`**：分隔符为 `None` / 空串 → `[string]`（整条一块），否则 `string.split(separator)`。经 `utils/__init__.py` 导出（`__all__` 同步）
+
+### Changed
+
+- **`main.py`**：图返回值改称 `raw_ot`，切块结果称 `final_ot`，循环变量 `answer` → `line`，与 `split_string` 的引入配套
+- **`utils/sugar.py` 的 `concatenate_id`**：签名由 `(session_id, is_group=False)` 收紧为 `(session_id, is_group)` —— 唯一调用处（`main.py` 的 `on_message`）本就显式传参，去掉默认值免得将来漏传时静默走私聊前缀
+
+### Note
+
+- **验证**（真跑）：`split_string` 五种分隔符（`None` / `""` / `"\n\n"` / `"||"` / 单字）与空串输入边界，全部恒返回 `list`；用修复前后的发送循环对比同一段文本，确认 13 条 → 1 条；`typing.get_type_hints()` 对 `split_string` / `concatenate_id` 均可解析；`concatenate_id` 两种分支输出正确（`group-` / `private-`）；全仓 `compileall` 通过
+- **未验证**：NcatBot 运行时下的真实 QQ 发送未跑
+
+### Docs
+
+- **README 更新至 0.9.7**：版本号 / 功能特性（切块恒返回列表的语义）/ 目录树（`sugar.py` 职责补 `split_string`）/ 数据流第 9 步 / 项目状态新增本版段
+- **CHANGELOG 新增本条目**
+
 ## [0.9.6] - 2026-10-01
 
 > 🛡️ **新增 `tool_permission_manager` 子插件 —— 工具级权限控制**：按自带 `config.yaml` 的权限表（`admin` / `white_list` / `anyone`），在 `ON_BEFORE_REQUEST`（`priority=1`）把当前身份无权使用的工具从 `runtime.context["tools"]` 里摘掉。因为 `call_llm`（`bind_tools`）与 `invoke_tools`（`ToolNode`）读的是同一个 context，摘掉之后**模型看不见、执行器也拿不到** —— 这是一条真实的执行层白名单，不只是提示层过滤。未在权限表里声明的工具默认拒绝并打一条 warning。

@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.9.6
+- **版本**：0.9.7
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -24,7 +24,7 @@
 - 💾 **共享存储**：`stores/SHARE_STORE` 全局共享容器，键集中定义于 `consts/share_store_keys.py`（`EVENT_PARSER` / `SEGMENT_PARSER` / `TOOL_REGISTRY` / `NCATBOT_API` / `PLUGIN_CONFIG` / `RAW_CONFIG` / `PLUGIN_DIR` / `WORKSPACE_DIR` / `GRAPH_PIPELINE`）。
 - 🔔 **事件优先级让位**：`on_message` 以 `priority=-100` 注册，排在后处理的位置 —— 扩展插件可用更高优先级抢先接收并停止事件传播（如 `miaoli_like` 的 `赞我` 用 `priority=100`），被上游截下的消息不会再进入 LLM。
 - 🎭 **角色扮演**：内置猫娘「喵璃」人设提示词（`data/prompts/prompt_v1.3.md`，另有 v1.0 ~ v1.2 历史版本）；`format_prompt` 节点把人设与管理员 / 机器人的 QQ 号、昵称拼成 `<account>` 标签块，一起写进系统提示词。
-- ⏱️ **输出切块与打字延迟**：按 `output.split_separator` 把回复切块（跳过空块），每块按 `len(块) * typing_speed ± typing_speed_offset` 随机 sleep 后再发送，模拟真人在打字。
+- ⏱️ **输出切块与打字延迟**：`utils.split_string` 按 `output.split_separator` 把回复切块（**恒返回列表**：分隔符为 `null` / 空串时整条一块，避免退化成逐字符迭代），跳过空块，每块按 `len(块) * typing_speed ± typing_speed_offset` 随机 sleep 后再发送，模拟真人在打字。
 - 🧪 **本地测试（待重写）**：`tests/` 目录（gitignore，不随仓库提交）里的用例针对的是 pi 桥接层，随 0.8.0 重构整体失效。
 
 ## 架构设计
@@ -121,7 +121,7 @@ miaoli_bot/
     ├── easier_parser.py           #   parse_event / parse_segment / parse_message 快捷入口
     ├── easier_sender.py           #   private / group 便捷发送封装
     ├── event_ops.py               #   get_id_from_event（群 → group_id，私聊 → user_id）
-    ├── sugar.py                   #   concatenate_id（会话键加 group- / private- 前缀）
+    ├── sugar.py                   #   concatenate_id（会话键加 group- / private- 前缀）/ split_string（回复切块，恒返回 list）
     └── tool_result_builder.py     #   custom / success / fail（工具返回值统一契约）
 ```
 
@@ -135,7 +135,7 @@ miaoli_bot/
 6. 同一批次里，`tool_permission_manager`（`priority=1`）按 `config.yaml` 权限表与 `event.sender.user_id` 摘掉无权使用的工具（未声明的工具默认拒绝并打 warning）；`ON_REQUEST` 先跑 `compact`（`priority=-10`：token 超窗时把历史压成一条 `<compaction>` 摘要，`RemoveMessage(REMOVE_ALL_MESSAGES)` 清空后放回摘要与保留窗口），再由 `call_llm` 以 `[SystemMessage(state["system_prompt"]), *state["messages"]]` 请求模型，返回的 `AIMessage` 追加进 `messages`。
 7. `ON_AFTER_REQUEST` 由 `tools_condition` 分流：有 `tool_calls` → `ON_TOOL_CALLING` 的 `invoke_tools` 用 `ToolNode` 执行工具、`ToolMessage` 追加进 `messages`（若工具结果带图片，`attach_image` 会把图片块挪成一条 `HumanMessage`），回到 `ON_BEFORE_REQUEST` 再请求一次；无 `tool_calls` → `ON_TURN_END`。
 8. `ON_TURN_END` 无节点；`ON_AGENT_END` 的 `latest_to_answer` 取 `messages[-1]`，是 `AIMessage` 就把 `content` 写进 `final_answer`（否则回退成固定文案）。
-9. `on_message` 拿 `output["final_answer"]`，按 `output.split_separator` 切块并跳过空块，每块按 `len(块) * typing_speed ± typing_speed_offset` 随机 sleep 后交给 `EventAdapter.send(self.api, …)` 发回 QQ。
+9. `on_message` 拿 `output["final_answer"]` 交给 `utils.split_string`，按 `output.split_separator` 切块（**未设置分隔符 → 整条一块**）并跳过空块，每块按 `len(块) * typing_speed ± typing_speed_offset` 随机 sleep 后交给 `EventAdapter.send(self.api, …)` 发回 QQ。
 10. 插件卸载（`on_close`）：先显式 `drop` 掉已知键（含 `TOOL_REGISTRY` / `EVENT_PARSER` / `SEGMENT_PARSER` / `GRAPH_PIPELINE`），再 `plugin_loader.unload_all()` 卸载子插件（逐个 `on_close()` 并从 `sys.modules` 抹掉整包），最后 `await self.cpa.close()` 显式关闭 checkpointer（sqlite 关 `aiosqlite` 连接、postgresql 关连接池、memory 无副作用），残留键只记 warning。
 
 ## 内置子插件
@@ -218,6 +218,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.9.7 — **修复「未设置分隔符时回复被逐字拆成 N 条消息」**：`on_message` 的发送循环此前是「有分隔符 → `.split()` 得到 list，无分隔符 → 直接用整个 `str`」两条分支混进同一个 `for` —— 当 `output.split_separator` 为 `null`（默认值）时 `for answer in final_answer` **迭代的是字符串本身，即逐字符**：一句话被拆成几十条 QQ 消息逐字发出，且每个字符都要 sleep 一次打字延迟。现已把切块收口到新增的 `utils.split_string`（**恒返回 `List[str]`**：无分隔符 / 空串 → `[整条]`，否则 `str.split`），`for` 拿到的必然是「块」而不是「字符」。实测同一段 13 字文本：修复前发出 13 条、修复后 1 条。**验证**：`split_string` 五种分隔符真跑（`None` / `""` / `"\n\n"` / `"||"` / 单字）+ 空串输入边界，恒返回 list；`utils/sugar.py` 补齐 `Optional` / `List` 类型导入（此前靠 Python 3.14 注解延迟求值侥幸不报错，`typing.get_type_hints` 会 `NameError`）；`concatenate_id` 签名去掉了多余的 `is_group` 默认值（唯一调用处本就显式传参）；全仓 `compileall` 通过。**未验证**：NcatBot 运行时下的真实 QQ 发送未跑。
 
 v0.9.6 — **新增 `tool_permission_manager` 子插件（工具级权限控制）**：按自带 `config.yaml` 的权限表（`admin` / `white_list` / `anyone` 三种），在 `ON_BEFORE_REQUEST`（`priority=1`）把当前身份无权使用的工具从 `runtime.context["tools"]` 摘掉 —— 摘掉后 `call_llm` 与 `invoke_tools` 两侧都拿不到（模型看不见、执行器也拿不到），未声明的工具默认拒绝并打 warning。配套补齐 `base_system_tools` 与 `tool_permission_manager` 两份子插件 `README.md`（前者只讲工具用途，权限说明移交给后者）。**破坏性**：主包配置模型的 `account` 字段改名 —— `root_id` → `admin_id`、`root_nickname` → `admin_nickname`（模型文件 `models/config/accounts.py` → `account.py`、类名 `Accounts` → `Account`），根 `config.yaml` / `config.example.yaml` / `format_prompt` 节点同步。**验证**：15 个真实注册工具逐字比对权限表（无漏声明 / 无多余条目 / 无重复）、`Permission` 三种分支单测、真实 `GraphPipeline` 端到端确认摘除确实传到下游请求节点、`config.example.yaml` 过 `PluginConfig` 校验。**未验证**：warning 去重（用户明确不做）、插件整体在 NcatBot 运行时下的端到端对话未跑。
 

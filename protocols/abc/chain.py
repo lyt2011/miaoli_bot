@@ -1,8 +1,8 @@
 from abc	import ABC, abstractmethod
 from typing	import Any
 
-from .parser	import Parser
-from ..models	import DispatchResult
+from ..runtime	import Parser
+from ...models	import DispatchResult
 
 
 class ChainProtocol(ABC):

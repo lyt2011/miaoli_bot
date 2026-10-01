@@ -1,6 +1,6 @@
-from .runtimes	import DispatchResult, ParseResult, Handler
+from .runtime	import DispatchResult, ParseResult, Handler
+from .config	import PluginConfig
 
-from .plugin_config			import PluginConfig
 from .graph_runtime_context	import GraphRuntimeContext
 from .graph_state			import GraphState
 

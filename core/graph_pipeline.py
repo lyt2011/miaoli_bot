@@ -109,7 +109,7 @@ class GraphPipeline(Generic[StateT, ContextT, InputT, OutputT]):
 		"""
 		
 		self.handlers[event].append(Handler(function=node, priority=priority))
-		self.handlers[event].sort(key=lambda handler: handler.priority)
+		self.handlers[event].sort(key=lambda handler: handler.priority, reverse=True)
 	
 	async def _dispatch(self, event: str, state: StateT, runtime: Runtime[ContextT]) -> Dict[str, Any]:
 		

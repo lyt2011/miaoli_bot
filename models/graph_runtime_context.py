@@ -1,9 +1,9 @@
-from typing							import List, TypedDict
+from typing	import List, TypedDict
 
 from langchain_core.language_models	import BaseChatModel
 from langchain_core.tools			import BaseTool
 
-from .plugin_config					import PluginConfig
+from .config	import PluginConfig
 
 
 class GraphRuntimeContext(TypedDict):

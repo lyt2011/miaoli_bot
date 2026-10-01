@@ -3,6 +3,120 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.8.3] - 2026-10-01
+
+> 📦 **meme 子系统整体迁出主包**：`tools/` 与 `utils/meme_sqlite.py` 删除、`MemeConfig` 配置模型移除，meme 能力改由新增的内置子插件 `meme_extension` 提供；同时修复 0.8.2 遗留的 `CheckPointerConfig` 导入 `NameError` 与 `split_separator` 空串风险。
+
+### Removed
+
+- **`tools/` 整目录删除**（`tools/__init__.py` 与 `meme_ops/` 的 `send_meme.py` / `archive_meme.py` / `list_memes.py`）：主包不再内置任何工具，工具全部由子插件注册
+- **`utils/meme_sqlite.py` 删除**：`utils/__init__.py` 同步移除 `MemeSqlite` 导出
+- **`MemeConfig` 配置模型与 `meme` 配置键移除**（`config.yaml` 的 `meme:` 段一并删除）：0.8.2 待优化项里「计划随 `tools` 一起迁到独立子插件」的 TODO 落实
+
+### Added
+
+- **内置子插件 `meme_extension`（新增）**：承接迁出的 meme 子系统，自带 `config.yaml` 与 sqlite 存储，提供 `archive_meme` / `send_meme_to_qq` / `list_memes` / `remove_meme_by_hash` / `search_memes_by_tags` 五个工具（后两个为本轮新增）
+
+### Changed
+
+- **`core/graph_pipeline.py`：handler 排序改为按 `priority` 降序**（`reverse=True`，数值大者先执行）；配套 `base_nodes` 的注册优先级调整 —— `compact` 提到 `priority=1`（降序下先于 `call_llm` 执行，压缩在请求前生效）、`attach_image` 提到 `priority=10`（降序下先于 `invoke_tools` 执行）
+- **`models/config/output.py`：`split_separator` 改为 `Optional[str]`（默认 `None`）**，空字符串仍被 `model_validator` 拒绝；`main.py` 增加 `None` 分支（不切块、整条发送），修复默认空串下 `str.split("")` 抛 `ValueError` 的问题
+- **`models/config/plugin.py`：补齐 `CheckPointerConfig` 导入与字段**，修复 0.8.2 中「导入 `PluginConfig` 即抛 `NameError`」的问题
+
+### Note
+
+- 0.8.2 遗留问题里，「`CheckPointerConfig` 未接线导致的导入报错」与「`split_separator` 默认值风险」已处理；仍遗留：`PluginLoader` 不消费 `SubPluginConfig.is_enable`（无条件加载 `load_from` 下全部子插件）、`load_from` 为 `None` 时会在 `Path(None)` 抛 `TypeError`
+- **未验证项**：本环境缺 `pydantic` / `ncatbot` 依赖，未做导入与真机运行验证；本次以静态核对（代码阅读 + 全量 `py_compile` 语法检查 + `git diff`）归纳
+
+### Docs
+
+- **README 更新至 0.8.3**：版本号 / 功能特性（去掉 meme 子系统、工具改由子插件注册）/ 目录树（去掉 `tools/` 与 `utils/meme_sqlite.py`）/ 内置子插件章节（补充 `meme_extension`）/ 配置表（去掉 `meme` 行、`split_separator` 说明更新）/ 依赖表 / 项目状态新增本版段
+- **`config.example.yaml` 同步**：`output` 的「预留占位」注释更正为已落地消费，并补充 `sub_plugin` / `check_pointer` 示例
+- **CHANGELOG 新增本条目**
+
+### Future
+
+- **`check_pointer` 真正接线**：把 `database` / `connect_to` 映射到 `InMemorySaver` / `AsyncSqliteSaver` / `AsyncPostgresSaver`，让 `config.yaml` 能动态切换 checkpoint 数据库（延续 0.8.2 的 Future）
+- **子插件开关落地**：消费 `SubPluginConfig.is_enable`，并给 `load_from=None` 一个明确行为（跳过加载或抛清晰错误）
+
+### 待优化项（项目内 HACK / TODO）
+
+- **`main.py:171` `# HACK: 快速测试技术债 后续改成动态创建 (LLMManager)`**：`chat_model` 仍是每条消息 new 一个 `ChatOpenAI`，模型名 / `base_url` 硬编码，未接 `PluginConfig.providers`
+- **`core/graph_pipeline.py:123` `# NOTE: 先不写错误处理`**：`_dispatch` 逐个执行 handler 时没有 try/except，任一 handler 抛错整轮请求即失败；「`GraphBubbleUp` 必须放行」的问题仍在
+- **子插件侧 hack（`base_nodes/nodes/_compact.py`）**：`MAX_KEEP_MESSAGES` / `CONTEXT_WINDOW` 为测试期常量，未从配置读取
+
+## [0.8.2] - 2026-10-01
+
+> 🔌 **本次为插件化拆分（架构级变更）**：图节点、两级解析器与平台工具从主包移出，改由内置子插件在运行时注册；新增 `sub_plugin` 配置、`PluginLoader` 加载器与 `Registry` 注册门面，主包只保留图管线与加载框架。
+>
+> ⚠️ **配置键不向下兼容**：`account_config` / `meme_config` / `output_config` 更名为 `account` / `meme` / `output`，并新增 `check_pointer` 键，`plugin_configs.miaoli_bot` 需同步调整。
+>
+> 📦 **随附四个内置子插件**：`base_nodes` / `base_parsers` / `base_platform_tools` / `base_system_tools`（提交时一并带上）。
+
+### Removed
+
+- **`parsers/` 整个目录删除**（`parsers/__init__.py`、`event_parsers/`、`segment_parsers/`）：两级解析器改为子插件运行时注册，主包不再内置具体解析器
+- **`core/nodes.py` 删除**：5 个图节点（`format_input` / `format_prompt` / `call_llm` / `on_tool_calling` / `last_msg_to_answer`）迁出，`core/__init__` 导出同步收敛为 `GraphPipeline` / `ToolRegistry` / `Registry` / `PluginLoader` / `registry`
+- **`tools/` 下 5 个平台工具删除**（`send_message.py` / `send_file.py` / `download_file.py` / `query_message_id.py` / `delete_message.py`）：改由子插件注册；`tools/__init__` 只导出 `meme_ops` 的 `send_meme_to_qq` / `archive_meme` / `list_memes`
+- **`models/plugin_config.py` 与 `models/runtimes/` 删除**：前者拆成 `models/config/` 包，后者更名为 `models/runtime/`（`models/__init__` 导入同步）
+- **`protocols/` 旧四个平铺协议文件删除**（`chain.py` / `closable.py` / `parser.py` / `store.py`）：按「编译期抽象 / 运行时检查」拆成 `protocols/abc/` 与 `protocols/runtime/` 两个子包
+
+### Added
+
+- **`core/plugin_loader.py` — `PluginLoader`（子插件加载器）**：扫描配置目录下所有「带 `plugin.toml` 的直接子目录」，读 `enter_class` / `enter_file`（相对路径拼成绝对路径）→ 把子目录注册成 Python 包（`spec_from_file_location` + `submodule_search_locations`，让入口文件里的相对 import 能找到父包）→ 读可选 `config.yaml` 作为子插件配置 → 实例化入口类并 `await on_load()`；`unload()` 会 `on_close()` 并把整包从 `sys.modules` 抹掉（否则重载拿到的是旧模块对象，改了代码也不生效）；配套 `discover()` / `load_all()` / `unload_all()`
+- **`core/registry.py` — `Registry`（子插件注册门面）**：`register_tool` / `register_segment_parser` / `register_event_parser` 直接写进 `SHARE_STORE` 的对应容器；另有 `on_agent_start` / `on_turn_start` / `on_before_request` / `on_request` / `on_after_request` / `on_tool_call` / `on_turn_end` / `on_agent_end` 八个事件钩子，按 `priority` 把节点注册进图管线；模块底部导出全局单例 `registry`
+- **`core/tool_registry.py` — `ToolRegistry`**：以工具名为键的极简容器（`register` / `remove` / `tools` 属性），替代原先硬编码在 `main.py` 的 `TOOLS` 列表；配套新增 `consts.share_store_keys.TOOL_REGISTRY` 共享键
+- **`protocols/abc/` — 编译期抽象层**：`PluginProtocol`（子插件基类：`__init__(config, registry)` + 抽象 `on_load` / `on_close`，本次新增）、`ChainProtocol`、`StoreProtocol`
+- **`protocols/runtime/` — 运行时检查组**：`Parser` 与 `Closable` 两个 `@runtime_checkable` 协议（`isinstance` 判定用）
+- **`models/config/` — 配置模型拆包**：`plugin.py`（`PluginConfig`）、`provider.py`（`Provider` / `LLM`）、`accounts.py`（`Accounts`，由原 `AccountConfig` 更名）、`output.py`（`OutputConfig`）、`sub_plugin.py`（`SubPluginConfig`）、`check_pointer.py`（`CheckPointerConfig`，**本次新增但尚未接线**，见 Note / Future）
+- **`models/config/provider.py` — `LLM` 扩展**：在 `name` / `context_window` / `max_tokens` 之外新增 `visions`（`List[Literal["image", "video", "tool_calling", "text", "audio"]]`）与 `protocol`（`Literal["openai-completion", "openai-response"]`）两个字段（**尚无消费方**）
+- **`models/config/check_pointer.py` — `CheckPointerConfig`**：`database ∈ {memory, sqlite, postgresql}`（默认 `memory`）+ `connect_to`（数据库地址）；`model_validator` 要求非 `memory` 模式必须提供 `connect_to`
+- **`models/config/sub_plugin.py` — `SubPluginConfig`**：`is_enable`（默认 `false`）/ `load_from`（子插件目录）
+- **`tools/meme_ops/` — meme 工具拆包**：`send_meme.py` / `archive_meme.py` / `list_memes.py`
+- **`__init__.py` 顶层重导出**：`consts` 子模块、`GraphState` / `GraphRuntimeContext` / `SHARE_STORE`、三个返回值构造器（`custom` / `fail` / `success`）、四个协议（`PluginProtocol` / `StoreProtocol` / `ChainProtocol` / `Parser`），子插件可以用 `from miaoli_bot import ...` 一行拿到依赖
+- **内置子插件四个**（本版随附，提交时一并带上；加载目录由 `sub_plugin.load_from` 指定）：
+  - **`base_nodes`** — 图节点：`format_input` / `format_prompt` / `compact` / `call_llm` / `invoke_tools` / `attach_image` / `latest_to_answer`，在 `on_load` 里按事件与优先级注册进图管线；相比主包旧版新增**上下文压缩**（`_compact.py`：超窗时把历史压成一条 `<compaction>` 摘要、保留最近若干轮，`ToolMessage` 随所属轮次保留）与**图片附加**（`_attach_image.py`：把 `ToolMessage` 里的图片块挪成一条 `HumanMessage`，绕开工具消息不能携带多模态块的限制）
+  - **`base_parsers`** — 两级解析器（群 / 私聊事件 + 文本 / AT / 图片 / 文件 / 引用消息段），注册进 `EVENT_PARSER` / `SEGMENT_PARSER`
+  - **`base_platform_tools`** — 平台工具：`send_message_to_qq` / `send_file_to_qq` / `download_qq_file` / `query_qq_message_id` / `delete_qq_message`，注册进 `ToolRegistry`
+  - **`base_system_tools`** — 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`，带自己的 `config.yaml`（`bash.limit` / `encoding` / `cwd` / `reader_timeout` / `bash_timeout`）与配置模型；`read_image` 依赖新增的 `filetype` 做类型嗅探
+- **`manifest.toml` 依赖新增 `filetype = ">=1.2.0"`**（`base_system_tools.read_image` 用）
+
+### Changed
+
+- **`main.py` 大幅瘦身**：删掉 `_build_graph` 里的 5 处节点注册、`_register_event_parse_chain` / `_register_segment_parse_chain` 与 `store_lock`；`_build_graph` 改为静态方法，只负责 `wire()` + `compile(InMemorySaver())`；`on_load` 改为「建容器（`ToolRegistry` / 两级链 / 图）→ 起 `PluginLoader` 并 `load_all()`」，`on_close` 对称增加 `unload_all()` 与四个新键的显式 `drop`
+- **群消息 @ 判定不再硬编码 QQ 号**：由写死的 `is_at("2449906317", …)` 改为读 `plugin_cfg.account.bot_id`
+- **工具列表不再硬编码**：`context["tools"]` 由固定 `TOOLS` 常量改为 `tool_registry.tools`
+- **输出切块与打字延迟落地**（原 `main.py` 里两条 `# TODO`）：按 `output.split_separator` 切分 `final_answer`、跳过空块，每块按 `len(块) * typing_speed ± typing_speed_offset` 随机 sleep 后再发送（此前 `OutputConfig` 三个字段无消费方）
+- **配置键更名（破坏性）**：`account_config` → `account`（模型 `AccountConfig` → `Accounts`）、`meme_config` → `meme`、`output_config` → `output`（`config.example.yaml` 与 `config.yaml` 同步）
+- **`models/graph_state.py` / `models/graph_runtime_context.py`**：导入路径对齐新包结构（`models.config` / `models.runtime`），另有一处空行与尾部换行整理
+- **`consts/share_store_keys.py`**：新增 `TOOL_REGISTRY`，`consts/__init__` 导出同步
+- **`errors/` 三个异常类统一格式**（补 `...`、docstring 收成一行，纯风格改动，无行为变化）
+- **`data/prompts/prompt_v1.3.md` 微调**：明确「不喜欢用 markdown 标注信息」「系统能很方便地分句」，并补全若干句尾语气词
+
+### Note
+
+- **`CheckPointerConfig` 尚未接线**：模型已就位且 `PluginConfig` 引用了它，但 `models/config/plugin.py` 缺少对应 import，当前导入 `PluginConfig` 会抛 `NameError`；`main.py` 也仍写死 `InMemorySaver()`（修复与接入见 Future）
+- **子插件加载的两个边界**：`SubPluginConfig.is_enable` 目前**只声明未消费**（`PluginLoader` 无条件加载 `load_from` 下的全部子插件）；`load_from` 为 `None` 时 `PluginLoader.__init__` 会在 `Path(None)` 处抛 `TypeError`
+- **输出切块的默认值风险**：`output.split_separator` 默认是 `""`，而 `str.split("")` 会抛 `ValueError`，不配置该键时 `on_message` 最后一步会失败
+- **未验证项**：本地 Python 环境缺依赖（`pydantic` / `ncatbot`），本次改动**未做导入与真机运行验证**，仅以静态阅读 + `git diff` 归纳
+
+### Docs
+
+- **README 更新至 0.8.2**：版本号 / 功能特性（子插件系统、工具闭环、输出切块与打字延迟）/ 架构图 / 目录树 / 新增「内置子插件」章节 / 配置表（新增 `check_pointer`、`output` 已落地消费、`sub_plugin` 说明）/ 依赖表（新增 `filetype`）/ 项目状态全部同步
+- **CHANGELOG 新增本条目**，并按要求新增 `Future`（动态切换数据库 + `check_pointer` 适配器）与「待优化项」（项目内 `HACK` / `TODO` / `NOTE`）标注
+
+### Future
+
+- **让 `config.yaml` 动态切换数据库**：`check_pointer` 目前只有配置模型、没有消费方，`main.py` 仍写死 `InMemorySaver()`；计划由配置驱动 checkpoint 落库，让会话记忆可持久化、可换后端
+- **新增 `check_pointer` 适配器**：为上一项配套 —— 在子插件体系里加一个 checkpointer 适配器（或在 `Registry` 上开注册口），把 `database` / `connect_to` 映射到具体 saver（`InMemorySaver` / `AsyncSqliteSaver` / `AsyncPostgresSaver`），避免主包直接依赖各后端驱动
+
+### 待优化项（项目内 HACK / TODO）
+
+- **`main.py:171` `# hack: 快速测试技术债 后续改成动态创建`**：`chat_model` 仍是每条消息 new 一个 `ChatOpenAI`，且模型名 / `base_url` 硬编码，未接 `PluginConfig.providers`（`Provider.models` / `LLM` 已定义 `context_window` / `max_tokens` / `visions` / `protocol`，但无人消费）
+- **`models/config/plugin.py:12` `# TODO`**：`MemeConfig` 不属于 miaoli_bot 的原生配置，计划后续随 `tools` 一起迁到独立子插件
+- **`core/graph_pipeline.py:123` `# NOTE: 先不写错误处理`**：`_dispatch` 逐个执行 handler 时没有 try/except，任一 handler 抛错整轮请求即失败；「`GraphBubbleUp` 必须放行」的问题仍在
+- **子插件侧 `hack`（`base_nodes/nodes/_compact.py`）**：`MAX_KEEP_MESSAGES` / `CONTEXT_WINDOW` 为测试期常量（未从配置读取），token 估算也是「大致算一下」
+
 ## [0.8.1] - 2026-09-29
 
 > ⚠️ **本版本含破坏性更名**：配置键 `meme_config.sqlite_path` → `db_path`、`send_file_to_qq` 的参数 `file` → `path`、`send_meme_to_qq` 的参数 `path` + `by` → `hash_`。旧 `config.yaml` 与既有调用写法需同步调整。

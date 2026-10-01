@@ -2,12 +2,12 @@
 #
 # 用法：
 #   1. cp config.example.yaml config.yaml
-#   2. 把 api_key 换成真实密钥，account_config 换成真实账号
+#   2. 把 api_key 换成真实密钥，account 换成真实账号
 #
 # 注意：config.yaml 已加入 .gitignore，不会被提交（内含密钥）。
 #       本文件是入库的模板，不要在这里填真实密钥。
 #
-# 配置键名与 models/plugin_config.py 的 PluginConfig 字段一一对应。
+# 配置键名与 models/config/plugin.py 的 PluginConfig 字段一一对应。
 # 插件加载时（on_load）会做一次校验：必填缺失 / 路径不存在 / 类型不符都会抛 ValidationError。
 
 session_dir: "/tmp/"
@@ -22,15 +22,22 @@ providers:
       - name: "deepseek-pro"
 
 # 账号信息（四项全必填）：format_prompt 节点用它拼 <account> 提示词块
-account_config:
+account:
   bot_id: "机器人QQ号"
   root_id: "管理员QQ号"
   bot_nickname: "喵璃"
   root_nickname: "主人"
 
-# output_config 是预留占位：字段已定，当前还没有消费方（以后用于把回复切块并按字数模拟打字延迟），
-# 下面全是默认值，不用配也能跑。
-# output_config:
+# output：回复切块与打字延迟已落地消费（on_message），下面全是默认值，不用配也能跑。
+# output:
 #   typing_speed: 0.01           # 每个字的打字时间
 #   typing_speed_offset: 0       # 打字速度偏移
-#   split_separator: ""          # 输出分隔符
+#   split_separator: "\n\n"      # 输出切块分隔符；不写（默认 null）= 不切块，空串会被校验拒绝
+
+sub_plugin:                    # 子插件加载（缺失 load_from 会报 TypeError）
+  is_enable: false             # 当前未被消费（PluginLoader 无条件加载）
+  load_from: "/sdcard/python/miaoli_bot_plugins"   # 内置子插件所在目录
+
+# check_pointer:                 # checkpoint 数据库（当前尚未接线，见 README）
+#   database: "memory"           # memory / sqlite / postgresql
+#   connect_to: null             # database 非 memory 时必填

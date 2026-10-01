@@ -2,28 +2,29 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.8.1
+- **版本**：0.8.3
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
-- **阶段**：重构完成，当前处于**优化态** —— 架构骨架已立住，后续以补齐功能、补错误处理、优化体验为主
+- **阶段**：插件化拆分完成，当前处于**优化态** —— 主包只剩图管线与子插件加载框架，业务由子插件提供，后续以接线 `check_pointer`、补齐错误处理与体验优化为主
 
 ## 功能特性
 
-- 🧩 **自建图管线**：`core.GraphPipeline`（泛型 `GraphPipeline[StateT, ContextT, InputT, OutputT]`，四个 TypeVar 取自 `langgraph.typing`）把「事件 → 处理器」的编排从 `main.py` 抽成独立类 —— 8 个图事件常量集中在 `consts/graph.py`，节点用 `register(event, node, priority=0)` **显式**挂载（同一事件可挂多个，按 `priority` 排序），`wire()` 一次性产出 8 节点 + 8 条边，`compile(checkpointer=…)` 出 `CompiledStateGraph`。**「谁挂在哪个事件上」在 `main.py._build_graph` 里一眼可见**。
-- 🧠 **LLM 接入**：`ChatOpenAI` 经 `models.GraphRuntimeContext` 的 `chat_model` 注入图；`call_llm` 节点用 `bind_tools(TOOLS)` 后请求模型；工具循环由 `tools_condition` 条件边在「有 `tool_calls` → 执行工具 → 回到请求」与「无 `tool_calls` → 收尾」之间自动分流。
-- 📜 **状态与上下文分离**：`models.GraphState`（进 checkpoint 的会话状态）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖）。`context` 不进 checkpoint、不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`；`messages` 是唯一带 reducer（`add_messages`）的键，天然累加，**不需要手动保存历史**。
-- 🎛️ **配置模型化（分层）**：`PluginConfig` 由平铺字段改为分层 —— `providers: [Provider(name / base_url / api_key / models: [LLM(name / context_window / max_tokens)])]` 加 `account_config`（`bot_id` / `root_id` / `bot_nickname` / `root_nickname`，四项全必填）、`meme_config`、`output_config`、`session_dir`（`DirectoryPath`）/ `prompt_file`（`FilePath`）/ `system_prompt`。路径类型让 `prompt_file` 指向不存在的文件在**加载期**就报错，`account_config` 缺失即 `ValidationError`（fail-fast，不再等到首条消息 `KeyError`）。
-- 🛠️ **工具调用闭环**：8 个工具 —— 发消息 `send_message_to_qq`、发文件 `send_file_to_qq`（按路径）、发表情包 `send_meme_to_qq`（按 hash 发已归档的）、列表情包 `list_memes`、归档表情包 `archive_meme`、下载 QQ 文件 `download_qq_file`、查消息 `query_qq_message_id`、撤回消息 `delete_qq_message`。统一由 `ToolNode` 执行，返回值经 `utils.tool_result_builder` 的 `success` / `fail` / `custom` 收敛成 `{"status": bool, "message": …}`。
-- 💽 **meme 子系统**：`utils.MemeSqlite`（`rapsqlite` 异步驱动，`async with` 内建 `memes` / `tags` 两表 + 自动 commit/close）承担存取，`archive_meme` 归档（带标签去重）、`list_memes` 列举（**不回传 base64**，避免图片体积撑爆上下文）、`send_meme_to_qq` 按 hash 取图发送；`meme_config` 的 `db_path` 指向 sqlite 文件，`is_enable` 为 `false` 时三个工具统一返回 `fail("meme被禁用")`。
-- 🧩 **两级解析链**：`EventParseChain`（群 / 私聊事件元数据）与 `SegmentParseChain`（文本 / AT / 图片 / 文件 / 引用消息段）双链分发，`utils.easier_parser.parse_message` 一步合并产出 `ParseResult(event, segments)` 喂给图。
+- 🧩 **自建图管线**：`core.GraphPipeline`（泛型 `GraphPipeline[StateT, ContextT, InputT, OutputT]`，四个 TypeVar 取自 `langgraph.typing`）把「事件 → 处理器」的编排抽成独立类 —— 8 个图事件常量集中在 `consts/graph.py`，节点用 `register(event, node, priority=0)` **显式**挂载（同一事件可挂多个，按 `priority` 排序），`wire()` 一次性产出 8 节点 + 8 条边，`compile(checkpointer=…)` 出 `CompiledStateGraph`。**谁挂在哪个事件上，由子插件注册时声明**。
+- 🔌 **子插件系统**：`core.PluginLoader` 扫描 `sub_plugin.load_from` 下带 `plugin.toml` 的子目录，把每个子目录注册成 Python 包后实例化入口类并调 `on_load()`；子插件通过 `core.Registry` 注册工具 / 解析器 / 图节点；卸载时 `on_close()` 并把整包从 `sys.modules` 抹掉，改完代码重载立即生效。
+- 🧠 **LLM 接入**：`ChatOpenAI` 经 `models.GraphRuntimeContext` 的 `chat_model` 注入图；`call_llm` 节点用 `runtime.context["tools"]`（来自 `ToolRegistry`）`bind_tools` 后请求模型；工具循环由 `tools_condition` 条件边在「有 `tool_calls` → 执行工具 → 回到请求」与「无 `tool_calls` → 收尾」之间自动分流。
+- 📜 **状态与运行时分离**：`models.GraphState`（进 checkpoint 的会话状态：`event` / `segments` / `messages` / `final_answer` / `system_prompt`）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖：`plugin_config` / `chat_model` / `tools`）分离 —— `context` 不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`。
+- 🎛️ **配置模型化（分层 + 更名）**：`PluginConfig` 含 `providers`（`Provider(name / base_url / api_key / models: [LLM(name / context_window / max_tokens / visions / protocol)])`）、`account`（`bot_id` / `root_id` / `bot_nickname` / `root_nickname`，四项全必填）、`meme`、`output`、`check_pointer`、`sub_plugin` 与 `session_dir` / `prompt_file` / `system_prompt`；`DirectoryPath` / `FilePath` 让路径在**加载期**就被校验，缺失即 `ValidationError`。
+- 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolNode` 执行，返回值经 `utils.tool_result_builder` 的 `success` / `fail` / `custom` 收敛成 `{"status": bool, "message": …}`；主包不再内置任何工具，平台 / 系统 / meme 工具全部由内置子插件注册。
+- 🧩 **两级解析链**：`EventParseChain`（群 / 私聊事件元数据）与 `SegmentParseChain`（文本 / AT / 图片 / 文件 / 引用消息段）双链分发，`utils.easier_parser.parse_message` 一步合并产出 `ParseResult(event, segments)` 喂给图；解析器由 `base_parsers` 子插件注册。
 - 🖼️ **多类型消息段**：`Text` → `{text}`、`At` → `{at}`、`Image` → `{image, size}`、`File` → `{file, size}`、`Reply` → `{reply}`。
 - 🦆 **鸭子类型适配**：`adapters/EventAdapter` 不依赖具体 ncatbot 类型，通过属性探测兼容不同消息事件形态（`user_id` / `group_id` / `is_group` / `send`）；`utils.get_id_from_event` 群取 `group_id`、私聊取 `user_id`。
-- 🔧 **协议先行**：`protocols/` 定义 `Parser` / `Closable` / `ChainProtocol` / `StoreProtocol`，其中 `Parser` 与 `Closable` 带 `@runtime_checkable`（可 `isinstance` 判定，`Closable` 即兜底清理的判定依据），业务实现均依赖接口。
+- 🔧 **协议先行**：`protocols/abc/` 定义编译期抽象（`PluginProtocol` / `ChainProtocol` / `StoreProtocol`），`protocols/runtime/` 定义运行时检查协议（`Parser` / `Closable`，均带 `@runtime_checkable`，可 `isinstance` 判定）。
 - 🧹 **关闭兜底清理**：`on_close` 先显式 `drop` 已知键，再对 `SHARE_STORE` 做快照遍历（`main.MiaoLiBot.clean_share_store`）—— 实现 `Closable` 的逐个 `close()`、close 后仍留在容器的 `drop` 掉、失败只记 warning 不中断。**兜底清理不代表可以不清理**，已知资源的显式清理仍是第一责任。
-- 💾 **共享存储**：`stores/SHARE_STORE` 全局共享容器，键集中定义于 `consts/share_store_keys.py`（`EVENT_PARSER` / `SEGMENT_PARSER` / `NCATBOT_API` / `PLUGIN_CONFIG`（配置模型实例）/ `RAW_CONFIG`（ncatbot 合并后的原始 dict）/ `PLUGIN_DIR` / `WORKSPACE_DIR`（ncatbot 分配的插件数据目录）/ `GRAPH_PIPELINE`）。
+- 💾 **共享存储**：`stores/SHARE_STORE` 全局共享容器，键集中定义于 `consts/share_store_keys.py`（`EVENT_PARSER` / `SEGMENT_PARSER` / `TOOL_REGISTRY` / `NCATBOT_API` / `PLUGIN_CONFIG` / `RAW_CONFIG` / `PLUGIN_DIR` / `WORKSPACE_DIR` / `GRAPH_PIPELINE`）。
 - 🔔 **事件优先级让位**：`on_message` 以 `priority=-100` 注册，排在后处理的位置 —— 扩展插件可用更高优先级抢先接收并停止事件传播（如 `miaoli_like` 的 `赞我` 用 `priority=100`），被上游截下的消息不会再进入 LLM。
 - 🎭 **角色扮演**：内置猫娘「喵璃」人设提示词（`data/prompts/prompt_v1.3.md`，另有 v1.0 ~ v1.2 历史版本）；`format_prompt` 节点把人设与管理员 / 机器人的 QQ 号、昵称拼成 `<account>` 标签块，一起写进系统提示词。
+- ⏱️ **输出切块与打字延迟**：按 `output.split_separator` 把回复切块（跳过空块），每块按 `len(块) * typing_speed ± typing_speed_offset` 随机 sleep 后再发送，模拟真人在打字。
 - 🧪 **本地测试（待重写）**：`tests/` 目录（gitignore，不随仓库提交）里的用例针对的是 pi 桥接层，随 0.8.0 重构整体失效。
 
 ## 架构设计
@@ -32,37 +33,39 @@
 QQ / NapCat (OneBot)
         │ ncatbot 事件
         ▼
-main.py  MiaoLiBot(NcatBotPlugin)      ← config.yaml → models.PluginConfig（providers / account_config / …）
+main.py  MiaoLiBot(NcatBotPlugin)      ← config.yaml → models.PluginConfig（providers / account / sub_plugin / …）
         │   ① parse_message（easier_parser 合并 event + segment 两级解析）
         │   ② EventAdapter.build(event) + concatenate_id → session_id（thread_id）
         ▼
-parsers/  EventParseChain → Group / PrivateMessageEventParser
-          SegmentParseChain → Text / At / Image / File / ReplySegmentParser
-        │   → ParseResult(event, segments)
+chains/  EventParseChain → Group / PrivateMessageEventParser
+         SegmentParseChain → Text / At / Image / File / ReplySegmentParser
+        │   → ParseResult(event, segments)      （解析器由 base_parsers 子插件注册）
         ▼
 core/GraphPipeline.ainvoke({"event", "segments"}, thread_id=session_id, context=…)
         │
         │  START
         ▼
-   ON_AGENT_START
+   ON_AGENT_START ── format_input（event + segments → HumanMessage，追加进 messages）
         ▼
-   ON_TURN_START ── format_input（event + segments → HumanMessage，追加进 messages）
-        │           format_prompt（<account> 信息块 + 人设 → system_prompt 键）
+   ON_TURN_START
         ▼
-   ON_BEFORE_REQUEST ──▶ ON_REQUEST ── call_llm ──▶ bind_tools(TOOLS) → ChatOpenAI
-        ▲                    │                            │
-        │                    │                            ▼
-        │           ON_AFTER_REQUEST             AIMessage（含 tool_calls）
-        │                    │
-        │  tools_condition   ├── 有 tool_calls ──▶ ON_TOOL_CALLING ── ToolNode → ToolMessage
+   ON_BEFORE_REQUEST ── format_prompt（<account> 信息块 + 人设 → system_prompt 键）
+        ▼
+   ON_REQUEST ── compact（超窗压缩）→ call_llm ──▶ bind_tools(tools) → ChatOpenAI
+        │                                              │
+        │                                              ▼
+   ON_AFTER_REQUEST                           AIMessage（含 tool_calls）
+        │
+        │  tools_condition   ├── 有 tool_calls ──▶ ON_TOOL_CALLING ── invoke_tools → ToolMessage
+        │                    │                     （attach_image 把图片挪进 HumanMessage）
         │                    │                     （回到 ON_BEFORE_REQUEST）
-        └────────────────────┴── 无 tool_calls ──▶ ON_TURN_END ── last_msg_to_answer
-                                                        ▼         （messages[-1] → final_answer）
-                                                   ON_AGENT_END
+        └────────────────────┴── 无 tool_calls ──▶ ON_TURN_END
+                                                        ▼
+                                                   ON_AGENT_END ── latest_to_answer（messages[-1] → final_answer）
                                                         ▼
                                                        END
 
-        │  output["final_answer"]
+        │  output["final_answer"]（按 output.split_separator 切块 + 打字延迟）
         ▼
 adapters/EventAdapter.send(api, …)  ──▶  QQ
 ```
@@ -71,9 +74,10 @@ adapters/EventAdapter.send(api, …)  ──▶  QQ
 
 ```
 miaoli_bot/
-├── main.py                        # 插件入口：MiaoLiBot（建图 + 注册两级解析链 + TOOLS 列表）
+├── main.py                        # 插件入口：MiaoLiBot（建容器 + 建图 + 起子插件加载器）
 ├── manifest.toml                  # 插件清单（name / version / entry_class / pip_dependencies）
 ├── config.example.yaml            # 配置模板（config.yaml 已 gitignore，内含密钥不提交）
+├── __init__.py                    # 顶层重导出（consts / GraphState / SHARE_STORE / 构造器 / 协议）
 ├── adapters/                      # ncatbot 事件鸭子类型适配器
 │   ├── base_adapter.py            #   BaseAdapter 基类
 │   └── event_adapter.py           #   EventAdapter（user_id / group_id / is_group / send）
@@ -84,48 +88,61 @@ miaoli_bot/
 ├── consts/                        # 常量集中定义
 │   ├── graph.py                   #   8 个图事件名（ON_TURN_START 等）+ MAX_PRIORITY / MIN_PRIORITY
 │   ├── id_prefix.py               #   会话键前缀（group- / private-）
-│   └── share_store_keys.py        #   SHARE_STORE 键名
-├── core/                          # 图管线与节点
+│   └── share_store_keys.py        #   SHARE_STORE 键名（含 TOOL_REGISTRY）
+├── core/                          # 图管线与子插件加载
 │   ├── graph_pipeline.py          #   GraphPipeline：register / wire / compile / ainvoke / _dispatch / _merge
-│   └── nodes.py                   #   5 个图节点（format_input / format_prompt / call_llm / on_tool_calling / last_msg_to_answer）
+│   ├── plugin_loader.py           #   PluginLoader：扫 plugin.toml → 注册成包 → 加载 / 卸载子插件
+│   ├── registry.py                #   Registry：子插件的注册门面（工具 / 解析器 / 图节点），含全局单例 registry
+│   └── tool_registry.py           #   ToolRegistry：按名字存工具（register / remove / tools）
 ├── data/prompts/                  # 提示词资产（prompt_v1.0.md ~ prompt_v1.3.md）
 ├── errors/                        # 异常定义
 │   ├── base_bot_error.py          #   BaseBotError 基类
 │   ├── api_unavailable_error.py   #   APIUnavailableError（工具里 api 不可用时抛）
 │   └── session_manager_closing_error.py # SessionManagerClosingError
 ├── models/                        # 数据模型
-│   ├── plugin_config.py           #   PluginConfig / Provider / LLM / AccountConfig / MemeConfig / OutputConfig
+│   ├── config/                    #   PluginConfig / Provider / LLM / Accounts / OutputConfig / SubPluginConfig / CheckPointerConfig
 │   ├── graph_state.py             #   GraphState（进 checkpoint：event / segments / messages / final_answer / system_prompt）
 │   ├── graph_runtime_context.py   #   GraphRuntimeContext（不进 checkpoint：plugin_config / chat_model / tools）
-│   └── runtimes/                  #   Handler（图处理器登记单元）/ ParseResult / DispatchResult
-├── parsers/                       # 解析器实现
-│   ├── event_parsers/             #   Group / PrivateMessageEventParser
-│   └── segment_parsers/           #   Text / At / Image / File / ReplySegmentParser
-├── protocols/                     # 抽象协议：Parser / Closable / ChainProtocol / StoreProtocol
+│   └── runtime/                   #   Handler（图处理器登记单元）/ ParseResult / DispatchResult
+├── protocols/                     # 抽象协议
+│   ├── abc/                       #   编译期抽象：PluginProtocol / ChainProtocol / StoreProtocol
+│   └── runtime/                   #   运行时检查：Parser / Closable（@runtime_checkable）
 ├── stores/                        # 全局共享存储（SHARE_STORE）
-├── tools/                         # 8 个暴露给 LLM 的工具
 ├── tests/                         # 本地 pytest 用例（gitignore，不提交；当前待重写）
 └── utils/                         # 工具函数
     ├── easier_parser.py           #   parse_event / parse_segment / parse_message 快捷入口
     ├── easier_sender.py           #   private / group 便捷发送封装
     ├── event_ops.py               #   get_id_from_event（群 → group_id，私聊 → user_id）
-    ├── meme_sqlite.py             #   MemeSqlite（rapsqlite 异步驱动：建表 / 判重 / 增查 / 按标签查）
     ├── sugar.py                   #   concatenate_id（会话键加 group- / private- 前缀）
     └── tool_result_builder.py     #   custom / success / fail（工具返回值统一契约）
 ```
 
 ## 数据流
 
-1. QQ 消息经 NapCat → ncatbot → 按注册优先级分发给各插件：本插件以 `priority=-100` 排在后面，若上游插件（如 `miaoli_like` 的 `赞我`）已停止事件传播，本条消息不会到达这里，流程到此结束。
-2. `on_message` 先判 `@`（群消息必须 @ 到机器人，`all_except=True`），再调 `parse_message`：`EventParseChain` 解析事件元数据（群 → `GroupMessageEventParser`，私聊 → `PrivateMessageEventParser`），`SegmentParseChain` 逐段解析 `message`（文本 / AT / 图片 / 文件 / 引用），合并为 `ParseResult(event, segments)`。
-3. `session_id = concatenate_id(target_id, is_group=is_group)`（群 → `group-<group_id>`，私聊 → `private-<user_id>`），作为 LangGraph 的 `thread_id` —— 同一会话的 `messages` 由 checkpointer（`InMemorySaver`）按 `thread_id` 累积，跨轮记忆不需要插件自己做。
-4. `graph_pipeline.ainvoke({"event": …, "segments": …}, thread_id=session_id, context={"plugin_config": self.cfg, "chat_model": …, "tools": TOOLS})`。
-5. 图内 `ON_TURN_START`：`format_input` 把 `event` + `segments` 序列化成 JSON 文本包成 `HumanMessage` **追加**进 `messages`（`add_messages` reducer 保证累加）；`format_prompt` 把 `<account>` 信息块 + 人设写入 `system_prompt` 键（普通键，每轮覆盖 —— **静态内容不追加，否则每轮多一份**）。
-6. `ON_REQUEST` 的 `call_llm`：`runtime.context["chat_model"].bind_tools(runtime.context["tools"])` 后以 `[SystemMessage(state["system_prompt"]), *state["messages"]]` 请求模型（**系统提示词拼在副本最前，不动 `state["messages"]`**），返回的 `AIMessage` 追加进 `messages`。
-7. `ON_AFTER_REQUEST` 由 `tools_condition` 分流：有 `tool_calls` → `ON_TOOL_CALLING` 的 `on_tool_calling` 用 `ToolNode(runtime.context["tools"])` 执行工具、`ToolMessage` 追加进 `messages`，回到 `ON_BEFORE_REQUEST` 再请求一次；无 `tool_calls` → `ON_TURN_END`。
-8. `ON_TURN_END` 的 `last_msg_to_answer` 取 `messages[-1]`，是 `AIMessage` 就把 `content` 写进 `final_answer`（否则回退成固定文案）。
-9. `on_message` 拿 `output["final_answer"]` 交给 `EventAdapter.send(self.api, …)` 发回 QQ。
-10. 插件卸载（`on_close`）：先显式 `drop` 掉 `NCATBOT_API` / `PLUGIN_CONFIG` / `RAW_CONFIG` / `PLUGIN_DIR` / `WORKSPACE_DIR` / `GRAPH_PIPELINE`，再由 `clean_share_store()` 对 `SHARE_STORE` 兜底清理 —— 实现 `Closable` 的键逐个 `close()`，close 后仍留在容器的 `drop` 掉（已被对象自行摘除则记 warning），全程逐键记日志。
+1. QQ 消息经 NapCat → ncatbot → 按注册优先级分发给各插件：本插件以 `priority=-100` 排在后处理位置，上游插件若停下事件传播（如 `miaoli_like` 的 `赞我` 用 `priority=100`）本插件就收不到；群聊消息还必须 @ 到 `plugin_cfg.account.bot_id`。
+2. `on_message` 先建 `EventAdapter` 与 `session_id`，再调 `parse_message(event, message)`（内部走 `EventParseChain` / `SegmentParseChain`，解析器由 `base_parsers` 子插件注册）→ `ParseResult(event, segments)`。
+3. `session_id = concatenate_id(target_id, is_group=is_group)`（群 → `group-<group_id>`，私聊 → `private-<user_id>`），作为 LangGraph 的 `thread_id` —— 同一会话共享 `InMemorySaver` checkpoint，跨轮记忆不串台。
+4. `graph_pipeline.ainvoke({"event": …, "segments": …}, thread_id=session_id, context={"plugin_config": …, "chat_model": …, "tools": tool_registry.tools})`。
+5. `ON_AGENT_START` 的 `format_input` 把 `event` + `segments` 序列化成 JSON 文本包成 `HumanMessage` **追加**进 `messages`；`ON_BEFORE_REQUEST` 的 `format_prompt` 把 `<account>` 信息块 + 人设写进 `system_prompt` 键（普通键，每轮覆盖而不是追加，否则每轮多留一份人设）。
+6. `ON_REQUEST` 先跑 `compact`（`priority=-10`：token 超窗时把历史压成一条 `<compaction>` 摘要，`RemoveMessage(REMOVE_ALL_MESSAGES)` 清空后放回摘要与保留窗口），再由 `call_llm` 以 `[SystemMessage(state["system_prompt"]), *state["messages"]]` 请求模型，返回的 `AIMessage` 追加进 `messages`。
+7. `ON_AFTER_REQUEST` 由 `tools_condition` 分流：有 `tool_calls` → `ON_TOOL_CALLING` 的 `invoke_tools` 用 `ToolNode` 执行工具、`ToolMessage` 追加进 `messages`（若工具结果带图片，`attach_image` 会把图片块挪成一条 `HumanMessage`），回到 `ON_BEFORE_REQUEST` 再请求一次；无 `tool_calls` → `ON_TURN_END`。
+8. `ON_TURN_END` 无节点；`ON_AGENT_END` 的 `latest_to_answer` 取 `messages[-1]`，是 `AIMessage` 就把 `content` 写进 `final_answer`（否则回退成固定文案）。
+9. `on_message` 拿 `output["final_answer"]`，按 `output.split_separator` 切块并跳过空块，每块按 `len(块) * typing_speed ± typing_speed_offset` 随机 sleep 后交给 `EventAdapter.send(self.api, …)` 发回 QQ。
+10. 插件卸载（`on_close`）：先显式 `drop` 掉已知键（含 `TOOL_REGISTRY` / `EVENT_PARSER` / `SEGMENT_PARSER` / `GRAPH_PIPELINE`），再由 `clean_share_store()` 对 `SHARE_STORE` 兜底清理，最后 `plugin_loader.unload_all()` 卸载子插件（逐个 `on_close()` 并从 `sys.modules` 抹掉整包）。
+
+## 内置子插件
+
+主包只保留图管线与加载框架，业务能力由子插件提供。以下五个内置子插件随本仓库一并提交（加载目录由 `sub_plugin.load_from` 指定）：
+
+| 子插件 | 提供 |
+|---|---|
+| `base_nodes` | 图节点：`format_input` / `format_prompt` / `compact` / `call_llm` / `invoke_tools` / `attach_image` / `latest_to_answer`；含上下文压缩与图片附加 |
+| `base_parsers` | 两级解析器：群 / 私聊事件 + 文本 / AT / 图片 / 文件 / 引用消息段 |
+| `base_platform_tools` | 平台工具：发消息 / 发文件 / 下载文件 / 查消息 ID / 撤回消息 |
+| `base_system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml`） |
+| `meme_extension` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除（自带 `config.yaml`） |
+
+子插件约定：目录下放 `plugin.toml`（`enter_class` / `enter_file`）与可选 `config.yaml`；入口类继承 `PluginProtocol`，在 `on_load` 里用 `Registry` 注册工具 / 解析器 / 图节点，在 `on_close` 里释放资源。
 
 ## 安装与使用
 
@@ -135,6 +152,7 @@ miaoli_bot/
    - `langgraph`（`>=1.2.12`）
    - `langchain-openai`（`>=1.6.6`）
    - `rapsqlite`（`>=0.5.1`）
+   - `filetype`（`>=1.2.0`）
 3. 插件配置：`cp config.example.yaml config.yaml` 后填真实 `api_key`（`config.yaml` 含密钥、已 gitignore）。插件目录的 `config.yaml` 为默认值，全局 `config.yaml` 的 `plugin.plugin_configs.miaoli_bot` 同键覆盖；`on_load` 第一步即 `PluginConfig.model_validate(self.config)`，必填项缺失 / 路径不存在 / 类型不符都会抛 `ValidationError`，本插件加载失败并在日志留下 traceback（机器人其余部分不受影响）。
 
 配置键名与 `models.PluginConfig` 的字段一一对应：
@@ -145,12 +163,13 @@ miaoli_bot/
 | `providers[].base_url` | **必填** | 请求地址（**不会拼路径**，填到 `/v1` 这一层） |
 | `providers[].api_key` | **必填** | 鉴权密钥 |
 | `providers[].models` | `[]` | 模型列表，每项 `LLM(name / context_window / max_tokens)` |
-| `account_config` | **必填** | `bot_id` / `root_id` / `bot_nickname` / `root_nickname`，四项全必填；`format_prompt` 用它拼 `<account>` 提示词块 |
+| `account` | **必填** | `bot_id` / `root_id` / `bot_nickname` / `root_nickname`，四项全必填；`format_prompt` 用它拼 `<account>` 提示词块 |
 | `session_dir` | `gettempdir()`（`/tmp`） | 会话保存路径（`DirectoryPath` 校验存在性） |
 | `prompt_file` | `null` | 系统提示词文件（`FilePath` 校验存在性，加载时按 UTF-8 读入），优先于 `system_prompt` |
 | `system_prompt` | `null` | 内联系统提示词，仅在未配置 `prompt_file` 时使用（可为 `null`） |
-| `meme_config` | `MemeConfig()` | `is_enable`（默认 `false`）/ `db_path`（sqlite 数据库路径）/ `max_memes`；**可以关闭 + 传路径，不能启用 + 不传路径**（`model_validator` 拒绝）；`archive_meme` / `list_memes` / `send_meme_to_qq` 三个工具都读它 |
-| `output_config` | `OutputConfig()` | **Future 占位**（字段已定，暂无消费方）：`typing_speed`（默认 `0.01`）/ `typing_speed_offset`（默认 `0`）/ `split_separator`（默认 `""`）—— 以后用于把回复切块并按字数模拟打字延迟 |
+| `output` | `OutputConfig()` | `typing_speed`（默认 `0.01`，每个字的打字时间）/ `typing_speed_offset`（默认 `0`，随机延迟偏移）/ `split_separator`（默认 `null`，输出切块分隔符；空串会被校验拒绝，`null` 表示整条不切块）—— `on_message` 用它把回复切块并按字数模拟打字延迟 |
+| `check_pointer` | `CheckPointerConfig()` | `database`（`memory` / `sqlite` / `postgresql`，默认 `memory`）/ `connect_to`（数据库地址，**非 `memory` 必填**）；**尚未接线** —— `main.py` 仍写死 `InMemorySaver()`，见 Future |
+| `sub_plugin` | `SubPluginConfig()` | `is_enable`（默认 `false`，**当前未消费**）/ `load_from`（子插件目录，`Path`）；`PluginLoader` 扫描该目录下带 `plugin.toml` 的子目录并加载 |
 
 4. 启动 bot，在 QQ 中私聊或群聊（群聊需 @ 机器人）即可与模型对话。
 
@@ -170,12 +189,17 @@ cd <插件父目录>          # plugins/
 | `ncatbot`（`>=5.5.8`） | QQ 机器人框架 / 事件与消息 API |
 | `langgraph`（`>=1.2.12`） | 图管线（`StateGraph` / `ToolNode` / `tools_condition` / checkpoint） |
 | `langchain-openai`（`>=1.6.6`） | `ChatOpenAI`（可指向任意 OpenAI 兼容端点） |
-| `rapsqlite`（`>=0.5.1`） | meme 子系统的 sqlite 异步驱动（`utils/meme_sqlite.py`） |
+| `rapsqlite`（`>=0.5.1`） | 内置子插件 `meme_extension` 的 sqlite 异步驱动（仍随 `manifest.toml` 声明） |
+| `filetype`（`>=1.2.0`） | `base_system_tools` 的图片类型嗅探（`read_image`） |
 
-> 注：以上三个由 `manifest.toml` 的 `pip_dependencies` 声明。
+> 注：以上依赖由 `manifest.toml` 的 `pip_dependencies` 声明。
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.8.3 — **meme 子系统整体迁出主包（架构级变更）**：`tools/`（`meme_ops` 的 `send_meme` / `archive_meme` / `list_memes`）与 `utils/meme_sqlite.py` 删除，`MemeConfig` 配置模型与 `meme` 配置键移除，meme 能力改由新增的内置子插件 `meme_extension` 提供（`archive_meme` / `send_meme_to_qq` / `list_memes` / `remove_meme_by_hash` / `search_memes_by_tags`）；修复两处 0.8.2 遗留问题 —— `PluginConfig` 补齐 `CheckPointerConfig` 导入（不再 `NameError`）、`OutputConfig.split_separator` 改为可空并在 `main.py` 增加 `None` 分支（不切块、整条发送）；另将 `GraphPipeline` 的 handler 排序改为按 `priority` 降序，`base_nodes` 的注册优先级相应调整（`compact` = 1、`attach_image` = 10）。**仍遗留**：`check_pointer` 尚未接线（`main.py` 写死 `InMemorySaver()`）、`sub_plugin.is_enable` 未被消费。
+
+v0.8.2 — **插件化拆分（架构级变更）**：图节点与两级解析器从主包移出、改由子插件在运行时注册 —— 新增 `core/plugin_loader.py`（`PluginLoader`：扫 `plugin.toml` → 注册成包 → 加载 / 卸载）、`core/registry.py`（`Registry`：子插件的工具 / 解析器 / 图节点注册门面）与 `core/tool_registry.py`（`ToolRegistry`，替代硬编码 `TOOLS`），`main.py` 随之瘦身为「建容器 → 建图 → `load_all()`」；`parsers/`、`core/nodes.py`、`tools/` 下 5 个平台工具删除，`models/plugin_config.py` 拆成 `models/config/` 包、`models/runtimes/` 更名 `models/runtime/`、`protocols/` 拆成 `abc/` 与 `runtime/` 两个子包；配置键 `account_config` / `meme_config` / `output_config` 更名为 `account` / `meme` / `output` 并新增 `check_pointer`（`CheckPointerConfig`），`manifest.toml` 依赖新增 `filetype`；`output` 三个字段落地消费（切块 + 打字延迟）。**随附四个内置子插件**：`base_nodes`（图节点，另含上下文压缩与图片附加）、`base_parsers`（解析器）、`base_platform_tools`（发消息 / 发文件 / 下载 / 查 ID / 撤回）、`base_system_tools`（bash / 读写文件 / 读图）。**Future：让 `config.yaml` 动态切换数据库，并为此新增 `check_pointer` 适配器（把 `database` / `connect_to` 映射到 `InMemorySaver` / `AsyncSqliteSaver` / `AsyncPostgresSaver`）。待优化项：`main.py` 的 `chat_model` 仍每条消息 new 一个 `ChatOpenAI`（标 `# HACK`，未接 `providers`）；`MemeConfig` 待随 `tools` 迁到子插件（标 `# TODO`）；`GraphPipeline._dispatch` 无错误处理（标 `# NOTE`）；子插件 `_compact.py` 的常量与 token 估算待配置化。** 另：`CheckPointerConfig` 模型已就位但尚未接线（`plugin.py` 缺 import，当前导入会 `NameError`）。
 
 v0.8.1 — **meme 子系统落地 + 工具层参数收口（含三处破坏性更名）**：删除 `core/meme_manager.py` 与 `utils/meme_sqlite_ops.py`，新增 `utils/meme_sqlite.py` 的 `MemeSqlite`（`rapsqlite` 异步驱动，`async with` 内建 `memes` / `tags` 两表 + 自动 `commit` / `close`，接口 `query_tags` / `fetch_memes` / `fetch_meme_from_hash` / `is_hash_existing` / `insert_meme`），`manifest.toml` 依赖新增 `rapsqlite`；`list_memes` 由 `fail("工具未写完")` 落地为 `{meme_id: {hash, description}}`。**破坏性更名**：配置键 `meme_config.sqlite_path` → `db_path`、`send_file_to_qq` 的参数 `file` → `path`（类型收紧为 `FilePath`）、`send_meme_to_qq` 的参数 `path` + `by` → `hash_`（不再按路径发图 —— 「已归档的表情包」与「任意文件」分属两个工具，避免模型选错）。修复：`Image(url=…)` 参数名写错（`Image` 的必填字段是 `file`，报 `file: Field required`）、base64 两处 bytes（`b64encode` 与 sqlite 取出的都是 bytes，拼出 `base64://b'…'` 需 `.decode()`）、`archive_meme` 对 dict 解包拿到键名、`fetch_meme_from_hash` 缺 `hash` 键、`MemeSqlite.__aexit__` 签名与漏 `close()`、`is_hash_existing` 恒真、`fetch_memes` 缺 `def`、两处 SQL 语法错、两处漏 import、两处命名。**架构未动，仍处优化态**。
 

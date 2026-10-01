@@ -18,7 +18,6 @@ from .tool_result_builder	import (
 
 from .event_ops		import get_id_from_event
 from .sugar			import concatenate_id
-from .meme_sqlite	import MemeSqlite
 
 
 __all__ = [
@@ -40,6 +39,5 @@ __all__ = [
 	
 	"get_id_from_event",
 	"concatenate_id",
-	"MemeSqlite",
 
 ]

@@ -7,6 +7,7 @@ from .share_store_keys	import (
 	GRAPH_PIPELINE,
 	PLUGIN_DIR,
 	WORKSPACE_DIR,
+	TOOL_REGISTRY,
 )
 
 from .id_prefix	import (
@@ -39,6 +40,7 @@ __all__ = [
 	"PLUGIN_DIR",
 	"GRAPH_PIPELINE",
 	"WORKSPACE_DIR",
+	"TOOL_REGISTRY",
 	
 	# id_prefix
 	"PRIVATE_PREFIX",

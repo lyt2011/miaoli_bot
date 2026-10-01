@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.9.7
+- **版本**：0.9.8
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -218,6 +218,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.9.8 — **发送循环加调试日志 + 变量语义化更名**：`on_message` 的发送段把图返回值改称 `raw_output`、正文提为 `answer_string`、切块结果提为 `answer_chunks`、循环变量改称 `chunk`，并在发送前加两条 `logger.debug`（本次输出字符数、分隔符与切出的块数），便于排查「一条回复被发成几条」类问题。**顺带修掉一次改名遗漏**：`answer_chunks` 误写成引用已不存在的 `raw_ot`（`NameError`，每条消息都会崩），已改为直接复用 `answer_string`。**验证**：AST 扫描确认无未定义名；模拟两种分隔符场景（`None` → 1 块、`"\n\n"` → 2 块）打印与发送条数正确；全仓 `compileall` 通过。**注意**：`logger.debug` 默认级别为 INFO，且你的 `/sdcard/Ncatbot_QQ/config.yaml` 是 `debug: false` + `logging.log_level: "ERROR"` —— 当前配置下这两条日志不会输出，需要 debug 模式才会显示。
 
 v0.9.7 — **修复「未设置分隔符时回复被逐字拆成 N 条消息」**：`on_message` 的发送循环此前是「有分隔符 → `.split()` 得到 list，无分隔符 → 直接用整个 `str`」两条分支混进同一个 `for` —— 当 `output.split_separator` 为 `null`（默认值）时 `for answer in final_answer` **迭代的是字符串本身，即逐字符**：一句话被拆成几十条 QQ 消息逐字发出，且每个字符都要 sleep 一次打字延迟。现已把切块收口到新增的 `utils.split_string`（**恒返回 `List[str]`**：无分隔符 / 空串 → `[整条]`，否则 `str.split`），`for` 拿到的必然是「块」而不是「字符」。实测同一段 13 字文本：修复前发出 13 条、修复后 1 条。**验证**：`split_string` 五种分隔符真跑（`None` / `""` / `"\n\n"` / `"||"` / 单字）+ 空串输入边界，恒返回 list；`utils/sugar.py` 补齐 `Optional` / `List` 类型导入（此前靠 Python 3.14 注解延迟求值侥幸不报错，`typing.get_type_hints` 会 `NameError`）；`concatenate_id` 签名去掉了多余的 `is_group` 默认值（唯一调用处本就显式传参）；全仓 `compileall` 通过。**未验证**：NcatBot 运行时下的真实 QQ 发送未跑。
 

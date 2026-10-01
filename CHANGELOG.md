@@ -3,6 +3,33 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.9.8] - 2026-10-01
+
+> 🔍 **发送循环加调试日志**：`on_message` 在发送前打印两条 `logger.debug` —— 本次输出的字符数与「分隔符 + 切出的块数」，用来排查「一条回复被发成几条 / 没被切块」这类问题。
+
+### Added
+
+- **`main.py`（`on_message` 发送段）**：两条 `logger.debug` —— `输出 N 个字符`、`分隔符 'X' 分割出 N 个块`
+
+### Fixed
+
+- **`main.py`**：改名遗漏 —— `answer_chunks` 计算时误引用已不存在的 `raw_ot`（上一版把 `raw_ot` 更名为 `raw_output` 时漏掉这一处），会在**每条消息**上 `NameError`。现改为直接复用已提取的 `answer_string`
+
+### Changed
+
+- **`main.py`（`on_message` 发送段）**：变量语义化 —— `raw_ot` → `raw_output`、新增 `answer_string`（正文）与 `answer_chunks`（切块结果）、循环变量 `line` → `chunk`
+
+### Note
+
+- **验证**：AST 扫描 `on_message` 作用域确认无未定义名（此前正是该扫描发现的 `raw_ot` 遗漏）；模拟两种分隔符场景 —— `None` → 1 块发送 1 条、`"\n\n"` → 2 块发送 2 条，日志输出与发送条数均正确；全仓 `compileall` 通过
+- **注意（日志可见性）**：`logger.debug` 的实际可见性由 NcatBot 的全局 debug 模式决定 —— `setup_logging(debug=…)` → `set_debug_mode()` 会把插件 logger 的级别设为 `DEBUG`（开）/ `INFO`（关）。当前运行配置 `/sdcard/Ncatbot_QQ/config.yaml` 是 `debug: false` + `logging.log_level: "ERROR"`，因此这两条日志**不会输出**；要看到需要开启 debug 模式
+- **未验证**：NcatBot 运行时下的真实 QQ 发送未跑
+
+### Docs
+
+- **README 更新至 0.9.8**：版本号 / 项目状态新增本版段（含日志可见性提示）
+- **CHANGELOG 新增本条目**
+
 ## [0.9.7] - 2026-10-01
 
 > 🐞 **修复「未设置分隔符时回复被逐字拆成 N 条消息」**：`on_message` 的发送循环此前把两条分支混进同一个 `for` —— 有分隔符时 `.split()` 得到 `list`，无分隔符时直接用整个 `str`。当 `output.split_separator` 为 `null`（默认值）时，`for answer in final_answer` **迭代的是字符串本身，即逐字符**：一句话被拆成几十条 QQ 消息逐字发出，且每个字符都要 sleep 一次打字延迟。现已把切块收口到新增的 `utils.split_string`，它**恒返回 `List[str]`** —— `for` 拿到的必然是「块」而非「字符」。

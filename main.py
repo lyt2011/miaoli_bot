@@ -152,17 +152,21 @@ class MiaoLiBot(NcatBotPlugin):
 		input		= {"event": parse_result.event, "segments": parse_result.segments}
 		context		= {"plugin_config": plugin_cfg, "chat_model": chat_model, "tools": tool_registry.tools}
 		
-		raw_ot		= await graph_pipeline.ainvoke(input, thread_id=session_id, context=context)
-		final_ot	= split_string(string=raw_ot["final_answer"], separator=plugin_cfg.output.split_separator)
+		raw_output		= await graph_pipeline.ainvoke(input, thread_id=session_id, context=context)
+		answer_string	= raw_output["final_answer"]
+		answer_chunks	= split_string(string=answer_string, separator=plugin_cfg.output.split_separator)
 		
-		for line in final_ot:
+		self.logger.debug(f"输出 {len(answer_string)} 个字符")
+		self.logger.debug(f"分隔符 '{plugin_cfg.output.split_separator}' 分割出 {len(answer_chunks)} 个块")
+		
+		for chunk in answer_chunks:
 			
-			if not line:
+			if not chunk:
 				continue
 			
-			total_char_time	= len(line) * plugin_cfg.output.typing_speed
+			total_char_time	= len(chunk) * plugin_cfg.output.typing_speed
 			max_char_time	= total_char_time + plugin_cfg.output.typing_speed_offset
 			mim_char_time	= total_char_time - plugin_cfg.output.typing_speed_offset
 			
 			await asyncio.sleep(random.uniform(mim_char_time, max_char_time))
-			await event_adapter.send(self.api, line)
+			await event_adapter.send(self.api, chunk)

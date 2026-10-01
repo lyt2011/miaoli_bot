@@ -3,6 +3,25 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.9.1] - 2026-10-01
+
+> 🔄 **meme 子系统的 sqlite 驱动由 `rapsqlite` 换成 `aiosqlite`**：`rapsqlite` 在 x86_64 上没有预编译轮子（要现场编译），而 `MemeSqlite` 用到的那点能力 `aiosqlite` 全都有 —— 取消该依赖，`manifest.toml` 的 `pip_dependencies` 由 10 项减到 9 项。
+
+### Changed
+
+- **`plugins/meme_extension/core/meme_sqlite.py`：`from rapsqlite import connect` → `import aiosqlite`**。两者建连时机不同 —— `rapsqlite.connect(path)` 是同步的，`aiosqlite.connect(path)` 必须 `await`，所以建连从 `__init__` 挪到 `async with` 的 `__aenter__`（在 DDL 之前）：`__init__` 只存 `self.path` 并声明 `self.conn: aiosqlite.Connection`。查询 / 写入接口（`query_tags` / `fetch_memes` / `fetch_meme_from_hash` / `is_hash_existing` / `insert_meme` / `remove_meme`）与调用方（五个工具统一 `async with MemeSqlite(...)`）均不变。
+- **`manifest.toml`：移除 `rapsqlite = ">=0.5.1"`**；`aiosqlite` 保留（`SQLiteAdapter` 与 `MemeSqlite` 共用一份）。
+
+### Note
+
+- **验证**（真实 sqlite 文件，非静态核对）：跑通 `MemeSqlite` 全部接口 —— `__aenter__` 后 `conn` 确为 `aiosqlite.Connection`、建表（`memes` / `tags` / `sqlite_sequence`）与 `idx_tags_meme` 索引存在、`PRAGMA foreign_keys` 确实为开、插入与判重、`fetch_memes` / `fetch_meme_from_hash`（含未命中返回 `None`）、`query_tags` 单标签命中与多标签交集、按 hash 删除（返回 id）与重复删返回 `None`、级联清 tag 引用；再跨一次 `async with` 重开确认落盘。14 项断言全 PASS。
+- **未验证**：`meme_extension` 子插件在 NcatBot 运行时下的工具端到端调用未跑（与 0.9.0 遗留的未验证项同一类）。
+
+### Docs
+
+- **README 更新至 0.9.1**：版本号 / 安装依赖列表（去掉 `rapsqlite`，并把 `aiosqlite` 的用途补上 `MemeSqlite`）/ 依赖表（删 `rapsqlite` 行，`aiosqlite` 行改为「`SQLiteAdapter` 与 `meme_extension.MemeSqlite` 共用」）/ 项目状态新增本版段
+- **CHANGELOG 新增本条目**
+
 ## [0.9.0] - 2026-10-01
 
 > 🔌 **`checkpointer` 真正接线（本次为架构级新增）**：`config.yaml` 的 `checkpointer.database` 现在能在 `memory` / `sqlite` / `postgresql` 之间切换，`main.py` 不再写死 `InMemorySaver()` —— 新增 `protocols/abc/checkpointer_adapter.py` 的适配器基类与 `adapters/check_pointers/` 的三个实现，把 `BaseCheckpointSaver` 的协议方法 1:1 转发给底层 saver。

@@ -1,4 +1,4 @@
-from rapsqlite	import connect
+import aiosqlite
 from typing		import Self, Optional, List, Dict, Any, Tuple
 
 
@@ -44,7 +44,8 @@ WHERE hash = ?
 class MemeSqlite:
 	
 	def __init__(self, path: str) -> None:
-		self.conn = connect(path)
+		self.path	= path
+		self.conn	: aiosqlite.Connection
 	
 	async def query_tags(self, tags: List[str]) -> Dict[str, Any]:
 		
@@ -111,6 +112,8 @@ class MemeSqlite:
 		return meme_id
 	
 	async def __aenter__(self) -> Self:
+		
+		self.conn = await aiosqlite.connect(self.path)
 		
 		await self.conn.execute(ENABLE_FOREIGN)
 		await self.conn.execute(CREATE_MEMES_TABLE)

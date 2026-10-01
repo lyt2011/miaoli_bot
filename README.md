@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.9.0
+- **版本**：0.9.1
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -160,8 +160,7 @@ miaoli_bot/
    - `langchain-openai`（`>=1.6.6`）
    - `langgraph-checkpoint-sqlite`（`>=3.1.1`，`database: sqlite` 时用到）
    - `langgraph-checkpoint-postgres`（`>=3.1.2`，`database: postgresql` 时用到）
-   - `aiosqlite`（`>=0.22.1`）/ `psycopg`（`>=3.3.6`）/ `psycopg-pool`（`>=3.3.3`）：适配器直接 import 的驱动与连接池
-   - `rapsqlite`（`>=0.5.1`）
+   - `aiosqlite`（`>=0.22.1`）/ `psycopg`（`>=3.3.6`）/ `psycopg-pool`（`>=3.3.3`）：直接 import 的驱动与连接池（`SQLiteAdapter` / `PostgresqlAdapter` / `MemeSqlite`）
    - `filetype`（`>=1.2.0`）
 3. 插件配置：`cp config.example.yaml config.yaml` 后填真实 `api_key`（`config.yaml` 含密钥、已 gitignore）。插件目录的 `config.yaml` 为默认值，全局 `config.yaml` 的 `plugin.plugin_configs.miaoli_bot` 同键覆盖；`on_load` 第一步即 `PluginConfig.model_validate(self.config)`，必填项缺失 / 路径不存在 / 类型不符都会抛 `ValidationError`，本插件加载失败并在日志留下 traceback（机器人其余部分不受影响）。
 
@@ -201,15 +200,16 @@ cd <插件父目录>          # plugins/
 | `langchain-openai`（`>=1.6.6`） | `ChatOpenAI`（可指向任意 OpenAI 兼容端点） |
 | `langgraph-checkpoint-sqlite`（`>=3.1.1`） | `AsyncSqliteSaver`（`checkpointer.database: sqlite`），带 `aiosqlite` / `sqlite-vec` |
 | `langgraph-checkpoint-postgres`（`>=3.1.2`） | `AsyncPostgresSaver`（`checkpointer.database: postgresql`），带 `psycopg` / `psycopg-pool` |
-| `aiosqlite`（`>=0.22.1`） | `SQLiteAdapter` 直接 import 的异步 sqlite 驱动（连接由适配器 `close()` 关） |
+| `aiosqlite`（`>=0.22.1`） | `SQLiteAdapter` 与 `meme_extension.MemeSqlite` 共用的异步 sqlite 驱动（连接分别由 `close()` / `__aexit__` 关） |
 | `psycopg`（`>=3.3.6`）/ `psycopg-pool`（`>=3.3.3`） | `PostgresqlAdapter` 直接 import 的驱动与连接池（`AsyncConnectionPool`） |
-| `rapsqlite`（`>=0.5.1`） | 内置子插件 `meme_extension` 的 sqlite 异步驱动（仍随 `manifest.toml` 声明） |
 | `filetype`（`>=1.2.0`） | `base_system_tools` 的图片类型嗅探（`read_image`） |
 
 > 注：以上依赖由 `manifest.toml` 的 `pip_dependencies` 声明。
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.9.1 — **meme 子系统的 sqlite 驱动换成 `aiosqlite`**：`rapsqlite` 在 x86_64 上没有预编译轮子（要现场编译），而 `MemeSqlite` 用到的能力 `aiosqlite` 全都有 —— `plugins/meme_extension/core/meme_sqlite.py` 改为 `import aiosqlite`，建连从 `__init__`（`rapsqlite.connect` 是同步的）挪到 `__aenter__`（`await aiosqlite.connect(self.path)`，在 DDL 之前），`manifest.toml` 移除 `rapsqlite`（`pip_dependencies` 10 → 9，`aiosqlite` 由 `SQLiteAdapter` 与 `MemeSqlite` 共用）；对外接口与 `async with` 用法不变。**验证**：对真实 sqlite 文件跑通 `MemeSqlite` 全部接口（建表 / 索引 / 外键 / 插入 / 判重 / 列全部 / 按 hash 取 / 按标签查含多标签交集 / 按 hash 删 / 级联清 tag）并跨 `async with` 重开确认落盘，14 项断言全 PASS。**未验证**：`meme_extension` 在 NcatBot 运行时下的工具端到端调用未跑。
 
 v0.9.0 — **checkpointer 真正接线 + 内置子插件入仓**：`config.yaml` 的 `checkpointer.database` 现在能在 `memory` / `sqlite` / `postgresql` 之间切换 —— 新增 `protocols/abc/checkpointer_adapter.py` 的 `BaseCheckpointerSaverAdapter`（`ABC + BaseCheckpointSaver`，1:1 转发 `get_tuple` / `list` / `put` / `put_writes` / `delete_thread` / `delete_for_runs` / `copy_thread` / `prune` 与对应的 8 个异步方法，以及 `config_specs` / `get_next_version` / `with_allowlist`；抽象 `connect(connect_to, **kwargs)` / `close()`）与 `adapters/check_pointers/` 的三个实现（`InMemoryAdapter` / `SQLiteAdapter` = `aiosqlite` + `AsyncSqliteSaver` / `PostgresqlAdapter` = `AsyncConnectionPool` + `AsyncPostgresSaver`）；`main.py` 新增 `CPA_MAPPING` 按 `database` 取类，`_build_graph(checkpointer)` 不再写死 `InMemorySaver()`，`on_close` 改为 `await self.cpa.close()`；配置键 `check_pointer` → `checkpointer`（**破坏性**）并新增 `extra`（透传 `connect(**kwargs)`）；`Closable` 协议与 `main.MiaoLiBot.clean_share_store()` 兜底清理整体移除（由显式 `close()` 取代）；五个内置子插件从 `/sdcard/python/miaoli_bot_plugins` 迁入本仓库 `plugins/` 并随仓库提交（`.gitignore` 增加 `!plugins/*/config.yaml` 例外，子插件默认值入库）。**验证**：memory / sqlite 端到端跑通；postgresql 对真库（`127.0.0.1:15432/miaoli`，PostgreSQL 14.24）跑通 26 项断言 —— 建表与重复 `setup` 幂等 / 两轮续存真落库 / `aget_state_history` 与 `parent_config` 链 / `adelete_thread` 清理后归零 / `close()` 关池 / 同步路径 `InvalidStateError` 原样透传 / `prune` 等三个 `NotImplementedError` 透传 / `extra` 参数（`max_size` / `min_size` / `row_factory`）确实落到池上。**未验证**：插件整体 `on_load` 未在 NcatBot 运行时跑过（只验证了 `PluginConfig` 校验 + `CPA_MAPPING` 建连 + `MiaoLiBot._build_graph(adapter)` 能 `compile`），`plugins/` 五个子插件未做运行验证。**仍遗留**：`sub_plugin.is_enable` 未被消费、`PluginLoader` 对 `load_from=None` 无明确行为、`main.py` 的 `chat_model` 仍是 `# HACK`。
 

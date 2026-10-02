@@ -5,8 +5,6 @@ from ncatbot.event.qq	import MessageEvent
 from pathlib	import Path
 from typing		import Optional
 
-from langgraph.checkpoint.memory	import InMemorySaver
-from langchain_openai				import ChatOpenAI
 from langgraph.checkpoint.base		import BaseCheckpointSaver
 
 from .core		import GraphPipeline, ToolRegistry, PluginLoader, registry
@@ -147,10 +145,11 @@ class MiaoLiBot(NcatBotPlugin):
 			self.logger.warning("事件解析失败 跳过")
 			return
 		
-		# HACK: 快速测试技术债 后续改成动态创建 (LLMManager)
-		chat_model	= ChatOpenAI(model="deepseek-flash", base_url="https://api.deepseek.com/v1", api_key=plugin_cfg.providers[0].api_key)
-		input		= {"event": parse_result.event, "segments": parse_result.segments}
-		context		= {"plugin_config": plugin_cfg, "chat_model": chat_model, "tools": tool_registry.tools}
+		# HACK: 依旧技术债
+		provider_name	= next(iter(plugin_cfg.providers))
+		model_name		= next(iter(plugin_cfg.providers[provider_name].models))
+		input			= {"event": parse_result.event, "segments": parse_result.segments, "provider_name": provider_name, "model_name": model_name}
+		context			= {"client": None, "tools": tool_registry.tools}
 		
 		raw_output		= await graph_pipeline.ainvoke(input, thread_id=session_id, context=context)
 		answer_string	= raw_output["final_answer"]

@@ -1,4 +1,7 @@
 class PipelineStopDispatch(Exception):
 	
-	"""用于停止 GraphPipeline 分发的标志"""
+	"""
+	用于停止 GraphPipeline 分发的标志
+	不继承 BaseBotError
+	"""
 	...

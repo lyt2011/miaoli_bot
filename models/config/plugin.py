@@ -1,5 +1,5 @@
 from pydantic	import BaseModel, Field, ConfigDict, model_validator, FilePath, DirectoryPath
-from typing		import Optional, Self, List
+from typing		import Optional, Self, Dict
 from tempfile	import gettempdir
 from pathlib	import Path
 
@@ -14,7 +14,7 @@ class PluginConfig(BaseModel):
 	
 	model_config = ConfigDict(extra="allow")
 	
-	providers: List[Provider]	= Field(default_factory=list, description="供应商")
+	providers: Dict[str, Provider]	= Field(default_factory=dict, description="供应商")
 	
 	session_dir		: DirectoryPath			= Field(default_factory=gettempdir, description="会话保存路径 默认使用临时路径")
 	prompt_file		: Optional[FilePath]	= Field(default=None, description="系统提示词文件")

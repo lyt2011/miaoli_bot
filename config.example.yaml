@@ -14,14 +14,19 @@ session_dir: "/tmp/"
 prompt_file: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/data/prompts/prompt_v1.3.md"
 
 providers:
-  - name: "deepseek"
+  deepseek:                                     # 键名 = 供应商名，与 state 里的 provider_name 对应
     base_url: "https://api.deepseek.com/v1"     # 请求地址，不会拼路径，填到 /v1 这一层
     api_key: "YOUR_API_KEY_HERE"
     models:
-      - name: "deepseek-flash"
-      - name: "deepseek-pro"
+      deepseek-flash:                           # 键名 = 模型名，与 state 里的 model_name 对应
+        protocol: "openai-completions"          # openai-completions / openai-response
+        context_window: 128000                  # 上下文窗口
+        max_tokens: 4096                        # 最大输出
+        visions:                                # 模型支持的模态输入，至少一项
+          - "text"                              #   image / video / tool_calls / text / audio
+          - "tool_calls"
 
-# 账号信息（四项全必填）：format_prompt 节点用它拼 <account> 提示词块
+# 账号信息（四项全必填）：account_inject 子插件的 inject_account 节点用它拼管理员/机器人的 QQ 号与昵称提示词块
 account:
   bot_id: "机器人QQ号"
   admin_id: "管理员QQ号"

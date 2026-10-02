@@ -38,7 +38,7 @@ permissions:
 
   # —— meme_extension ——
   - tool_name: "archive_meme"
-    permission: "anyone"
+    permission: "admin"
   - tool_name: "send_meme_to_qq"
     permission: "anyone"
   - tool_name: "list_memes"

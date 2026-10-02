@@ -3,6 +3,55 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.9.11] - 2026-10-02
+
+> 🧩 **LLM 实例改为图内按需创建，并补齐这轮重构留下的坑**：`ChatOpenAI` 不再在 `main.py` 里硬编码（`model="deepseek-flash"` + `providers[0]`），改为 `main.py` 只把 `provider_name` / `model_name` 两个**名字**写进 state，由新节点 `build_client`（挂 `ON_TURN_START`）读根配置建实例、写进 `runtime.context["client"]`；`runtime.context["chat_model"]` 随之更名 `client`。`format_prompt` 从 `base_nodes` 拆出，独立成子插件 `account_inject`（`ON_AGENT_START`），配置读取统一走 `SHARE_STORE`。`providers` / `models` 由 list 改为 dict，`name` 字段交给字典键承担。**本版同时修掉这轮改动里 4 个必崩项、模板脱节与 3 处多余导入**（详见 `### Fixed`）。
+
+### Added
+
+- **`plugins/base_nodes/nodes/build_client.py`（新节点，挂 `ON_TURN_START`）**：从 `SHARE_STORE` 取根配置，按 `state["provider_name"]` / `state["model_name"]` 定位 `Provider` / `LLM`，用 `base_url` / `api_key` / `max_tokens` 建 `ChatOpenAI` 写入 `runtime.context["client"]`。**刻意不在此处 `bind_tools`** —— 工具表由 `tool_permission_manager` 按身份每请求裁剪，绑定必须留在 `call_llm` 调用点（`bind_tools` 返回新对象，不会污染已建实例）
+- **`plugins/account_inject/`（新子插件）**：把原 `format_prompt` 的账号注入职责独立成插件 —— `inject_account`（`ON_AGENT_START`）拼 `<administrator_QQ_number>` / `<administrator_nickname>` / `<bot_QQ_number>` / `<bot_nickname>` 四块，与 `cfg.system_prompt` 以空行拼接写进 `system_prompt`。入口类 `AccountInjector`
+- **`consts/graph.py` 的 `DEFAULT_PRIORITY = 0`**：节点注册的默认优先级常量（经 `consts/__init__.py` 导出），`base_nodes` / `account_inject` 的 `on_load` 全部改用它，不再散落字面量
+- **`GraphState` 新增 `provider_name: str` / `model_name: str`**：由 `main.py` 每请求写入，供 `build_client` 选模型；同时把 `messages` 提到字段首位
+- **`models/config/__init__.py` / `models/__init__.py` 导出 `LLM` / `Provider`**：此前只能从 `models.config.provider` 深处导入
+
+### Changed
+
+- **`models/config/provider.py`**：`Provider` / `LLM` 的 `name` 字段删除（改由字典键承担）；`LLM.protocol` 由带默认值改为**必填**；`visions` 加 `min_length=1`；`Vision` 字面量 `tool_calling` → `tool_calls`；`Protocol` 字面量 `openai-completion` → `openai-completions`
+- **`models/config/plugin.py`**：`providers` 由 `List[Provider]` → `Dict[str, Provider]`，`Provider.models` 由 `List[LLM]` → `Dict[str, LLM]`
+- **`models/graph_runtime_context.py`**：`chat_model: BaseChatModel` → `client: Optional[BaseChatModel]`（进图时为 `None`，由 `build_client` 在 `ON_TURN_START` 填）；删除 `plugin_config` 字段（配置统一走 `SHARE_STORE`）
+- **`main.py`**：删掉硬编码的 `ChatOpenAI(...)` 与 `langchain_openai` 导入；改为把首个供应商/模型名写进 state，`context` 变为 `{"client": None, "tools": ...}`
+- **`plugins/base_nodes/main.py`**：移除 `on_before_request(format_prompt)`，新增 `on_turn_start(build_client)`；所有优先级改用 `DEFAULT_PRIORITY`（`attach_image` 由 `-10` → `DEFAULT_PRIORITY-1`）
+- **`plugins/base_nodes/nodes/call_llm.py` / `_compact.py`**：`chat_model` → `client`（`call_llm` 内 `assistant_msg` → `AI_message`）
+- **`plugins/base_nodes/nodes/_compact.py`**：摘要指令由第一人称改为第三人称
+- **`plugins/tool_permission_manager/config.yaml`**：`archive_meme` 的权限由 `anyone` 收紧为 `admin`（归档表情包会写库，按可写类工具对待）
+- **`config.example.yaml`**：`providers` 迁移到 dict 结构，补齐 `protocol` / `context_window` / `max_tokens` / `visions`（新 schema 下均为必填或至少一项）；账号段注释由已删除的 `format_prompt` 更正为 `account_inject` 子插件的 `inject_account`
+- **`errors/pipeline_stop_dispatch.py`**：docstring 补「不继承 `BaseBotError`」的设计说明（纯注释）
+
+### Fixed
+
+- **`main.py` 的供应商/模型选择**（🔴 每条消息必崩）：`plugin_cfg.providers.keys()[0]` —— `dict_keys` 不可下标（`TypeError`），且下一行的 `provider` 从未定义（`NameError`）。改为 `next(iter(...))`
+- **`plugins/base_nodes/nodes/build_client.py` 缺导入**（🔴）：用了 `SHARE_STORE` 与 `PLUGIN_CONFIG` 却都没导入，`ON_TURN_START` 一到就 `NameError`
+- **`models/config/plugin.py` 缺 `Dict` 导入**（🔴）：`providers` 改成 `Dict[str, Provider]` 后 typing 行没补 `Dict`，pydantic 建 schema 解析注解即抛 `NameError`
+- **`plugins/base_nodes/main.py` 残留 `inject_account` 导入**（🔴）：该节点已迁至 `account_inject` 子插件，`nodes/__init__.py` 不再导出，`from .nodes import (...)` 直接 `ImportError`
+- **`config.example.yaml` 未随 schema 迁移**：`providers` 还是旧 list 结构，照抄模板即 `ValidationError`
+- **3 处多余导入**：`main.py` 的 `InMemorySaver`、`models/config/plugin.py` 的 `List`、`plugins/account_inject/main.py` 的 `Registry`（全仓 `ruff --select F401` 复查为零）
+- **`plugins/account_inject/main.py` 类名**：`BaseNodes` → `AccountInjector`（从 `base_nodes` 复制时的残留），`plugin.toml` 的 `enter_class` 同步
+
+### Removed
+
+- **`plugins/base_nodes/nodes/format_prompt.py`**：职责迁至 `account_inject` 子插件的 `inject_account`
+
+### Note
+
+- **验证**（真跑）：① `compileall` 全仓 rc=0、`ruff --select F401` 全仓 `All checks passed!`；② 全量插件加载 **7/7**（`account_inject` / `base_nodes` / `base_parsers` / `base_platform_tools` / `base_system_tools` / `meme_extension` / `tool_permission_manager`），节点注册为 `ON_AGENT_START=[inject_account(0), format_input(0)]`、`ON_TURN_START=[build_client(0)]`、`ON_BEFORE_REQUEST=[pick_tools(1)]`、`ON_REQUEST=[compact(1), call_llm(0)]`、`ON_TOOL_CALLING=[invoke_tools(0), attach_image(-1)]`、`ON_AGENT_END=[latest_to_answer(0)]`；③ `config.example.yaml` 与根 `config.yaml` 均过 `PluginConfig` 校验；④ **真实 `GraphPipeline` 端到端 `ainvoke`**（真插件 + 真 config + 替换掉实例化来源的假模型）：`build_client` 收到的构造参数为 `model=deepseek-flash` / `base_url=https://api.deepseek.com/v1` / `api_key=sk-…` / `max_tokens=4096`，管理员可见 **15** 个工具、路人可见 **9** 个（与权限表 `admin × 6` + `anyone × 9` 自洽），`system_prompt` 已注入账号信息，`final_answer` 正常产出
+- **未验证**：NcatBot 运行时下的端到端（`on_message` → 发送循环）未跑；`_compact.py` 的 `CONTEXT_WINDOW` 仍是硬编码 `128000`，尚未接到 `LLM.context_window`
+- **已知边界**：模型选择仍是「取根配置里第一个供应商的第一个模型」（`main.py` 内标着 `# HACK: 依旧技术债`），尚未提供配置项
+
+### Docs
+
+- **CHANGELOG 新增本条目**（README 尚未同步至 0.9.11）
+
 ## [0.9.10] - 2026-10-01
 
 > 🛑 **`_dispatch` 加错误处理，并新增「停止分发」信号 `PipelineStopDispatch`**：此前 `_dispatch` 明确标着「先不写错误处理」（`# NOTE`），handler 里抛任何异常都会直接冒到 langgraph。现在每个 handler 被 `try` 包住，并按三类分流 —— 抛 `PipelineStopDispatch` 即**停止本事件剩余 handler**（已累积的增量照常返回，后续事件不受影响）；langgraph 的控制流异常（`GraphBubbleUp`，含 `GraphInterrupt` 等）**原样透传**；其它异常**记录 traceback 后跳过该 handler，继续执行本事件剩余 handler**（**行为变更**：旧行为是直接冒到 langgraph）。**另外修复 `attach_image` 的优先级倒挂** —— 它此前排在 `invoke_tools` **之前**（`10 > 0`，而 dispatch 是降序执行），导致「把图片从 ToolMessage 搬进 HumanMessage」的逻辑永远扫不到本轮工具消息、完全空转；改为负数后恢复生效。

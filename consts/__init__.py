@@ -25,6 +25,7 @@ from .graph	import (
 	ON_AGENT_END,
 	MAX_PRIORITY,
 	MIN_PRIORITY,
+	DEFAULT_PRIORITY,
 	ON_REQUEST,
 )
 
@@ -55,6 +56,7 @@ __all__ = [
 	"ON_TURN_END",
 	"ON_AGENT_END",
 	"MAX_PRIORITY",
+	"DEFAULT_PRIORITY",
 	"MIN_PRIORITY",
 	"ON_REQUEST",
 

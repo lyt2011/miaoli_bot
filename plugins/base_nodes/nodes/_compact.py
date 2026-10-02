@@ -17,7 +17,7 @@ MAX_KEEP_MESSAGES	= 5
 CONTEXT_WINDOW		= 128000
 COMPACT_MESSAGE		= (
 	"The context is about to overflow. "
-	"Please use the first person to generate a summary for the context."
+	"Please use the third person to generate a summary for the context."
 )
 
 
@@ -92,12 +92,12 @@ async def compact(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> O
 	if CONTEXT_WINDOW > tokens:
 		return None
 	
-	chat_model	= runtime.context["chat_model"]
+	client		= runtime.context["client"]
 	keep_index	= _last_common_idx(messages)
 	
 	# 摘要请求：system + 历史 + 压缩指令
 	prompt		= [SystemMessage(state["system_prompt"]), *messages, HumanMessage(COMPACT_MESSAGE)]
-	ai_message	= await chat_model.ainvoke(prompt)
+	ai_message	= await client.ainvoke(prompt)
 	
 	compaction	= f"<compaction>{ai_message.content}</compaction>"
 	

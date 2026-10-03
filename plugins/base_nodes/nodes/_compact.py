@@ -2,14 +2,13 @@ from miaoli_bot	import GraphRuntimeContext, GraphState
 from typing		import Dict, Any, Optional, List
 
 from langgraph.runtime			import Runtime
+from langgraph.types			import Overwrite
 from langchain_core.messages	import (
 	AIMessage,
 	HumanMessage,
 	SystemMessage,
 	ToolMessage,
-	RemoveMessage,
 )
-from langgraph.graph.message	import REMOVE_ALL_MESSAGES
 
 
 # HACK: 测试期用常量 懒得从配置拿
@@ -101,11 +100,5 @@ async def compact(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> O
 	
 	compaction	= f"<compaction>{ai_message.content}</compaction>"
 	
-	# 整体替换：清空历史，放入摘要 + 保留窗口
-	final_messages = [
-		RemoveMessage(id=REMOVE_ALL_MESSAGES),
-		HumanMessage(compaction),
-		*messages[keep_index:],
-	]
-	
-	return {"messages": final_messages}
+	# 整体替换：放入摘要 + 保留窗口
+	return {"messages": Overwrite([HumanMessage(compaction), *messages[keep_index:]])}

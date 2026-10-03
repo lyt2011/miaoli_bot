@@ -1,0 +1,2 @@
+enable: true
+fix_message: "The tool was unexpectedly interrupted, and the results have been lost. Please confirm the status before proceeding to the next step."

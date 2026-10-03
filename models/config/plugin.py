@@ -14,7 +14,7 @@ class PluginConfig(BaseModel):
 	
 	model_config = ConfigDict(extra="allow")
 	
-	providers: Dict[str, Provider]	= Field(default_factory=dict, description="供应商")
+	providers: Dict[str, Provider]	= Field(default_factory=dict, description="供应商", min_length=1)
 	
 	session_dir		: DirectoryPath			= Field(default_factory=gettempdir, description="会话保存路径 默认使用临时路径")
 	prompt_file		: Optional[FilePath]	= Field(default=None, description="系统提示词文件")

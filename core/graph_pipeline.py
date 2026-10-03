@@ -8,7 +8,7 @@ from langgraph.prebuilt			import tools_condition
 from langgraph.runtime			import Runtime
 from langgraph.errors			import GraphBubbleUp
 from langgraph.typing			import StateT, ContextT, InputT, OutputT
-from langgraph.types			import Command
+from langgraph.types			import Command, Overwrite
 from langgraph.checkpoint.base	import BaseCheckpointSaver
 
 from ..models		import Handler
@@ -25,7 +25,7 @@ from ..consts		import (
 )
 
 
-LOGGER = get_log(__file__)
+LOGGER = get_log("GraphPipeline")
 
 
 Function			= Callable[[StateT, Runtime[ContextT]], Awaitable[Dict[str, Any]]]
@@ -56,11 +56,7 @@ class GraphPipeline(Generic[StateT, ContextT, InputT, OutputT]):
 		self._app: Optional[_CompiledStateGraph] = None
 	
 	async def ainvoke(self, input: Union[InputT, Command], thread_id: str, *, context: Optional[ContextT]) -> Dict[str, Any]:
-		return await self._app.ainvoke(
-			input,
-			{"configurable": {"thread_id": thread_id}},
-			context	= context,
-		)
+		return await self._app.ainvoke(input, {"configurable": {"thread_id": thread_id}}, context=context)
 	
 	def wire(self) -> None:
 		
@@ -87,11 +83,7 @@ class GraphPipeline(Generic[StateT, ContextT, InputT, OutputT]):
 		self._graph.add_edge(ON_AGENT_END, END)
 		
 		# 循环：有 tool_calls 去跑工具 没有就收尾
-		self._graph.add_conditional_edges(
-			ON_AFTER_REQUEST,
-			tools_condition,
-			{"tools": ON_TOOL_CALLING, END: ON_TURN_END},
-		)
+		self._graph.add_conditional_edges(ON_AFTER_REQUEST, tools_condition, {"tools": ON_TOOL_CALLING, END: ON_TURN_END})
 	
 	def compile(self, checkpointer: Optional[BaseCheckpointSaver] = None) -> None:
 		self._app: _CompiledStateGraph = self._graph.compile(checkpointer=checkpointer)
@@ -141,7 +133,7 @@ class GraphPipeline(Generic[StateT, ContextT, InputT, OutputT]):
 			
 			if result is not None:
 				# 先更新增量 view从头重算
-				_updates	= self._merge(_updates, result, self._graph.channels)
+				_updates	= self._accumulate(_updates, result, self._graph.channels)
 				_view		= self._merge(state, _updates, self._graph.channels)
 		
 		return _updates # 仅返回本次dispatch产生的增量内容 让框架负责更新
@@ -153,11 +145,19 @@ class GraphPipeline(Generic[StateT, ContextT, InputT, OutputT]):
 		channels: Mapping[str, Any],
 	) -> Dict[str, Any]:
 		
-		"""将 new_data 通过 channel 的 operator 工厂合进 old_data"""
+		"""
+		将 new_data 合进 old_data
+		OverWrite 在此被展开/消费
+		"""
 		
 		merged	= dict(old_data)
 		
 		for key, value in new_data.items():
+			
+			# 替换语义 直接换值
+			if isinstance(value, Overwrite):
+				merged[key] = value.value
+				continue
 			
 			channel		= channels.get(key)
 			operator	= getattr(channel, "operator", None)
@@ -169,5 +169,41 @@ class GraphPipeline(Generic[StateT, ContextT, InputT, OutputT]):
 			# 无操作/不是增量 直接赋值
 			else:
 				merged[key] = value
+		
+		return merged
+	
+	@staticmethod
+	def _accumulate(
+		old_data: Mapping[str, Any],
+		new_data: Mapping[str, Any],
+		channels: Mapping[str, Any],
+	) -> Dict[str, Any]:
+		
+		"""把同一个事件里多个处理器的产出折叠成一份增量"""
+		
+		merged	= dict(old_data)
+		
+		for key, value in new_data.items():
+			
+			channel		= channels.get(key)
+			operator	= getattr(channel, "operator", None)
+			
+			# 无操作/不是增量 直接赋值
+			if operator is None or key not in merged:
+				merged[key] = value
+				continue
+			
+			old	= merged[key]
+			
+			# 新来的要替换 -> 它已吸收此前的增量 直接接管
+			if isinstance(value, Overwrite):
+				merged[key] = value
+			
+			# 之前是替换 -> 新增量叠在替换结果之上 包装保留
+			elif isinstance(old, Overwrite):
+				merged[key] = Overwrite(operator(old.value, value))
+			
+			else:
+				merged[key] = operator(old, value)
 		
 		return merged

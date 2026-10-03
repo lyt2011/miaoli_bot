@@ -22,11 +22,11 @@ providers:
         protocol: "openai-completions"          # openai-completions / openai-response
         context_window: 128000                  # 上下文窗口
         max_tokens: 4096                        # 最大输出
-        visions:                                # 模型支持的模态输入，至少一项
-          - "text"                              #   image / video / tool_calls / text / audio
-          - "tool_calls"
+        support_visions:                        # 模型支持的模态输入，至少一项
+          - "text"                              #   image / video / text / audio
+          - "image"
 
-# 账号信息（四项全必填）：account_inject 子插件的 inject_account 节点用它拼管理员/机器人的 QQ 号与昵称提示词块
+# 账号信息（四项全必填）：account_injector 子插件的 inject_account 节点用它拼管理员/机器人的 QQ 号与昵称提示词块
 account:
   bot_id: "机器人QQ号"
   admin_id: "管理员QQ号"

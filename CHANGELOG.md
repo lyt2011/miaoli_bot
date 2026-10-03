@@ -3,6 +3,37 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.9.12] - 2026-10-03
+
+> 🐛 **修复 `GraphPipeline` 增量归约不满足结合律的 bug（0.9.11 及之前的已发布代码里潜伏），并新增两个坏历史修复子插件**：`_dispatch` 把同一事件里各 handler 的返回值两两折叠时走的是 `add_messages`，而它**只在新来的那一份里找 `REMOVE_ALL_MESSAGES` 标记**，于是后一次「整表重写」会把前面积累的删除指令**静默丢弃**。修法是把「累积增量」与「增量 → 视图」两条路径拆开：新增 `_accumulate` 专管前者（让替换包装活到框架真正应用增量的那一刻），`_merge` 一行未动继续只负责后者。同时把「整表重写」的表达从 langchain 内部哨兵 `RemoveMessage(id=REMOVE_ALL_MESSAGES)` 换成 langgraph 官方 `Overwrite` —— 插件侧不再手搓内部哨兵，框架也不再解析它。**另外子插件目录 `account_inject/` 改名为 `account_injector/`**（入口类 `AccountInjector` 与 `plugin.toml` 的 `enter_class` 不变），README / `config.example.yaml` 里的引用同步收口。
+
+### Added
+
+- **`plugins/pending_tool_fixer/`（新子插件，入口类 `PendingToolFixer`）**：在 `ON_BEFORE_REQUEST`（`priority=3`）修复**悬空的工具调用** —— 存在发起但不存在返回的 `tool_call` 时，在每个悬空 `AIMessage` 之后插一条合成 `ToolMessage`（`id=f"auto-fix: {tool_call_id}"`、`status="error"`、`name` 取工具名、`content` 取自带 `config.yaml` 的 `fix_message`），返回 `{"messages": Overwrite(整表)}`。**历史本就合法时返回 `None`**（`fixed == 0` 即早返回）—— 这条守卫是必需的，否则每轮都会把整张消息表写进 `checkpoint_writes`
+- **`plugins/orphan_tool_fixer/`（新子插件，入口类 `OrphanToolFixer`）**：在 `ON_BEFORE_REQUEST`（`priority=2`）修复**孤儿工具返回** —— 删掉「找不到发起它的 `tool_call`」的 `ToolMessage`，**只产出定向删除增量**（`[RemoveMessage(id=m.id) for m in orphans]`），比整表重写更省；无孤儿时返回 `None`
+- **`utils/sugar.py` 新增 `get_thread_id` / `get_tool_calls`**：前者从 `langgraph.config.get_config()` 取当前 `thread_id`、**图外调用抛 `RuntimeError` 时兜底返回 `"unknown"`**（`on_load` / `on_close` / 裸协程里不能直接调，插件里也只用它打日志）；后者取 `message.tool_calls or []`。两者经 `utils/__init__.py` 导出，两个修复插件共用（插件自带的 `utils/sugar.py` 只留各自的业务约定：`fix_tool_message` 的 `auto-fix:` 前缀 / `declared_tool_call_ids`）
+
+### Changed
+
+- **`core/graph_pipeline.py` 新增 `_accumulate`（`_dispatch` 改用它折叠）**：与 `_merge` 的唯一区别是 **`Overwrite` 的包装必须留着** —— 它在这里被两两归约，若当场拆开，替换语义就丢了，后面再来的增量会被误当成追加。三分支：新来的要替换 → 直接接管；之前是替换 → `Overwrite(operator(old.value, value))` 叠在替换结果之上；否则 → `operator(old, value)`。`_merge` 相应地新增一个分支：`isinstance(value, Overwrite)` → `merged[key] = value.value`（处理器与视图拿到的必须是普通值），**其余一行未动**
+- **`plugins/base_nodes/nodes/_compact.py`**：「整表替换」由 `[RemoveMessage(id=REMOVE_ALL_MESSAGES), 摘要, *保留窗口]` 改为 `Overwrite([摘要, *保留窗口])`，`RemoveMessage` / `REMOVE_ALL_MESSAGES` 导入随之删除
+- **`plugins/account_inject/` → `plugins/account_injector/`**：目录改名（入口类 `AccountInjector` 与 `plugin.toml` 的 `enter_class` 不变，`SHARE_STORE` 键随包名自动变成 `miaoli_bot/subplugin/account_injector.*`）；README（特性说明 / 目录结构 / 数据流 / 子插件表 / 配置表）与 `config.example.yaml` 的注释同步收口，全仓再无旧名引用
+- **`models/config/provider.py`**：`LLM.visions` → `LLM.support_visions`（与 `config.example.yaml` 同步）；`Vision` 字面量去掉 `tool_calls`（模态输入不该混入工具能力描述）；`Provider.models` 加 `min_length=1`
+- **`models/config/plugin.py`**：`providers` 加 `min_length=1`（空供应商字典直接在校验期拒绝，不再等到建图时才 `KeyError`）
+- **`plugins/base_nodes/nodes/latest_to_answer.py`**：末条不是 `AIMessage` 时，兜底文案从固定的 `"我就是Bug."` 改为提示 `最后一条非 AIMessage 信息 ({类型})\n请携带 thread_id={id} 向管理员反馈`（`get_config()` 只在非 `AIMessage` 分支才调，正常回复不走那里）
+
+### Fixed
+
+- 🔴 **`GraphPipeline._dispatch` 的增量折叠不满足结合律（0.9.11 及之前的已发布代码里潜伏的 bug）**：`_dispatch` 此前用 `_merge` 折叠各 handler 的产出，而 `_merge` 走 `add_messages` —— 后者**只在 `right` 里找 `REMOVE_ALL_MESSAGES`**（`langgraph/graph/message.py`：`if remove_all_idx is not None: return right[remove_all_idx + 1:]`），`left` 被整个丢弃。于是「handler A 定向删了 x」+「handler B 整表重写」在同一超步里相遇时，**删除指令被静默吞掉、x 复活**。**实际后果**：`compact`（`priority=1`）与 `call_llm`（`priority=0`）的优先级一旦反序，压缩就被整个吞掉 —— 实测 30 条消息不降反升到 32 条（修后 30 → 6）。**注意**：langgraph 自己也用同一条（有缺陷的）归约规则，所以拆成独立节点、自定义 reducer 都救不了（前者并行节点共享旧快照、后者拿到的 `left` 已物化，删除是「缺席」而非「记录」），只能在框架的折叠层解决
+- **`plugins/base_nodes/nodes/_compact.py` 的既有隐患**：上述 bug 的既有受害者 —— 它一直是 `ON_REQUEST` 里唯一用整表重写的节点，与 `call_llm` 的追加同超步折叠，反序时压缩被吞。本次改 `Overwrite` 后，**与其它处理器的「追加 / 定向删除」可以任意顺序组合**
+- **`pending_tool_fixer` 的守卫缩进**：`if not fixed:` 的 `return` 曾误缩进进 `if` 体内，语义整个颠倒 —— `fixed == 0` 时反而返回 `Overwrite(整表)`（每轮写爆 `checkpoint_writes`），真需修复时却隐式返回 `None`。已改为 `if not fixed: return None`，日志与返回体放在守卫之后
+
+### Note
+
+- **验证**（真跑，共 **98 项断言**）：① `fixer_test2` **31/31** —— 两个插件真加载与注册、**真实坏数据**（服务器 `private-3640942712` 的 checkpoint `1f1be453-88be-659e-8789-b64c7bfcd617`，550 条）修复后 **550 → 551 条**且原有消息一条不少、顺序不变，优先级正/反序结果等价，幂等（修好后再跑无 `messages` 写入），八项边界；② `accumulate_unit_test` **27/27** —— 不含 `Overwrite` 时 `_accumulate` 与 `_merge` 逐位一致、替换+追加/删除双序、两次替换、非 `messages` 通道、空增量、真实 `_dispatch` 协同；③ `candidate_g_test` **18/18**；④ `compact_dispatch_check` **7/7** —— 正序 30 → 7、反序 30 → 6（修前反序 30 → 32）；⑤ `overwrite_graph_e2e_test` **15/15** —— 真实编译图 + checkpointer，含**通道还没有值时的首写 `Overwrite`**（langgraph 自己在 `update` 里处理了 MISSING）与「持久化后通道里是普通 list 而非 `Overwrite` 对象」；⑥ 全量插件加载 **9/9**（`account_injector` / `base_nodes` / `base_parsers` / `base_platform_tools` / `base_system_tools` / `meme_extension` / `orphan_tool_fixer` / `pending_tool_fixer` / `tool_permission_manager`），节点注册顺序不变；⑦ 端到端 `ainvoke` 管理员可见 **15** 工具 / 路人可见 **9** 工具；⑧ `compileall` 全仓 rc=0、`ruff --select F401,F821,F811` 全过
+- **存储代价**（实测，sqlite checkpointer，400 条历史）：`Overwrite` 与旧的 `RemoveMessage` 哨兵**同级** —— 纯追加时节点自身写入 **184 字节**，整表替换时 `Overwrite` 257,335 字节 vs 哨兵 257,432 字节（差 97 字节只是包装开销）。另外顺带省掉两处遍历：`_accumulate` 不再扫列表找标记（折叠 1.2~1.3×），`_merge` 的替换分支从 O(n) 全表拷贝降为 O(1) 直接换值
+- **未验证**：NcatBot 运行时下的端到端对话（`on_message` → 发送循环）未跑；两个修复插件在真实运行环境里对「上一轮异常中断」的修复效果未观测（只用真实坏数据 checkpoint 验证了修复正确性）；`_compact.py` 的 `CONTEXT_WINDOW` 仍是硬编码 `128000`
+
 ## [0.9.11] - 2026-10-02
 
 > 🧩 **LLM 实例改为图内按需创建，并补齐这轮重构留下的坑**：`ChatOpenAI` 不再在 `main.py` 里硬编码（`model="deepseek-flash"` + `providers[0]`），改为 `main.py` 只把 `provider_name` / `model_name` 两个**名字**写进 state，由新节点 `build_client`（挂 `ON_TURN_START`）读根配置建实例、写进 `runtime.context["client"]`；`runtime.context["chat_model"]` 随之更名 `client`。`format_prompt` 从 `base_nodes` 拆出，独立成子插件 `account_inject`（`ON_AGENT_START`），配置读取统一走 `SHARE_STORE`。`providers` / `models` 由 list 改为 dict，`name` 字段交给字典键承担。**本版同时修掉这轮改动里 4 个必崩项、模板脱节与 3 处多余导入**（详见 `### Fixed`）。

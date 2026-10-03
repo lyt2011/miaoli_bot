@@ -17,7 +17,12 @@ from .tool_result_builder	import (
 )
 
 from .event_ops		import get_id_from_event
-from .sugar			import concatenate_id, split_string
+from .sugar			import (
+	concatenate_id,
+	split_string,
+	get_thread_id,
+	get_tool_calls,
+)
 
 
 __all__ = [
@@ -40,5 +45,7 @@ __all__ = [
 	"get_id_from_event",
 	"concatenate_id",
 	"split_string",
+	"get_thread_id",
+	"get_tool_calls",
 
 ]

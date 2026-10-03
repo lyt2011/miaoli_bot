@@ -1,6 +1,6 @@
 from miaoli_bot.protocols	import PluginProtocol
 from miaoli_bot.stores		import SHARE_STORE
-from miaoli_bot.consts		import DEFAULT_PRIORITY
+from miaoli_bot.consts		import NORMAL
 
 from .models	import PluginConfig
 from .nodes		import fix_pending_tool_call
@@ -23,7 +23,7 @@ class PendingToolFixer(PluginProtocol):
 			return None
 		
 		# 优先级高于 compact(1) 与 call_llm(0) 保证在请求模型之前修好
-		self.registry.on_before_request(fix_pending_tool_call, priority=DEFAULT_PRIORITY+3)
+		self.registry.on_before_request(fix_pending_tool_call, priority=NORMAL+3)
 	
 	async def on_close(self) -> None:
 		

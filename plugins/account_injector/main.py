@@ -1,5 +1,5 @@
 from miaoli_bot.protocols	import PluginProtocol
-from miaoli_bot.consts		import DEFAULT_PRIORITY
+from miaoli_bot.consts		import NORMAL
 
 from .nodes	import inject_account
 
@@ -10,6 +10,6 @@ class AccountInjector(PluginProtocol):
 	
 	async def on_load(self) -> None:
 		
-		self.registry.on_agent_start(inject_account, priority=DEFAULT_PRIORITY)
+		self.registry.on_agent_start(inject_account, priority=NORMAL)
 
 	async def on_close(self) -> None: ...

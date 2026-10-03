@@ -1,0 +1,8 @@
+ON_AGENT_START		= "__on_agent_start__"
+ON_TURN_START		= "__on_turn_start__"
+ON_BEFORE_REQUEST	= "__on_before_request__"
+ON_REQUEST			= "__on_request__"
+ON_AFTER_REQUEST	= "__on_after_request__"
+ON_TOOL_CALLING		= "__on_tool_calling__"
+ON_TURN_END			= "__on_turn_end__"
+ON_AGENT_END		= "__on_agent_end__"

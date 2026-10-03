@@ -1,5 +1,5 @@
 from miaoli_bot.protocols	import PluginProtocol
-from miaoli_bot.consts		import DEFAULT_PRIORITY
+from miaoli_bot.consts		import NORMAL
 
 from .models	import PluginConfig
 from .nodes		import fix_orphan_tool_message
@@ -16,6 +16,6 @@ class OrphanToolFixer(PluginProtocol):
 		if not config.enable:
 			return None
 		
-		self.registry.on_before_request(fix_orphan_tool_message, priority=DEFAULT_PRIORITY+2)
+		self.registry.on_before_request(fix_orphan_tool_message, priority=NORMAL+2)
 	
 	async def on_close(self) -> None: ...

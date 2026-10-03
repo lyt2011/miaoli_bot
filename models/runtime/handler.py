@@ -1,8 +1,8 @@
 from dataclasses	import dataclass
-from typing			import Callable
+from typing			import Any, Awaitable, Callable
 
 
 @dataclass
 class Handler:
 	priority: int
-	function: Callable[..., ...]
+	function: Callable[..., Awaitable[Any]]

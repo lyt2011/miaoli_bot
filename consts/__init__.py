@@ -15,7 +15,7 @@ from .id_prefix	import (
 	GROUP_PREFIX,
 )
 
-from .graph	import (
+from .graph_events	import (
 	ON_AGENT_START,
 	ON_TURN_START,
 	ON_BEFORE_REQUEST,
@@ -23,10 +23,13 @@ from .graph	import (
 	ON_TOOL_CALLING,
 	ON_TURN_END,
 	ON_AGENT_END,
-	MAX_PRIORITY,
-	MIN_PRIORITY,
-	DEFAULT_PRIORITY,
 	ON_REQUEST,
+)
+
+from .node_priorities	import (
+	EARLIEST,
+	LATEST,
+	NORMAL,
 )
 
 
@@ -55,9 +58,11 @@ __all__ = [
 	"ON_TOOL_CALLING",
 	"ON_TURN_END",
 	"ON_AGENT_END",
-	"MAX_PRIORITY",
-	"DEFAULT_PRIORITY",
-	"MIN_PRIORITY",
 	"ON_REQUEST",
+	
+	# node_priorities
+	"EARLIEST",
+	"LATEST",
+	"NORMAL",
 
 ]

@@ -3,6 +3,57 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.10.0] - 2026-10-04
+
+> 🔧 **`GraphPipeline` 重构：拓扑从「静态边」改为「事件节点 + 主动跳转」，控制流从异常改为返回值（破坏性）**。`wire()` 不再定义任何事件顺序 —— 它只挂 8 个事件节点和一条入口边（`START → ON_AGENT_START`），「下一个事件是谁」改由**处理器主动返回跳转指令**决定。为此新增 `core/graph/actions/` 四件套：空基类 `BaseAction`，与 `Continue`（停止本事件剩余处理器）/ `Goto`（跳到指定事件）/ `Abort`（中止整轮图）三个 Action，各自可携带 `updates` 增量。**顺带把「纯增量」的表达统一成裸 `dict`** —— 原来的 `Update` 包装类整个删除，节点直接 `return {...}` 即可，现有子插件**零改动**。同时收口命名：事件名去掉 `miaoli_bot/` 前缀（`__on_agent_start__` 等）、优先级常量 `MAX_PRIORITY` / `MIN_PRIORITY` / `DEFAULT_PRIORITY` → `EARLIEST` / `LATEST` / `NORMAL`、模块 `core/graph_pipeline.py` → `core/graph/graph_pipeline.py`。
+>
+> ⚠️ **本次是破坏性变更，且图当前无法端到端跑通**：`tools_condition` 条件边随 `wire()` 一起删除，而替代它的「默认跳转」（`ON_AFTER_REQUEST` 该去 `ON_TOOL_CALLING` 还是 `ON_TURN_END` 的分支判断）**尚未实现**。当前 edgeless 拓扑下，若某事件的处理器全部只返回增量 dict（不返回 `Goto`），该节点就没有下一跳，langgraph 视为终点 —— **整张图静默结束**，`final_answer` 缺失，`main.py` 随即 `KeyError`。补齐默认跳转插件前，请勿把本版部署到运行环境。
+
+### Added
+
+- **`core/graph/actions/`（新包，4 个 Action）**：`BaseAction` 是空基类，`Continue` / `Goto` / `Abort` 都直接继承它（**不再经 `Update` 中转**）。三者都有 `updates: Delta = None`，在 `__init__` 里各自赋值（不依赖父类 `__init__`）：
+  - **`Continue`** —— 停止本事件剩余处理器，已累积的增量照常返回（替代旧 `PipelineStopDispatch` 的 `break` 语义）
+  - **`Goto(goto, updates)`** —— 跳到 `goto` 指定的节点，`updates` 随 `Command` 一起提交。`GotoTarget = Union[str, Send, List[Union[str, Send]]]`，**传列表是扇出**（并行执行、写同一通道会 `InvalidUpdateError`），不是「依次执行」
+  - **`Abort(reason, updates)`** —— 中止整轮图运行，`_dispatch` 把它转成 `AgentAborted` 抛出；`reason` 空值时兜底为 `"null"`
+- **`consts/graph_events.py` / `consts/node_priorities.py`**：原 `consts/graph.py` 按语义一拆为二，两者都经 `consts/__init__.py` 导出
+
+### Changed
+
+- **`wire()` 改为 edgeless**：删除全部 8 条静态边（`ON_AGENT_START → ON_TURN_START → … → ON_AGENT_END`）与 1 条条件边（`add_conditional_edges(ON_AFTER_REQUEST, tools_condition, …)`），只保留 `add_edge(START, ON_AGENT_START)` 作为入口。**图不再定义顺序，只定义事件节点与起点**
+- **`_dispatch` 的控制流改为「读返回值」**：handler 的返回值改称 `action`，判定链为 —— `is_none_action`（`None` → 无操作、`continue`）→ `is_update_action`（裸 dict 或 Action 自带 `updates` → 折叠进增量）→ `isinstance(action, Continue)` → `break`；`Goto` → `return Command(goto=…, update=updates)`；`Abort` → `raise AgentAborted(…)`；其余非 `BaseAction` / 非 `dict` → 打「未知的 Action」日志。**`Command` 是「短路」不是「追加」** —— 第一个返回 `Goto` 的处理器即终止本事件剩余处理器
+- **`is_update_action` 收窄为「裸 dict 或 Action 自带的 dict 增量」**：`isinstance(action, dict) or (hasattr(action, "updates") and isinstance(action.updates, dict))`。**必须同时认这两条** —— 只认 `dict` 会让 `Goto(updates=…)` / `Continue(updates=…)` / `Abort(updates=…)` 的增量被静默丢弃（实测：`Goto` 带的 `Overwrite` 丢失后 `messages` 不再被替换）；只认 Action 会让现有 6 个返回裸 dict 的节点全部失效
+- **`_merge` / `_accumulate` 搬出类成为模块级纯函数**，并更名 `merge_data` / `accumulate_data`（纯函数不该挂在类上）；`_dispatch` 内局部变量 `_view` / `_updates` 一并去掉下划线
+- **`models/runtime/handler.py`**：`Handler.function` 的类型注解从占位符 `Callable[..., ...]`（`...` 不是合法类型）改为 `Callable[..., Awaitable[Any]]`
+- **事件名去掉 `miaoli_bot/` 前缀**：`miaoli_bot/graph.event.on_agent_start` → `__on_agent_start__`（8 个全改），框架不再硬编码任何应用专属字符串
+- **优先级常量更名**：`MAX_PRIORITY`(200) → `EARLIEST`、`MIN_PRIORITY`(-200) → `LATEST`、`DEFAULT_PRIORITY`(0) → `NORMAL`。`register()` 仍是 `sort(key=…, reverse=True)`，**数值大的先跑**
+- **4 个子插件同步更名**：`account_injector` / `base_nodes` / `orphan_tool_fixer` / `pending_tool_fixer` 的 `from miaoli_bot.consts import DEFAULT_PRIORITY` → `import NORMAL`（共 11 处引用），优先级相对关系（`NORMAL+1` / `NORMAL-1` / `NORMAL+2` / `NORMAL+3`）不变
+- **`_dispatch` 的异常日志补回异常消息**：`LOGGER.exception(f"… 出现错误 {type(e).__name__}")` → `… {type(e).__name__}: {e}"`
+
+### Removed
+
+- **`core/graph/actions/update.py`（`Update` 类整个删除）**：「纯增量」的表达统一为裸 `dict`。删除理由是它的存在与「能带增量」这件事无关 —— 后者是**属性**（`hasattr(action, "updates")`）不是**类型**，用类来查属于构造性错误；而它作为「已知但无需分支」的落底项，职责已被 `dict` 接管
+- **`consts/graph.py`**：拆成 `graph_events.py` + `node_priorities.py`
+- **`core/graph_pipeline.py`（旧路径）**：搬至 `core/graph/graph_pipeline.py`
+- **`_dispatch` 的 `except PipelineStopDispatch` 分支**：被 `Continue` 返回值取代。**注意** `errors/pipeline_stop_dispatch.py` 的类本身**仍然存在且仍在 `errors` / 根包导出**（删它是破坏性变更，本次未动），只是全仓已无 raise 方与 except 方
+
+### Fixed
+
+- 🔴 **`self._merge` / `self._accumulate` 找不到（每轮对话必炸）**：两个函数搬出类之后，`_dispatch` 里三处调用点没跟上，仍是 `self._merge(...)` 形式 → `AttributeError: 'GraphPipeline' object has no attribute '_merge'`
+- 🔴 **`AgentAborted(handler=handler, reason=…)` 签名不符**：`AgentAborted.__init__` 只接受 `reason` → `TypeError`。改为 `AgentAborted(reason=(action.reason or "null"))`
+- 🔴 **`BaseAction` 使用了但没导入**：`_dispatch` 的兜底分支 `if not isinstance(action, BaseAction)` → `NameError`（该分支在 `for` 循环里每个 handler 都会走到，`NameError` 又不在 `try` 内、不被 `except Exception` 接住 → 整轮图崩）
+- 🔴 **`is_update_action` 的 `instance_check` 放行 `update=None`**：`isinstance(action, Update)` 对 `Update()`（`updates` 为 `None`）与 `Update(update="字符串")` 都返回 `True`，于是走到 `accumulate_data(updates, None, …)` → `new_data.items()` → `AttributeError`（同样在 `try` 之外 → 整轮图崩）。而唯一有用的形态 `Update(update={...})` 本来就被鸭子类型接住了，**该分支净贡献为零、只多买两个崩溃**
+- **`actions/*.py` 一个 import 都没有**：四个 Action 文件原本裸用 `Optional` / `Any` / `Dict` / `Send`（运行时 `NameError`）；`goto.py` 的 `goto: ???` 与 `handler.py` 的 `Callable[..., ...]` 同为占位符。类型注解与 import 已补齐
+- **`continue.py` → `continue_.py`**：`from .continue import …` 是 `SyntaxError`（`continue` 是 Python 关键字）
+- **`hasattr(action, update)` 缺引号**（`NameError`）与 **`accumulate_data(updates, action, …)` 该传 `delta`**（传了整个 Action 对象）
+- **`Delta` 曾重复定义 4 份**：收口到 `base_action.py` 一处（`Delta = Optional[Dict[str, Any]]`），其余三个 Action 从它导入；`goto.py` 里那份是死代码（定义了却没用）
+
+### Note
+
+- **破坏性清单**（升级需同步改动）：① 事件名（若你自建子插件直接写过 `"miaoli_bot/graph.event.*"`）；② `MAX_PRIORITY` / `MIN_PRIORITY` / `DEFAULT_PRIORITY` 三个常量名；③ `core/graph_pipeline.py` 的导入路径；④ `consts/graph.py` 的导入路径；⑤ `Update` 类（改用裸 dict）；⑥ `PipelineStopDispatch` 不再被 `_dispatch` 捕获
+- **验证**（真跑）：① `compileall` 全仓 rc=0；② `ruff --select F401,F811,F841` 全仓只剩 `main.py:158` 一处 F841（`except AgentAborted as e:` 的 `e` 未使用，属既有）；③ 全量插件加载 **9/9**、注册工具 **15** 个；④ 四 Action 真跑 —— 裸 dict `{'final_answer': '裸dict'}` / `None` → `{}` / `Continue(updates={…})` → `{'final_answer': 'C'}` / `Continue()` → `{}` / `Goto(goto=X, updates={…})` → `Command(update={'final_answer': 'G'}, goto='__on_turn_start__')` / `Goto(goto=X)` → `Command(goto='__on_turn_start__')` / `Abort(reason='忙')` → `AgentAborted('忙')` / 未知 `object()` → `{}` + 日志；⑤ **端到端 Goto 链**：`RUN=['start','turn','end']`、`final_answer='答完了'`、`messages=['答完了']`（`Goto(updates={"messages": Overwrite([…])})` 的 `Overwrite` 正确生效、末尾裸 dict 正常收尾）；⑥ `AgentAborted.__mro__` = `AgentAborted → GraphBubbleUp → Exception → BaseException`
+- **未验证**：NcatBot 运行时下的端到端对话未跑；**图当前不能端到端跑通**（缺默认跳转插件，见开头警告）；`orphan_tool_fixer` / `pending_tool_fixer` 的优先级关系在新常量名下未重跑 `fixer_test2`
+- **待清理**（本次未动）：`errors/pipeline_stop_dispatch.py` 已无消费方；`main.py:158` 的 F841；`plugins/` 下 6 个节点返回裸 dict 的写法现在**合法且是推荐写法**，无需迁移
+
 ## [0.9.12] - 2026-10-03
 
 > 🐛 **修复 `GraphPipeline` 增量归约不满足结合律的 bug（0.9.11 及之前的已发布代码里潜伏），并新增两个坏历史修复子插件**：`_dispatch` 把同一事件里各 handler 的返回值两两折叠时走的是 `add_messages`，而它**只在新来的那一份里找 `REMOVE_ALL_MESSAGES` 标记**，于是后一次「整表重写」会把前面积累的删除指令**静默丢弃**。修法是把「累积增量」与「增量 → 视图」两条路径拆开：新增 `_accumulate` 专管前者（让替换包装活到框架真正应用增量的那一刻），`_merge` 一行未动继续只负责后者。同时把「整表重写」的表达从 langchain 内部哨兵 `RemoveMessage(id=REMOVE_ALL_MESSAGES)` 换成 langgraph 官方 `Overwrite` —— 插件侧不再手搓内部哨兵，框架也不再解析它。**另外子插件目录 `account_inject/` 改名为 `account_injector/`**（入口类 `AccountInjector` 与 `plugin.toml` 的 `enter_class` 不变），README / `config.example.yaml` 里的引用同步收口。

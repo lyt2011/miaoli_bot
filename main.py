@@ -9,6 +9,7 @@ from langgraph.checkpoint.base		import BaseCheckpointSaver
 
 from .core		import GraphPipeline, ToolRegistry, PluginLoader, registry
 from .chains	import EventParseChain, SegmentParseChain
+from .errors	import AgentAborted
 from .stores	import SHARE_STORE
 from .protocols	import BaseCheckpointerSaverAdapter as BCSA
 from .models	import GraphRuntimeContext, GraphState, PluginConfig
@@ -145,14 +146,19 @@ class MiaoLiBot(NcatBotPlugin):
 			self.logger.warning("事件解析失败 跳过")
 			return
 		
-		# HACK: 依旧技术债
+		# HACK: 默认使用第一个
 		provider_name	= next(iter(plugin_cfg.providers))
 		model_name		= next(iter(plugin_cfg.providers[provider_name].models))
 		input			= {"event": parse_result.event, "segments": parse_result.segments, "provider_name": provider_name, "model_name": model_name}
 		context			= {"client": None, "tools": tool_registry.tools}
 		
-		raw_output		= await graph_pipeline.ainvoke(input, thread_id=session_id, context=context)
-		answer_string	= raw_output["final_answer"]
+		try:
+			raw_output	= await graph_pipeline.ainvoke(input, thread_id=session_id, context=context)
+		
+		except AgentAborted as e:
+			return
+		
+		answer_string	= str(raw_output["final_answer"])
 		answer_chunks	= split_string(string=answer_string, separator=plugin_cfg.output.split_separator)
 		
 		self.logger.debug(f"输出 {len(answer_string)} 个字符")

@@ -12,7 +12,7 @@ from langgraph.types			import Command, Overwrite
 from langgraph.checkpoint.base	import BaseCheckpointSaver
 
 from ..models		import Handler
-from ..errors		import PipelineStopDispatch
+from ..errors		import PipelineStopDispatch, AgentAborted
 from ..consts		import (
 	ON_AGENT_START,
 	ON_TURN_START,
@@ -120,6 +120,10 @@ class GraphPipeline(Generic[StateT, ContextT, InputT, OutputT]):
 			
 			try:
 				result = await handler.function(state=_view, runtime=runtime)
+			
+			except AgentAborted as e:
+				LOGGER.debug(f"{handler.function.__name__} 主动抛出 {type(e).__name__}: {e}")
+				raise
 			
 			except GraphBubbleUp:
 				raise

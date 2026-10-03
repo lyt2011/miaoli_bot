@@ -3,6 +3,48 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.11.0] - 2026-10-04
+
+> 🔌 **补上 0.10.0 留下的缺口：新增 `node_connection_fix` 子插件，图重新可端到端跑通**。0.10.0 把 `wire()` 改成 edgeless 之后，`tools_condition` 条件边随之一并删除，「下一个事件是谁」改由处理器主动返回跳转指令决定 —— 但当时**没有任何处理器负责这件事**，于是图跑完 `ON_REQUEST` 就静默结束、`final_answer` 缺失、`main.py` 当场 `KeyError`。本版补上的 `node_connection_fix` 就是那个「默认跳转」：**一个事件一个节点文件**（`nodes/on_agent_start.py` / `on_turn_start.py` / … / `on_agent_end.py`），每个节点只返回一条 `Goto`，把旧 `wire()` 的 8 条静态边与那条条件边**原样搬到插件层**（`ON_AFTER_REQUEST` 该去 `ON_TOOL_CALLING` 还是 `ON_TURN_END` 的分支判断由节点里的 `is_tool_calling(messages)` 承担）。它注册在**最低优先级** `MINIMUM`，因此任何子插件挂在任何更高档位都能抢在默认跳转之前改道或叫停 —— **框架不定义顺序，默认顺序由插件声明，且随时可被覆盖**。
+>
+> ⚠️ **本次是破坏性变更**：优先级常量从 `EARLIEST`(200) / `LATEST`(-200) / `NORMAL`(0) **三档改为九档等比阶梯** —— `MAXIMUM`(9999) / `HIGHEST`(1000) / `HIGH`(100) / `MEDIUM`(10) / `NORMAL`(0) / `LOW`(-10) / `LOWEST`(-100) / `TRIVIAL`(-1000) / `MINIMUM`(-9999)。`EARLIEST` 与 `LATEST` **两个名字已不存在**，任何引用它们的子插件会 `ImportError`。改等比阶梯的理由是插件里已经在用 `NORMAL+1` / `NORMAL+2` / `NORMAL+3` 这类微调，档间差 10 倍才能保证这些微调不跨档（如 `MEDIUM+3`=13 仍 < `HIGH`=100）。
+
+### Added
+
+- **`plugins/node_connection_fix/`（新子插件，入口类 `NodeConnectionFix`）**：edgeless 拓扑下的**默认跳转**，把 0.10.0 删掉的 8 条静态边与 1 条条件边在插件层复原。目录结构照惯例（`plugin.toml` / `config.yaml` / `main.py` / `models/` / `nodes/`），`nodes/` 下**一个事件一个文件**：
+  - `on_agent_start` → `Goto(ON_TURN_START)`
+  - `on_turn_start` → `Goto(ON_BEFORE_REQUEST)`
+  - `on_before_request` → `Goto(ON_REQUEST)`
+  - `on_request` → `Goto(ON_AFTER_REQUEST)`
+  - `on_after_request` → **分支**：末条消息带 `tool_calls` → `Goto(ON_TOOL_CALLING)`，否则 → `Goto(ON_TURN_END)`（由 `is_tool_calling(messages)` 判定）
+  - `on_tool_calling` → `Goto(ON_TURN_START)`
+  - `on_turn_end` → `Goto(ON_AGENT_END)`
+  - `on_agent_end` → `Goto(END)`（`END` 被 langgraph 过滤，于是没有下一跳、图就此结束）
+- **`consts/node_priorities.py` 扩为九档等比阶梯**：`MAXIMUM` / `HIGHEST` / `HIGH` / `MEDIUM` / `NORMAL` / `LOW` / `LOWEST` / `TRIVIAL` / `MINIMUM`，九个名字经 `consts/__init__.py` 全量导出
+
+### Changed
+
+- **优先级常量 `EARLIEST` / `LATEST` → 九档阶梯（破坏性）**：`EARLIEST`(200) 与 `LATEST`(-200) 两个名字删除，原 `NORMAL`(0) 保留。`register()` 仍是 `sort(key=…, reverse=True)`，**数值大的先跑**
+- **`node_connection_fix` 注册在 `MINIMUM`（不是 `TRIVIAL`）**：它是绝对地板，保证「任何插件、任何档位都能抢在默认跳转前面」。`MAXIMUM` / `MINIMUM` 在这里是**可用档位**而非「禁止使用的哨兵」—— 若后续想改成哨兵语义，把默认跳转挪到 `TRIVIAL` 即可
+- **`ON_TOOL_CALLING` 的下一跳由 `ON_BEFORE_REQUEST` 改为 `ON_TURN_START`（有意为之）**：旧 `wire()` 的静态边是 `ON_TOOL_CALLING → ON_BEFORE_REQUEST`，新默认跳转改成回 `ON_TURN_START`，即**每轮工具调用都重走一遍「轮开始」**（`build_client` 会重建一次 `Chat[OI]`，幂等，代价是多一次对象构造与配置查找）。这是刻意模仿 pi 的回合语义，**不是笔误**
+
+### Fixed
+
+- 🔴 **`consts/node_priorities.py` 语法错误（`import miaoli_bot.consts` 直接 `SyntaxError`）**：草稿里 `HIGHEST` / `HIGH` / `MEDIUM` / `LOW` / `LOWEST` / `TRIVIAL` 六个名字写成了空值（`HIGHEST\t= ` 没有右值），Python 解析即失败
+- 🔴 **`consts/__init__.py` 导出没跟上改名（`ImportError`）**：文件已换成九档阶梯，导出表却仍是 `from .node_priorities import EARLIEST, LATEST, NORMAL` —— 这两个名字在新文件里已不存在。导入块与 `__all__` 同步换成九个新名
+- **`plugins/node_connection_fix/main.py` 的 `LATEST` 引用（共 8 处 + 1 处 import + 1 处 docstring）**：全仓唯一还在用旧名的地方，改为 `MINIMUM`
+- **`nodes/on_after_request.py` / `nodes/on_turn_end.py` 两处语法错误**：前者 `def is_tool_calling(messages: ???)` 的 `???` 不是合法类型注解，后者 `async def (state: …)` 缺函数名 —— 两个文件都编译不过。已分别补为 `List[BaseMessage]` 与 `on_turn_end`
+- **8 个节点文件全部缺导入**：只有 `GraphRuntimeContext` / `GraphState` / `Runtime`，裸用 `Goto` / `ON_*` / `END` / `BaseMessage` 会在运行时 `NameError`。已按需补齐，并删掉 `on_after_request.py` 里没用上的 `tools_condition` 导入
+- **`is_tool_calling` 的返回类型与注解不符**：`return messages and getattr(…)` 在 `messages` 为空时返回 `[]` 而非 `bool`（注解写的是 `-> bool`），改为 `bool(…)`
+- **`nodes/__init__.py` 导出为空**：补齐 8 个节点函数的导出
+
+### Note
+
+- **破坏性清单**（升级需同步改动）：① 优先级常量 `EARLIEST` / `LATEST` 已删除，改用九档阶梯中的对应档位。**其余 5 条 0.10.0 的破坏性变更仍然有效**（事件名 / `core/graph/graph_pipeline.py` 路径 / `consts/graph_events.py` + `node_priorities.py` 路径 / `Update` 类删除 / `PipelineStopDispatch` 不再被 `_dispatch` 捕获）
+- **验证**（真跑）：① `compileall` 全仓 rc=0；② `ruff --select F401,F811,F841` 全仓只剩 `main.py:158` 一处既有 F841；③ `consts.__all__` 共 28 项**逐项可解析**，九档阶梯导入值 `9999 1000 100 10 0 -10 -100 -1000 -9999`，严格递减与上下对称均成立；④ 全量插件加载 **10/10**（新增 `node_connection_fix`），8 个事件的处理器列表**末位均为默认跳转且 `priority=-9999`**；⑤ **端到端正常路径**（真插件 + 真 config + 假模型）—— `final_answer='（假模型回复）'`、消息序列 `[HumanMessage, AIMessage]`；⑥ **端到端工具路径** —— 轨迹 `… → after_request → tool_calling → turn_start → before_request → request → after_request → turn_end → agent_end`、模型调用 **2** 次、消息序列 `[HumanMessage, AIMessage, ToolMessage, AIMessage]`、`final_answer='结果是 3'`；⑦ **覆盖能力** —— 在 `ON_AGENT_START` 额外挂一个 `NORMAL` 优先级的「抢跑」处理器返回 `Goto(ON_AGENT_END)`，轨迹为 `['inject_account', 'format_input', 'hijack']`，**默认跳转被短路、未执行**；⑧ 回归套件 `accumulate_unit_test` **27/27**、`fixer_test2` **31/31**、`candidate_g_test` **18/18**、`compact_dispatch_check` **7/7**
+- **未验证**：NcatBot 运行时下的端到端对话（`on_message` → 发送循环）仍未跑；本版**只在真实插件 + 真实 config + 假模型下验证**，未真实调用 LLM 端点
+- **待清理**（本次未动，沿用 0.10.0）：`errors/pipeline_stop_dispatch.py` 已无消费方；`main.py:158` 的 F841；`_compact.py` 的 `CONTEXT_WINDOW` 仍是硬编码 `128000`
+
 ## [0.10.0] - 2026-10-04
 
 > 🔧 **`GraphPipeline` 重构：拓扑从「静态边」改为「事件节点 + 主动跳转」，控制流从异常改为返回值（破坏性）**。`wire()` 不再定义任何事件顺序 —— 它只挂 8 个事件节点和一条入口边（`START → ON_AGENT_START`），「下一个事件是谁」改由**处理器主动返回跳转指令**决定。为此新增 `core/graph/actions/` 四件套：空基类 `BaseAction`，与 `Continue`（停止本事件剩余处理器）/ `Goto`（跳到指定事件）/ `Abort`（中止整轮图）三个 Action，各自可携带 `updates` 增量。**顺带把「纯增量」的表达统一成裸 `dict`** —— 原来的 `Update` 包装类整个删除，节点直接 `return {...}` 即可，现有子插件**零改动**。同时收口命名：事件名去掉 `miaoli_bot/` 前缀（`__on_agent_start__` 等）、优先级常量 `MAX_PRIORITY` / `MIN_PRIORITY` / `DEFAULT_PRIORITY` → `EARLIEST` / `LATEST` / `NORMAL`、模块 `core/graph_pipeline.py` → `core/graph/graph_pipeline.py`。

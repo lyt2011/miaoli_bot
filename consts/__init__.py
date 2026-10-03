@@ -27,9 +27,15 @@ from .graph_events	import (
 )
 
 from .node_priorities	import (
-	EARLIEST,
-	LATEST,
+	MAXIMUM,
+	HIGHEST,
+	HIGH,
+	MEDIUM,
 	NORMAL,
+	LOW,
+	LOWEST,
+	TRIVIAL,
+	MINIMUM,
 )
 
 
@@ -61,8 +67,14 @@ __all__ = [
 	"ON_REQUEST",
 	
 	# node_priorities
-	"EARLIEST",
-	"LATEST",
+	"MAXIMUM",
+	"HIGHEST",
+	"HIGH",
+	"MEDIUM",
 	"NORMAL",
+	"LOW",
+	"LOWEST",
+	"TRIVIAL",
+	"MINIMUM",
 
 ]

@@ -2,18 +2,18 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.10.0
+- **版本**：0.11.0
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
 - **阶段**：插件化拆分完成，当前处于**优化态** —— 主包只剩图管线、checkpointer 适配层与子插件加载框架，业务由子插件提供，后续以补齐错误处理与体验优化为主
-- ⚠️ **当前不可运行**：0.10.0 把图拓扑改成 edgeless（不再定义事件顺序，改由处理器主动跳转），替代旧 `tools_condition` 条件边的**默认跳转插件尚未实现** —— 图跑完 `ON_REQUEST` 就会静默结束、`final_answer` 缺失。补齐前请勿部署
+- 🔌 **默认跳转**：edgeless 拓扑下「下一个事件是谁」由处理器主动声明，`node_connection_fix` 子插件提供默认顺序（**一个事件一个节点文件**，每个只返回一条 `Goto`），并承担 `ON_AFTER_REQUEST` 的分支判断（末条有 `tool_calls` → 工具循环，否则 → 收尾）。它注册在**最低优先级** `MINIMUM`，任何子插件挂在任何更高档位都能抢在它之前改道或叫停
 
 ## 功能特性
 
-- 🧩 **自建图管线（edgeless 拓扑）**：`core.GraphPipeline`（泛型 `GraphPipeline[StateT, ContextT, InputT, OutputT]`，四个 TypeVar 取自 `langgraph.typing`）把「事件 → 处理器」的编排抽成独立类 —— 8 个图事件常量集中在 `consts/graph_events.py`，节点用 `register(event, node, priority=0)` **显式**挂载（同一事件可挂多个，按 `priority` 降序执行，`priority` 大者先跑）。`wire()` **不定义任何事件顺序**，只挂 8 个事件节点 + 一条入口边（`START → ON_AGENT_START`）；「下一个事件是谁」由处理器**主动返回跳转指令**决定：`return {...}` 累积增量并继续本事件剩余处理器、`Continue(updates=…)` 停止本事件剩余处理器、`Goto(goto=…, updates=…)` 跳到指定事件、`Abort(reason=…, updates=…)` 中止整轮图。**谁挂在哪个事件上、谁跳向哪里，都由子插件注册时声明**。
+- 🧩 **自建图管线（edgeless 拓扑）**：`core.GraphPipeline`（泛型 `GraphPipeline[StateT, ContextT, InputT, OutputT]`，四个 TypeVar 取自 `langgraph.typing`）把「事件 → 处理器」的编排抽成独立类 —— 8 个图事件常量集中在 `consts/graph_events.py`，节点用 `register(event, node, priority=0)` **显式**挂载（同一事件可挂多个，按 `priority` 降序执行，`priority` 大者先跑；档位常量是 `consts/node_priorities.py` 的九档等比阶梯 `MAXIMUM`(9999) … `NORMAL`(0) … `MINIMUM`(-9999)）。`wire()` **不定义任何事件顺序**，只挂 8 个事件节点 + 一条入口边（`START → ON_AGENT_START`）；「下一个事件是谁」由处理器**主动返回跳转指令**决定：`return {...}` 累积增量并继续本事件剩余处理器、`Continue(updates=…)` 停止本事件剩余处理器、`Goto(goto=…, updates=…)` 跳到指定事件、`Abort(reason=…, updates=…)` 中止整轮图。**谁挂在哪个事件上、谁跳向哪里，都由子插件注册时声明**。
 - 🔌 **子插件系统**：`core.PluginLoader` 扫描 `sub_plugin.load_from` 下带 `plugin.toml` 的子目录，把每个子目录注册成 Python 包后实例化入口类并调 `on_load()`；子插件通过 `core.Registry` 注册工具 / 解析器 / 图节点；卸载时 `on_close()` 并把整包从 `sys.modules` 抹掉，改完代码重载立即生效。
-- 🧠 **LLM 接入**：`main.py` 只把 `provider_name` / `model_name` 两个**名字**写进 state，由 `build_client` 节点（`ON_TURN_START`）读根配置建 `ChatOpenAI` 写进 `runtime.context["client"]`（**刻意不在建实例时绑工具** —— 工具表按身份每请求变化）；`call_llm` 节点用 `runtime.context["tools"]`（来自 `ToolRegistry`）`bind_tools` 后请求模型；工具循环原由 `tools_condition` 条件边在「有 `tool_calls` → 执行工具 → 回到请求」与「无 `tool_calls` → 收尾」之间自动分流，**0.10.0 改成 edgeless 后该条件边已删除，替代它的默认跳转插件尚未实现**（见文末「当前不可运行」）。
+- 🧠 **LLM 接入**：`main.py` 只把 `provider_name` / `model_name` 两个**名字**写进 state，由 `build_client` 节点（`ON_TURN_START`）读根配置建 `ChatOpenAI` 写进 `runtime.context["client"]`（**刻意不在建实例时绑工具** —— 工具表按身份每请求变化）；`call_llm` 节点用 `runtime.context["tools"]`（来自 `ToolRegistry`）`bind_tools` 后请求模型；工具循环由 `node_connection_fix` 的 `on_after_request` 节点分流 —— 末条消息有 `tool_calls` 就跳 `ON_TOOL_CALLING` 执行工具、再回到 `ON_TURN_START` 重走一轮；没有就跳 `ON_TURN_END` 收尾。
 - 📜 **状态与运行时分离**：`models.GraphState`（进 checkpoint 的会话状态：`event` / `segments` / `messages` / `provider_name` / `model_name` / `final_answer` / `system_prompt`）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖：`client` / `tools`）分离 —— `context` 不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`（放 state 会因 msgpack 无法序列化而当场崩）。
 - 🎛️ **配置模型化（分层 + 更名）**：`PluginConfig` 含 `providers`（`{供应商名: Provider(base_url / api_key / models: {模型名: LLM(protocol / context_window / max_tokens / support_visions)})}` —— 名字由字典键承担）、`account`（`bot_id` / `admin_id` / `bot_nickname` / `admin_nickname`，四项全必填）、`output`、`checkpointer`、`sub_plugin` 与 `session_dir` / `prompt_file` / `system_prompt`；`DirectoryPath` / `FilePath` 让路径在**加载期**就被校验，缺失即 `ValidationError`。
 - 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolNode` 执行，返回值经 `utils.tool_result_builder` 的 `success` / `fail` / `custom` 收敛成 `{"status": bool, "message": …}`；主包不再内置任何工具，平台 / 系统 / meme 工具全部由内置子插件注册；`tool_permission_manager` 子插件可在此基础上按身份做工具级权限控制（`on_before_request` 摘 `runtime.context["tools"]`，未声明即拒绝）。
@@ -56,22 +56,15 @@ core/GraphPipeline.ainvoke({"event", "segments"}, thread_id=session_id, context=
    ON_REQUEST ── compact（超窗压缩）→ call_llm ──▶ bind_tools(tools) → ChatOpenAI
         │                                              │
         │                                              ▼
-   ON_AFTER_REQUEST                           AIMessage（含 tool_calls）
+   ON_AFTER_REQUEST ── node_connection_fix: on_after_request（末条有 tool_calls？）
         │
-        │  ⚠️ 缺口：旧版这里由 tools_condition 条件边分流
-        │     （有 tool_calls ──▶ ON_TOOL_CALLING ── invoke_tools → ToolMessage
-        │        （attach_image 把图片挪进 HumanMessage）
-        │        （回到 ON_BEFORE_REQUEST）
-        │      无 tool_calls ──▶ ON_TURN_END）
-        │     0.10.0 改成 edgeless 后该边已删除，替代它的默认跳转插件尚未实现
-        └──────────────▶ ✗ 到此为止（无人返回 Goto 即静默结束）
-
-   （以下节点当前不可达）
-   ON_TOOL_CALLING ── invoke_tools / attach_image
-   ON_TURN_END
-   ON_AGENT_END ── latest_to_answer（messages[-1] → final_answer）
-        ▼
-       END
+        ├─ 有 tool_calls ──▶ ON_TOOL_CALLING ── invoke_tools（ToolNode → ToolMessage）
+        │                                      attach_image（图片块 → HumanMessage）
+        │                                      └── 回到 ON_TURN_START（重走一轮）
+        │
+        └─ 无 tool_calls ──▶ ON_TURN_END ──▶ ON_AGENT_END ── latest_to_answer（messages[-1] → final_answer）
+                                                                ▼
+                                                               END
 
         │  output["final_answer"]（按 output.split_separator 切块 + 打字延迟）
         ▼
@@ -96,7 +89,7 @@ miaoli_bot/
 │   └── segment_parse_chain.py     #   SegmentParseChain
 ├── consts/                        # 常量集中定义
 │   ├── graph_events.py            #   8 个图事件名（ON_AGENT_START / ON_TURN_START / …）
-│   ├── node_priorities.py         #   EARLIEST(200) / LATEST(-200) / NORMAL(0)
+│   ├── node_priorities.py         #   九档优先级阶梯（MAXIMUM 9999 … NORMAL 0 … MINIMUM -9999）
 │   ├── id_prefix.py               #   会话键前缀（group- / private-）
 │   └── share_store_keys.py        #   SHARE_STORE 键名（含 TOOL_REGISTRY）
 ├── core/                          # 图管线与子插件加载
@@ -148,14 +141,14 @@ miaoli_bot/
 4. `graph_pipeline.ainvoke({"event": …, "segments": …, "provider_name": …, "model_name": …}, thread_id=session_id, context={"client": None, "tools": tool_registry.tools})`。
 5. `ON_AGENT_START` 的 `format_input` 把 `event` + `segments` 序列化成 JSON 文本包成 `HumanMessage` **追加**进 `messages`；同事件的 `inject_account`（`account_injector` 子插件）把账号信息块 + 人设写进 `system_prompt` 键（普通键，每轮覆盖而不是追加，否则每轮多留一份人设）；`ON_TURN_START` 的 `build_client` 按 state 里的 `provider_name` / `model_name` 从根配置建 `ChatOpenAI` 写进 `runtime.context["client"]`。
 6. 同一批次里（`ON_BEFORE_REQUEST`，按 priority 降序）：`pending_tool_fixer`（`priority=3`）给悬空的 `tool_calls` 补上合成返回、`orphan_tool_fixer`（`priority=2`）删掉找不到发起者的 `ToolMessage`（两者只在上一轮异常中断留下坏形状时才有产出，历史本就合法时直接返回 `None`、不写任何增量）、`tool_permission_manager`（`priority=1`）按 `config.yaml` 权限表与 `event.sender.user_id` 摘掉无权使用的工具（未声明的工具默认拒绝并打 warning）；`ON_REQUEST` 先跑 `compact`（`priority=1`：token 超窗时把历史压成一条 `<compaction>` 摘要，返回 `{"messages": Overwrite([摘要, *保留窗口])}` 整体替换历史；`Overwrite` 是 langgraph 官方的「绕过 reducer 直接写入」包装，`accumulate_data` 折叠多个处理器的产出时保留它、`merge_data` 构建视图时消费它，因此「整体替换」与其它处理器的「追加 / 定向删除」可以任意顺序组合），再由 `call_llm` 以 `[SystemMessage(state["system_prompt"]), *state["messages"]]` 请求模型，返回的 `AIMessage` 追加进 `messages`。
-7. **⚠️ 以下两步当前是缺口**：旧版 `ON_AFTER_REQUEST` 由 `tools_condition` 条件边分流（有 `tool_calls` → `ON_TOOL_CALLING` 的 `invoke_tools` 用 `ToolNode` 执行工具、`ToolMessage` 追加进 `messages`，若工具结果带图片 `attach_image` 会把图片块挪成一条 `HumanMessage`，然后回到 `ON_BEFORE_REQUEST` 再请求一次；无 `tool_calls` → `ON_TURN_END`）。0.10.0 改成 edgeless 后**这条条件边随 `wire()` 一起删除**，替代它的默认跳转插件尚未实现 —— 因此 `ON_AFTER_REQUEST` / `ON_TOOL_CALLING` / `ON_TURN_END` / `ON_AGENT_END` 目前**都不会被触达**，图跑完 `ON_REQUEST` 就结束。
-8. `ON_AGENT_END` 的 `latest_to_answer` 取 `messages[-1]`，是 `AIMessage` 就把 `content` 写进 `final_answer`（否则回退成携带 `thread_id` 的提示文案）。该节点同样受上一条缺口影响。
+7. `ON_AFTER_REQUEST` 由 `node_connection_fix` 的 `on_after_request` 节点分流（它注册在最低优先级 `MINIMUM`，因此任何插件都能抢在它之前改道）：末条消息带 `tool_calls` → 跳 `ON_TOOL_CALLING`，由 `invoke_tools` 用 `ToolNode` 执行工具、`ToolMessage` 追加进 `messages`，若工具结果带图片 `attach_image` 会把图片块挪成一条 `HumanMessage`，然后跳回 `ON_TURN_START` 重走一轮（重跑 `build_client` / `pick_tools` / `call_llm`）；无 `tool_calls` → 跳 `ON_TURN_END`，再经 `on_turn_end` 跳 `ON_AGENT_END`，最后 `on_agent_end` 返回 `Goto(END)` 收尾（`END` 被 langgraph 过滤，于是没有下一跳）。
+8. `ON_AGENT_END` 的 `latest_to_answer` 取 `messages[-1]`，是 `AIMessage` 就把 `content` 写进 `final_answer`（否则回退成携带 `thread_id` 的提示文案）。
 9. `on_message` 拿 `output["final_answer"]` 交给 `utils.split_string`，按 `output.split_separator` 切块（**未设置分隔符 → 整条一块**）并跳过空块，每块按 `len(块) * typing_speed ± typing_speed_offset` 随机 sleep 后交给 `EventAdapter.send(self.api, …)` 发回 QQ。
 10. 插件卸载（`on_close`）：先显式 `drop` 掉已知键（含 `TOOL_REGISTRY` / `EVENT_PARSER` / `SEGMENT_PARSER` / `GRAPH_PIPELINE`），再 `plugin_loader.unload_all()` 卸载子插件（逐个 `on_close()` 并从 `sys.modules` 抹掉整包），最后 `await self.cpa.close()` 显式关闭 checkpointer（sqlite 关 `aiosqlite` 连接、postgresql 关连接池、memory 无副作用），残留键只记 warning。
 
 ## 内置子插件
 
-主包只保留图管线与加载框架，业务能力由子插件提供。以下九个内置子插件位于本仓库的 `plugins/` 目录，`plugin.toml` 与子插件自带的 `config.yaml` 默认值都随仓库提交（根目录的 `config.yaml` 仍 gitignore，不进版本控制）：
+主包只保留图管线与加载框架，业务能力由子插件提供。以下十个内置子插件位于本仓库的 `plugins/` 目录，`plugin.toml` 与子插件自带的 `config.yaml` 默认值都随仓库提交（根目录的 `config.yaml` 仍 gitignore，不进版本控制）：
 
 | 子插件 | 提供 |
 |---|---|
@@ -165,6 +158,7 @@ miaoli_bot/
 | `base_platform_tools` | 平台工具：发消息 / 发文件 / 下载文件 / 查消息 ID / 撤回消息 |
 | `base_system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml` 与 `README.md`） |
 | `meme_extension` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除（自带 `config.yaml`）；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
+| `node_connection_fix` | 默认跳转（edgeless 拓扑的顺序来源）：**一个事件一个节点文件**，8 个节点各返回一条 `Goto`，把旧 `wire()` 的静态边与 `tools_condition` 条件边在插件层复原；`on_after_request` 按 `is_tool_calling(messages)` 分流工具循环与收尾。注册在最低优先级 `MINIMUM`，可被任何子插件抢跑 |
 | `orphan_tool_fixer` | 坏历史修复：`fix_orphan_tool_message` 在 `on_before_request`（`priority=2`）删掉找不到发起 `tool_calls` 的 `ToolMessage`（只产出定向删除增量） |
 | `pending_tool_fixer` | 坏历史修复：`fix_pending_tool_call` 在 `on_before_request`（`priority=3`）给悬空的 `tool_calls` 补一条「工具未执行」的合成 `ToolMessage`（返回 `Overwrite` 整表替换） |
 | `tool_permission_manager` | 工具权限控制：按自带 `config.yaml` 的权限表（`admin` / `white_list` / `anyone`），在 `on_before_request` 把当前身份无权使用的工具从 `runtime.context["tools"]` 摘掉；未声明的工具默认拒绝并打 warning。自带 `README.md` |
@@ -238,6 +232,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.11.0 — **补上 0.10.0 留下的缺口：新增 `node_connection_fix` 子插件，图重新可端到端跑通（破坏性）**：0.10.0 把 `wire()` 改成 edgeless 之后，`tools_condition` 条件边随之一并删除，「下一个事件是谁」改由处理器主动返回跳转指令决定，但当时**没有任何处理器负责这件事** —— 图跑完 `ON_REQUEST` 就静默结束、`final_answer` 缺失、`main.py` 当场 `KeyError`。本版补上的 `node_connection_fix` 就是那个「默认跳转」：**一个事件一个节点文件**（`nodes/on_agent_start.py` / `on_turn_start.py` / … / `on_agent_end.py`），每个节点只返回一条 `Goto`，把旧 `wire()` 的 8 条静态边与那条条件边**原样搬到插件层**（`ON_AFTER_REQUEST` 该去 `ON_TOOL_CALLING` 还是 `ON_TURN_END` 的分支判断由节点里的 `is_tool_calling(messages)` 承担）。它注册在**最低优先级** `MINIMUM`，因此任何子插件挂在任何更高档位都能抢在默认跳转之前改道或叫停。**破坏性变更**：优先级常量从 `EARLIEST`(200) / `LATEST`(-200) / `NORMAL`(0) **三档改为九档等比阶梯** —— `MAXIMUM`(9999) / `HIGHEST`(1000) / `HIGH`(100) / `MEDIUM`(10) / `NORMAL`(0) / `LOW`(-10) / `LOWEST`(-100) / `TRIVIAL`(-1000) / `MINIMUM`(-9999)，`EARLIEST` 与 `LATEST` **两个名字已不存在**；改等比阶梯的理由是插件里已经在用 `NORMAL+1` / `NORMAL+2` / `NORMAL+3` 这类微调，档间差 10 倍才能保证这些微调不跨档（如 `MEDIUM+3`=13 仍 < `HIGH`=100）。**一处有意为之的拓扑差异**：旧静态边是 `ON_TOOL_CALLING → ON_BEFORE_REQUEST`，新默认跳转改成回 `ON_TURN_START`，即每轮工具调用都重走一遍「轮开始」（会重建一次 `Chat[OI]`，幂等），这是刻意模仿 pi 的回合语义。**修掉 2 个必崩项**：① `consts/node_priorities.py` 六个名字写成了空值（`HIGHEST\t= ` 没有右值），`import miaoli_bot.consts` 直接 `SyntaxError`；② `consts/__init__.py` 的导出表仍是 `from .node_priorities import EARLIEST, LATEST, NORMAL`（这两个名字在新文件里已不存在）→ `ImportError`。另修 `node_connection_fix` 自身：`on_after_request.py` 的 `messages: ???` 与 `on_turn_end.py` 缺函数名两处 `SyntaxError`、8 个节点文件全缺 `Goto` / `ON_*` / `END` 导入、`is_tool_calling` 在空列表时返回 `[]` 而非 `bool`、`nodes/__init__.py` 导出为空。**验证**：`compileall` 全仓 rc=0、`ruff --select F401,F811,F841` 仅剩 `main.py:158` 一处既有 F841、`consts.__all__` 28 项**逐项可解析**、九档值 `9999 1000 100 10 0 -10 -100 -1000 -9999`（严格递减 + 上下对称）、全量插件加载 **10/10**、8 个事件处理器列表**末位均为默认跳转且 `priority=-9999`**、**端到端正常路径**（真插件 + 真 config + 假模型）`final_answer='（假模型回复）'`、**端到端工具路径** 模型调用 **2** 次且消息序列 `[HumanMessage, AIMessage, ToolMessage, AIMessage]`、`final_answer='结果是 3'`、**覆盖能力** 在 `ON_AGENT_START` 挂一个 `NORMAL` 优先级的「抢跑」处理器返回 `Goto(ON_AGENT_END)` 时轨迹为 `['inject_account', 'format_input', 'hijack']`（默认跳转被短路、未执行）、回归套件 `accumulate_unit_test` **27/27** + `fixer_test2` **31/31** + `candidate_g_test` **18/18** + `compact_dispatch_check` **7/7**。**未验证**：NcatBot 运行时下的端到端对话（`on_message` → 发送循环）仍未跑；本版**只在真实插件 + 真实 config + 假模型下验证**，未真实调用 LLM 端点。
 
 v0.10.0 — **`GraphPipeline` 重构：拓扑从「静态边」改为「事件节点 + 主动跳转」，控制流从异常改为返回值（破坏性）**：`wire()` 不再定义任何事件顺序，只挂 8 个事件节点 + 一条入口边（`START → ON_AGENT_START`）；「下一个事件是谁」改由处理器**主动返回跳转指令**决定。为此新增 `core/graph/actions/` —— 空基类 `BaseAction` 与 `Continue`（停止本事件剩余处理器，替代旧 `PipelineStopDispatch` 的 `break`）/ `Goto`（跳到指定事件，携带 `updates`）/ `Abort`（中止整轮图，转成 `AgentAborted` 抛出）三个 Action。**「纯增量」的表达统一成裸 `dict`** —— 原来的 `Update` 包装类整个删除（它的存在与「能带增量」无关：后者是属性不是类型），现有 6 个返回裸 dict 的节点**零改动**即可用。**命名收口**：事件名去掉 `miaoli_bot/` 前缀（`miaoli_bot/graph.event.on_agent_start` → `__on_agent_start__`）；`MAX_PRIORITY` / `MIN_PRIORITY` / `DEFAULT_PRIORITY` → `EARLIEST` / `LATEST` / `NORMAL`（4 个子插件共 11 处引用同步）；`core/graph_pipeline.py` → `core/graph/graph_pipeline.py`；`consts/graph.py` 拆成 `graph_events.py` + `node_priorities.py`；`_merge` / `_accumulate` 搬出类成模块级纯函数并更名 `merge_data` / `accumulate_data`。**关键设计点**：`is_update_action` 必须同时认「裸 dict」与「Action 自带的 `updates`」—— 只认前者会让 `Goto` / `Continue` / `Abort` 携带的增量被静默丢弃（实测 `Overwrite` 丢失后 `messages` 不再被替换），只认后者会让现有插件全部失效。**⚠️ 图当前无法端到端跑通**：`tools_condition` 条件边随 `wire()` 删除，替代它的默认跳转插件尚未实现，图跑完 `ON_REQUEST` 即静默结束（`final_answer` 缺失 → `main.py` `KeyError`）。**验证**：`compileall` 全仓 rc=0、`ruff --select F401,F811,F841` 仅剩 `main.py:158` 一处既有 F841、全量插件加载 **9/9** 与 15 个工具、四个 Action 逐形态真跑（裸 dict / `None` / `Continue` 带与不带 updates / `Goto` 带与不带 updates / `Abort` / 未知对象兜底）、**端到端 Goto 链** `RUN=['start','turn','end']` 且 `final_answer='答完了'`（`Overwrite` 经 `Goto(updates=…)` 正确生效）。**未验证**：NcatBot 运行时下的端到端对话未跑；`orphan_tool_fixer` / `pending_tool_fixer` 的优先级关系在新常量名下未重跑 `fixer_test2`。
 

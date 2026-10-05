@@ -22,7 +22,7 @@ class ToolSchema(BaseModel):
 
 
 @tool(args_schema=ToolSchema)
-async def send_file_to_qq(path: str, chat_id: str, to_group: bool = False) -> Dict[str, Any]:
+async def send_file_to_qq(path: str, chat_id: str, to_group: bool) -> Dict[str, Any]:
 
 	"""
 	发送一个文件到 QQ

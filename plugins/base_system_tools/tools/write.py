@@ -13,7 +13,7 @@ class ToolSchema(BaseModel):
 
 
 @tool(args_schema=ToolSchema)
-async def write(path: str, content: str, encoding: str = "utf-8") -> Dict[str, str]:
+async def write(path: str, content: str, encoding: str) -> Dict[str, str]:
 	
 	"""
 	将 content 写入 path 指向的文件

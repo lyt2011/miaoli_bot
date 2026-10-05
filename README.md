@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.13.0
+- **版本**：0.14.0
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -17,7 +17,8 @@
 - 🗜️ **上下文压缩**：`context_compactor` 子插件的 `compact` 节点（`ON_BEFORE_REQUEST`，`priority=NORMAL`）读模型真实 `context_window` / `max_tokens` 判阈值（为输出预留空间），超窗时把历史压成一条 `<compaction>` 摘要并用 `Overwrite` 整体替换；保留条数 / 提示词 / 计数方式（`base` 粗估或 `tiktoken` 精确）全部配置化，提示词落在 `data/compact_prompt.md`。
 - 📜 **状态与运行时分离**：`models.GraphState`（会话状态：`messages` 用 `add_messages` **进 checkpoint**；`event` / `segments` / `provider_name` / `model_name` / `final_answer` / `system_prompt` 六键用 `Annotated[T, UntrackedValue]` —— 单次 `ainvoke` 内可见、**不落盘**）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖：`client` / `tools`）分离 —— `context` 不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`（放 state 会因 msgpack 无法序列化而当场崩）。
 - 🎛️ **配置模型化（分层 + 更名）**：`PluginConfig` 含 `providers`（`{供应商名: Provider(base_url / api_key / models: {模型名: LLM(protocol / context_window / max_tokens / support_visions)})}` —— 名字由字典键承担）、`account`（`bot_id` / `admin_id` / `bot_nickname` / `admin_nickname`，四项全必填）、`output`、`checkpointer`、`sub_plugin` 与 `session_dir` / `prompt_file` / `system_prompt`；`DirectoryPath` / `FilePath` 让路径在**加载期**就被校验，缺失即 `ValidationError`。
-- 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolNode` 执行，返回值经 `utils.tool_result_builder` 的 `success` / `fail` / `custom` 收敛成 `{"status": bool, "message": …}`；主包不再内置任何工具，平台 / 系统 / meme 工具全部由内置子插件注册；`tool_permission_manager` 子插件可在此基础上按身份做工具级权限控制（`on_before_request` 摘 `runtime.context["tools"]`，未声明即拒绝）。
+- 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolNode` 执行，返回值经 `utils.tool_result_builder` 的 `success` / `fail` / `custom` 收敛成 `{"status": bool, "message": …}`；主包不再内置任何工具，平台 / 系统 / meme / 联网搜索工具全部由内置子插件注册；`tool_permission_manager` 子插件可在此基础上按身份做工具级权限控制（`on_before_request` 摘 `runtime.context["tools"]`，未声明即拒绝）。
+- 🔍 **联网搜索**：`web_search` 子插件的 `lang_search` 工具调 langsearch.com 的 `POST /v1/web-search`（**设计上支持多后端**，`config.yaml` 的 `provider` 决定注册哪个工具，目前只适配了 `langsearch`）。**API key 只从环境变量读**（`env_key`，默认 `SEARCH_API_KEY`），不落进随仓库提交的 `config.yaml`。实测**英文检索质量明显优于中文**（技术 / 包名类相关率约 65% vs 30%），工具 docstring 已要求模型优先用英文搜。
 - 🖼️ **工具附件兜底**：部分模型不接受 `tool` 消息携带多模态块（无论块里是什么内容都会 `400` 或静默忽略），`tool_attachment_fixer` 子插件的 `fix_tool_attachment` 节点（`ON_TOOL_CALLING`，`priority=NORMAL-2`）把**非字符串**的 `ToolMessage.content` 整体挪进紧跟其后的一条 `HumanMessage`、原 `ToolMessage` 正文换成 `replace_text`；只对 `models` 里声明的模型生效，无改动时返回 `None` 不写增量。
 - 🧩 **两级解析链**：`EventParseChain`（群 / 私聊事件元数据）与 `SegmentParseChain`（文本 / AT / 图片 / 文件 / 引用消息段）双链分发，`utils.easier_parser.parse_message` 一步合并产出 `ParseResult(event, segments)` 喂给图；解析器由 `base_parsers` 子插件注册。
 - 🖼️ **多类型消息段**：`Text` → `{text}`、`At` → `{at}`、`Image` → `{image, size, is_meme}`（`QQImageSegmentParser` 只接受 QQ 平台侧 `ncatbot.types.qq.QQImage`，`is_meme` 即其 `sub_type` 非 0）、`File` → `{file, size}`、`Reply` → `{reply}`。
@@ -123,7 +124,8 @@ miaoli_bot/
 │   ├── orphan_tool_fixer/         #   孤儿工具返回修复（nodes/ + utils/ + config.yaml 默认值）
 │   ├── pending_tool_fixer/        #   悬空工具调用修复（nodes/ + utils/ + models/ + consts/ + config.yaml 默认值）
 │   ├── tool_attachment_fixer/     #   工具附件修复（nodes/ + utils/ + models/ + consts/ + config.yaml 默认值 + README）
-│   └── tool_permission_manager/   #   工具权限控制（nodes/ + models/ + consts/ + config.yaml 权限表 + README）
+│   ├── tool_permission_manager/   #   工具权限控制（nodes/ + models/ + consts/ + config.yaml 权限表 + README）
+│   └── web_search/                #   联网搜索（tools/ + models/ + consts/ + config.yaml 默认值 + README）
 ├── protocols/                     # 抽象协议
 │   ├── abc/                       #   编译期抽象：PluginProtocol / ChainProtocol / StoreProtocol / BaseCheckpointerSaverAdapter
 │   └── runtime/                   #   运行时检查：Parser（@runtime_checkable）
@@ -152,7 +154,7 @@ miaoli_bot/
 
 ## 内置子插件
 
-主包只保留图管线与加载框架，业务能力由子插件提供。以下十二个内置子插件位于本仓库的 `plugins/` 目录，`plugin.toml` 与子插件自带的 `config.yaml` 默认值都随仓库提交（根目录的 `config.yaml` 仍 gitignore，不进版本控制）：
+主包只保留图管线与加载框架，业务能力由子插件提供。以下十三个内置子插件位于本仓库的 `plugins/` 目录，`plugin.toml` 与子插件自带的 `config.yaml` 默认值都随仓库提交（根目录的 `config.yaml` 仍 gitignore，不进版本控制）：
 
 | 子插件 | 提供 |
 |---|---|
@@ -168,6 +170,7 @@ miaoli_bot/
 | `pending_tool_fixer` | 坏历史修复：`fix_pending_tool_call` 在 `on_before_request`（`priority=3`）给悬空的 `tool_calls` 补一条「工具未执行」的合成 `ToolMessage`（返回 `Overwrite` 整表替换） |
 | `tool_attachment_fixer` | 工具附件修复：`fix_tool_attachment` 在 `on_tool_calling`（`priority=-2`）把非字符串的 `ToolMessage.content` 挪进紧跟其后的一条 `HumanMessage`（原 `ToolMessage` 正文换成 `replace_text`），让不接受 `tool` 消息带多模态块的模型不再 `400`；只对 `models` 里声明的模型生效（留空 = 全部），无改动时返回 `None`。自带 `README.md` |
 | `tool_permission_manager` | 工具权限控制：按自带 `config.yaml` 的权限表（`admin` / `white_list` / `anyone`），在 `on_before_request` 把当前身份无权使用的工具从 `runtime.context["tools"]` 摘掉；未声明的工具默认拒绝并打 warning。自带 `README.md` |
+| `web_search` | 联网搜索：`lang_search` 调 langsearch.com 的 `POST /v1/web-search`，原始响应整体交给模型。**API key 走环境变量**（`env_key`，默认 `SEARCH_API_KEY`），不写进 `config.yaml`。`provider` 字段留了多后端位置，目前只适配 `langsearch`。自带 `README.md` |
 
 > `orphan_tool_fixer` 与 `pending_tool_fixer` 成对：前者治「有返回没请求」，后者治「有请求没返回」。两者互不依赖、各自独立判断，谁先跑都不影响结果（`accumulate_data` 保证不同形态的增量可以任意顺序折叠）；触发场景是上一轮工具执行中途异常／并发冲突导致消息形状坏掉，此后每轮请求模型都会 `400 insufficient tool messages following tool_calls`。
 
@@ -185,6 +188,7 @@ miaoli_bot/
    - `langgraph-checkpoint-postgres`（`>=3.1.2`，`database: postgresql` 时用到）
    - `aiosqlite`（`>=0.22.1`）/ `psycopg`（`>=3.3.6`）/ `psycopg-pool`（`>=3.3.3`）：直接 import 的驱动与连接池（`SQLiteAdapter` / `PostgresqlAdapter` / `MemeSqlite`）
    - `aiofiles`（`>=24.1.0`）：`base_system_tools` 的 `write` / `replace` 工具异步写盘
+   - `aiohttp`（`>=3.13.4`）：`web_search` 的 HTTP 客户端（`ClientSession`）
    - `pydantic`（`>=2.13.5`）：配置模型（`models/config/`）与各工具的参数 schema
    - `pyyaml`（`>=6.0.3`）：子插件 `config.yaml` 解析（`core/plugin_loader.py` 的 `yaml.safe_load`）
    - `filetype`（`>=1.2.0`）
@@ -231,6 +235,7 @@ cd <插件父目录>          # plugins/
 | `langgraph-checkpoint-postgres`（`>=3.1.2`） | `AsyncPostgresSaver`（`checkpointer.database: postgresql`），带 `psycopg` / `psycopg-pool` |
 | `aiosqlite`（`>=0.22.1`） | `SQLiteAdapter` 与 `meme_extension.MemeSqlite` 共用的异步 sqlite 驱动（连接分别由 `close()` / `__aexit__` 关） |
 | `aiofiles`（`>=24.1.0`） | `base_system_tools` 的 `write` / `replace` 工具异步写盘（`aiofiles.open` + `async with`） |
+| `aiohttp`（`>=3.13.4`） | `web_search` 的联网搜索请求（`ClientSession.post`）；它也是 `ncatbot5` 的传递依赖，此处显式声明 |
 | `psycopg`（`>=3.3.6`）/ `psycopg-pool`（`>=3.3.3`） | `PostgresqlAdapter` 直接 import 的驱动与连接池（`AsyncConnectionPool`） |
 | `pydantic`（`>=2.13.5`） | 配置模型（`BaseModel` / `Field` / `model_validator`）与工具参数 schema |
 | `pyyaml`（`>=6.0.3`） | `core/plugin_loader.py` 读子插件 `config.yaml` 的 `yaml.safe_load` |
@@ -242,6 +247,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.14.0 — **新增 `web_search` 子插件（LangSearch 联网搜索），并把 7 个工具函数签名里的默认值全部去掉**：`lang_search` 把 langsearch.com 的 `POST /v1/web-search` 接给模型（`query` / `count`（默认 `5`，`1~50`）/ `freshness` / `include_domains` / `exclude_domains` / `timeout`），请求体传 `summary: False`、域过滤用 camelCase 名（`includeDomains` / `excludeDomains` —— 服务端只认这个，snake_case 会被**静默忽略**），原始响应经 `success()` 整体交给模型。`aiohttp.ClientSession` 由 `on_load` 建、`on_close` 关；**API key 只从环境变量读**（`env_key`，默认 `SEARCH_API_KEY`），存 `PrivateAttr` 里、只暴露只读属性 `api_key`，**不落进随仓库提交的 `config.yaml`**（本插件是全仓第一个从环境变量取密钥的子插件）。`provider` 字段留了**多后端**位置（`Literal["langsearch"]`），目前只适配 `langsearch`。**7 个工具函数签名去掉默认值（共 12 处，行为零变化）**：`bash` / `read_file` / `write` / `replace` / `send_file_to_qq` / `send_message_to_qq` / `send_meme_to_qq` —— `@tool(args_schema=…)` 下 `ToolNode` 走 `tool.ainvoke`，先用 `args_schema` 校验并填默认值再调函数，实测 schema 默认值**覆盖**函数默认值，故函数侧是纯冗余；删掉后模型看到的 JSON Schema 逐字未变。`manifest.toml` 新增 `aiohttp`（`>=3.13.4`，15 → 16 项）。**修 3 处必崩 + 补导入导出**：`PrivateAttr(..., description=…)` 的 `TypeError`、`os.environ[env_key]` 缺 `self.` 的 `NameError`、`PrivateAttr(...)` 使 `_api_key` 完全不创建导致环境变量缺失时 `AttributeError`；`tools/lang_search.py` 7 处缺导入（17 处 `F821`）、`tools/__init__.py` 补导出、`main.py` 补 `aiohttp` 与两个常量；`lang_search` 的 `response.status_code` → `response.status`、比较值 `288` → `200`（实测服务端返回 `200`）—— 修好后 `try/except` 才真正拦住「4xx/5xx 被 `success()` 包成 `status: true` 交给模型」。**实测**：英文检索质量明显优于中文（技术 / 包名类相关率约 **65% vs 30%**，`What is NcatBot` 命中 PyPI 的 `ncatbot` 系列而中文版 0/5），工具 docstring 已要求优先用英文；`summary: False` 省 **68%**（`count=5`：3252 → 1929 token）；单次平均 **1822 token**，`count=50` 时 **27786 token**；响应信封噪声仅占 **14%**，故不做字段过滤。**验证**：全仓 `compileall` rc=0、`ruff --select F,E9` 仅剩 4 处既有（均不在本次改动文件内）、全量插件加载 **13/13**、工具 **16 个**、`lang_search` 真实 API 端到端 6/6 `status=True`、环境变量缺失不崩（返回空串）、`provider` 非法值 `ValidationError`、桩 session 抓 payload 确认 `summary: false` 与 camelCase 生效、7 个工具的「函数无默认值 + schema `default` 仍在」逐项核对、真实 `ToolNode` 注入值与改动前逐字一致、`manifest.toml` 经 `tomllib` 解析、导入对齐逐文件核对。**未验证**：NcatBot 运行时下的端到端对话仍未跑；服务器侧 `SEARCH_API_KEY` 环境变量尚未配置。
 
 v0.13.0 — **工具附件修复从 `base_nodes` 拆出、独立成子插件 `tool_attachment_fixer`（破坏性）**：`base_nodes/nodes/_attach_image.py` 整个删除（119 行，含 `_pick_images` / `_pick_text` 两个私有辅助与 `DEFAULT_NOTICE` / `IMAGE_PREFIX` 两个常量），其 `on_tool_call(attach_image, priority=NORMAL-1)` 注册与导入导出同步移除。新插件的 `fix_tool_attachment` 节点改挂 `ON_TOOL_CALLING`（`priority=NORMAL-2`），行为上有四处有意差异：① **只对 `models` 里声明的模型生效**（`<provider>/<model>` 与 `<model>` 两种写法都认，留空 = 全部）—— 旧节点对所有模型无条件改写，而实际只有部分模型拒绝 `tool` 消息带多模态块；② **扫描全表**而非只扫末尾连续的一段 `ToolMessage` —— 旧节点依赖「附件只可能出现在本轮最后一条消息」的隐含前提，历史里有旧残留时永远修不到，而那类残留恰恰每轮 `400`；③ **搬运整个 content 列表**而非只挑图片 —— 旧节点的 `_pick_images` 只认 `type in ("image", "image_url")`，其余模态块（`audio` 等）**静默丢弃**（实测确认）；④ **原地改 `content`** 而非新建 `ToolMessage` 逐字段复制。判据 `isinstance(content, list)` 等价于「非字符串」—— `ToolMessage` 会把 `dict` / `None` / `int` 等非 list 输入全部 coerce 成 `str`（实测 `None → 'None'`、`123 → '123'`），所以 `.content` 只可能是 `str` 或 `list` 两种。新建的 `HumanMessage` 带确定性 `id`（`f"image-{tool_call_id}"`，旧节点是 `f"images-{tc1}-{tc2}"` 合并成一条）；无改动时返回 `None` 不写任何增量。判据函数收进 `utils/guards.py`（`is_target_model` / `is_tool_message` / `is_block_content` / `is_target_message`，依赖方向 `nodes → utils → consts`），节点文件只剩主函数。**破坏性**：不加载 `tool_attachment_fixer` 时工具附件不再被改写（旧行为是 `base_nodes` 无条件提供）。**顺带**：修两处陈旧注释（`base_nodes/nodes/call_llm.py` 的「已由 `compact` 写进」→ `context_compactor`；`pending_tool_fixer/main.py` 的「高于 `compact(1)`」删除 —— 该节点已不在同一事件上，`(1)` 还是 0.12.0 前的旧值）。**验证**：全仓 `compileall` rc=0、`ruff --select F,E9` 仅剩 4 处既有（`main.py:153` F841、`bash.py:40/41` F541、`sugar.py:50` F541，均不在本次改动文件内）、全量插件加载 **12/12**、`ON_TOOL_CALLING` 为 `invoke_tools(0) → fix_tool_attachment(-2) → 默认跳转(-9999)`、全仓 `attach_image` 残留 0（README 里两处是历史版本记录）、`base_nodes` 的 `compact` 残留 0、迁移前后主函数 AST 级逐字相同、**新旧节点 5 组用例对照实测**（末尾单条带图 / 只有文本块 / 带图但在中间 / 末尾两条连续 / 混合块含 audio）、命中模型 → `Overwrite`、未命中 → `None`、纯文本输入 → `None`、**第二次跑 → `None`（幂等）**、`utils.__all__` 逐项可解析。**未验证**：NcatBot 运行时下的端到端对话仍未跑；「模型确实对非字符串 `tool` 消息报错」是用户实测结论，仓库内未复现。
 

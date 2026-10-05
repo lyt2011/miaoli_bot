@@ -20,8 +20,8 @@ async def replace(
 	path	: str,
 	old_text: str,
 	new_text: str,
-	encoding: str = "utf-8",
-	count	: int = -1,
+	encoding: str,
+	count	: int,
 ) -> Dict[str, str]:
 	
 	"""

@@ -44,8 +44,8 @@ class ToolSchema(BaseModel):
 @tool(args_schema=ToolSchema)
 async def bash(
 	cmd		: str,
-	encoding: str	= "utf-8",
-	timeout	: float	= 60.0,
+	encoding: str,
+	timeout	: float,
 ) -> Dict[str, Any]:
 	
 	"""执行终端指令"""

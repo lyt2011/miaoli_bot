@@ -19,10 +19,10 @@ class ToolSchema(BaseModel):
 @tool(args_schema=ToolSchema)
 async def send_message_to_qq(
 	chat_id			: str,
-	to_group		: bool			= False,
-	plain_text		: Optional[str] = None,
-	at_user_id		: Optional[str] = None,
-	reply_message_id: Optional[str] = None,
+	to_group		: bool,
+	plain_text		: Optional[str],
+	at_user_id		: Optional[str],
+	reply_message_id: Optional[str],
 ) -> Dict[str, Any]:
 
 	"""

@@ -1,0 +1,4 @@
+enable: true
+provider: "langsearch"
+base_url: "https://api.langsearch.com/v1/web-search"
+env_key: "SEARCH_API_KEY"

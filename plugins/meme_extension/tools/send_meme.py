@@ -21,7 +21,7 @@ class ToolSchema(BaseModel):
 async def send_meme_to_qq(
 	hash	: str,
 	chat_id	: str,
-	to_group: bool	= False,
+	to_group: bool,
 ) -> Dict[str, Any]:
 	
 	"""

@@ -15,7 +15,7 @@ class ToolSchema(BaseModel):
 
 
 @tool(args_schema=ToolSchema)
-async def read_file(path: str, encoding: str = "utf-8") -> Dict[str, Any]:
+async def read_file(path: str, encoding: str) -> Dict[str, Any]:
 	
 	"""读取一个文件"""
 	

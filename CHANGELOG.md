@@ -3,6 +3,43 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.14.0] - 2026-10-06
+
+> 🔍 **新增 `web_search` 子插件（LangSearch 联网搜索），并把 7 个工具函数签名里的默认值全部去掉**。`lang_search` 工具把 langsearch.com 的 `POST /v1/web-search` 接给模型；`aiohttp.ClientSession` 由子插件 `on_load` 建、`on_close` 关；**API key 只从环境变量读、不进仓库**（密钥不再落进随仓库提交的 `config.yaml`）。实测英文检索质量明显优于中文（技术 / 包名类 query 相关率约 **65% vs 30%**），工具 docstring 已注明「任何时候都优先使用英文」。
+>
+> ⚠️ **部署注意**：`web_search/config.yaml` 的 `env_key`（默认 `SEARCH_API_KEY`）指向的环境变量**必须在运行环境中设置**，否则 key 为空串、请求会被服务端以 401 拒（`fail` 返回 `Invalid API KEY`）。本插件是全仓**第一个**从环境变量取密钥的子插件。
+
+### Added
+
+- **`plugins/web_search/`（新子插件，入口类 `WebSearch`）**：LangSearch 联网搜索工具。目录含 `plugin.toml` / `main.py` / `config.yaml` / `consts/` / `models/` / `tools/`。
+  - **`tools/lang_search.py`**：工具 `lang_search`，参数 `query`（搜索词）/ `count`（默认 `5`，`ge=1, le=50`）/ `freshness`（`Literal["noLimit", "oneDay", "oneWeek", "oneMonth", "oneYear"]`，默认 `noLimit`）/ `include_domains` / `exclude_domains`（均 `default_factory=list`）/ `timeout`（默认 `30.0`）；请求体 `{"query", "count", "summary": False, "freshness", "includeDomains", "excludeDomains"}`；返回 `success(响应 JSON)` 或 `fail(f"联网搜索出错: {类型}: {信息}")`
+  - **`main.py`**：`on_load` 先 `PluginConfig.model_validate(self.config)` → `set` 三个 `SHARE_STORE` 键（`PLUGIN_CONFIG` / `RAW_CONFIG` / `CLIENT_SESSION`，后者是新建的 `aiohttp.ClientSession()`）→ `enable` 为 `false` 时提前返回 → `provider == "langsearch"` 时 `self.registry.register_tool(lang_search)`；`on_close` 先 `drop` 三个键、再 `await client_session.close()`（**先 drop 后关**，避免残留引用）
+  - **`models/plugin_config.py`**：`PluginConfig`（`enable` / `provider`（`Literal["langsearch"]`）/ `base_url` / `env_key`（默认 `SEARCH_API_KEY`）），密钥存在 `PrivateAttr(default="")` 的 `_api_key` 里、由 `model_validator(mode="after")` 从 `os.environ[self.env_key]` 读取，对外只暴露只读属性 `api_key`（**密钥因此不会出现在 `repr` / `model_dump` 里**）
+  - **`consts/share_store_keys.py`**：`PLUGIN_CONFIG` / `RAW_CONFIG` / `CLIENT_SESSION`（`consts/__init__.py` 三项全导出）
+  - **自带 `config.yaml` 默认值**：`enable: true` / `provider: langsearch` / `base_url: https://api.langsearch.com/v1/web-search` / `env_key: SEARCH_API_KEY`
+- **`manifest.toml` 新增 `aiohttp`（`>=3.13.4`）**：`web_search` 的 HTTP 客户端。它虽是 `ncatbot5` 的传递依赖（`ncatbot5: aiohttp>=3.13.4`），但依赖传递依赖太脆，显式声明（`pip_dependencies` 15 → 16 项）
+
+### Changed
+
+- **7 个工具的函数签名去掉默认值（共 12 处，行为零变化）**：`base_system_tools` 的 `bash`（`encoding` / `timeout`）/ `read_file`（`encoding`）/ `write`（`encoding`）/ `replace`（`encoding` / `count`）、`base_platform_tools` 的 `send_file_to_qq`（`to_group`）/ `send_message_to_qq`（`to_group` / `plain_text` / `at_user_id` / `reply_message_id`）、`meme_extension` 的 `send_meme_to_qq`（`to_group`）。**理由**：`@tool(args_schema=…)` 下 `ToolNode` 走 `tool.ainvoke(call_args, config)`，即先用 `args_schema` 校验并**填好默认值**、再把 kwargs 交给函数；实测 `BaseModel` 的默认值**覆盖**函数签名里的默认值（schema `default=5`、函数 `count: int = 3` → 函数实收 `5`），故函数默认值是纯冗余。删掉后**模型看到的 JSON Schema 逐字未变**（`required` 与 `default` 均不变），真实 `ToolNode` 端到端 7/7 注入值与改动前完全一致
+- **`lang_search` 的域过滤参数用 camelCase 名**（`includeDomains` / `excludeDomains`）：服务端只认 camelCase，传 snake_case 不报错、HTTP 200、**静默忽略**（实测 `include_domains: ["wikipedia.org"]` 返回结果里仍混有 `sciencedirect.com` / `arxiv.org`，改 camelCase 后 5/5 全部命中指定域）
+- **`lang_search` 请求体传 `summary: False`**：该字段与 `snippet` **逐字完全相同**（实测 10+ 条，含 13 字到 5256 字各种长度；试了 `summaryType` / `summaryLength` / `rawContent` 等 10 个参数名均无法改变它），只是同一份正文抽取的两个字段名。关掉后单次搜索体积 **-68%**（`count=5`：3252 → 1929 token），零信息损失
+
+### Fixed
+
+- **`web_search` 开发期修掉 3 处必崩**（均在 `models/plugin_config.py`）：① `PrivateAttr(..., description=...)` 抛 `TypeError: PrivateAttr() got an unexpected keyword argument 'description'`（`PrivateAttr` 不接受 `description`）→ `PrivateAttr(default="")`；② `os.environ[env_key]` 少了 `self.` 抛 `NameError` → `os.environ[self.env_key]`；③ `PrivateAttr(...)` 的 `...` 使 `_api_key` **完全不创建**（实测 `'_api_key' in dir(obj)` 为 `False`），环境变量缺失时读 `api_key` 直接 `AttributeError` → 改 `default=""` 后返回空串
+- **`web_search` 补齐导入与导出**：`tools/lang_search.py` 7 处缺导入（`tool` / `BaseModel, Field` / `Any, Dict, List, Literal` / `fail, success` / `SHARE_STORE` / `..consts`，此前 17 处 `F821`）、`tools/__init__.py` 补导出 `lang_search`（原为空文件）、`main.py` 补 `aiohttp` 与 `CLIENT_SESSION` / `lang_search` 导入
+- **`lang_search` 的 HTTP 状态码检查**：`response.status_code` → `response.status`（`aiohttp.ClientResponse` 没有 `status_code`，那是 `requests` 的 API；原写法每次调用都 `AttributeError` 并被 `except` 吞成 `fail`）、比较值 `288` → `200`（实测服务端正常返回 `200`，`288` 不是有效状态码）。修好后 `try/except` 才真正覆盖「HTTP 4xx/5xx 被当成成功返回」——`aiohttp` 不因 4xx/5xx 抛异常，此前 401 会被 `success()` 包成 `{"status": true, ...}` 给模型
+
+### Note
+
+- **`lang_search` 实测数据（`count=5`，真实 API）**：ToolMessage 平均 **1822 token / 次**（区间 1288 ~ 2204，对应 4417 ~ 6427 字符）；`count` 与体积近似线性 —— `1` → 679 token、`5` → 1929、`10` → 5099、`20` → 10390、**`50`（schema 上限）→ 27786 token**（约占 `deepseek-flash` 的 `context_window` 22%）
+- **中英检索质量对比（同一后端、同一时间，仅换语言）**：英文相关率约 **65%**、中文约 **30%**，且技术 / 包名类差距最大 —— `What is NcatBot` 精准命中 PyPI 的 `ncatbot 4.4.1.post1` 与 `ncatbot5 5.5.7`，`NcatBot 是什么` 则全变成 Netcat 音近词（0/5）；`What is LangGraph checkpoint` 3/5 命中 PyPI 的 `langgraph-checkpoint` 系列，中文版仅 1/5。新闻类英文可取（`latest news today` 4/5 命中 thelocal / standard.co.uk 等），中文「今天有什么新闻」0/5。**故工具 docstring 明确要求优先用英文**
+- **响应信封噪声占比仅 14%**（`count=5` 整包 6294 字符 vs 只留 `name` / `url` / `snippet` / `datePublished` 的 5392 字符），真正占体积的是 `snippet` 正文本身（平均 856 字/条，实测最长 5256 字）。故**不做字段过滤、原始响应整体交给模型**（过滤最多省 14%，却要维护一套解析逻辑；截断 `snippet` 才是省 token 的大头，但会丢信息）
+- **`snippet` 不是短摘要而是整页正文抽取**；返回的 `displayUrl` 与 `url`、`summary` 与 `snippet` 均为重复字段。错误响应形状与成功不同：`code` 是**字符串**（`"401"`）、错误信息字段名是 `message` 而非 `msg`（成功时 `code` 是 **int** `200`、`msg` 为 `null`）
+- **`freshness` 服务端比 `Literal` 宽**：除五个枚举值外还接受 `"YYYY-MM-DD"` 与 `"YYYY-MM-DD..YYYY-MM-DD"`（区间要求 start ≤ end）。当前 `Literal` 有意收窄，未放开
+- **未验证**：NcatBot 运行时下的端到端对话仍未跑（本版为 `plugins/` 直接调用验证）；服务器侧 `SEARCH_API_KEY` 环境变量尚未配置
+
 ## [0.13.0] - 2026-10-06
 
 > 🖼️ **工具附件修复从 `base_nodes` 拆出、独立成子插件 `tool_attachment_fixer`（破坏性）**。`base_nodes/nodes/_attach_image.py` 整个删除 —— 它把所有模型都当作「不接受 `tool` 消息带多模态块」来处理、只扫末尾连续的一段 `ToolMessage`、且只挑 `image` / `image_url` 两种块（其余模态**静默丢弃**，实测确认 `audio` 块会消失）。新子插件把这三点全部改掉：按 `models` 名单门控、扫全表、整个 content 列表原样搬运。

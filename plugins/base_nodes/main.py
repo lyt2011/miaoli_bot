@@ -6,7 +6,6 @@ from typing				import Any, Dict
 
 from .nodes	import (
 	format_input,
-	compact,
 	call_llm,
 	invoke_tools,
 	attach_image,
@@ -26,7 +25,6 @@ class BaseNodes(PluginProtocol):
 
 		self.registry.on_agent_start(format_input, priority=NORMAL)
 		self.registry.on_turn_start(build_client, priority=NORMAL)
-		self.registry.on_request(compact, priority=NORMAL+1)
 		self.registry.on_request(call_llm, priority=NORMAL)
 		self.registry.on_tool_call(invoke_tools, priority=NORMAL)
 		self.registry.on_tool_call(attach_image, priority=NORMAL-1)

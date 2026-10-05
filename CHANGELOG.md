@@ -3,15 +3,67 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.12.0] - 2026-10-05
+
+> 🧠 **上下文压缩从 `base_nodes` 拆出、独立成子插件 `context_compactor`；`GraphState` 里「每轮用完即丢」的 6 个键改用 `UntrackedValue`（破坏性）**。`base_nodes/nodes/_compact.py` 整个删除 —— 它把 `CONTEXT_WINDOW = 128000` 写死在代码里（原注释即标 `# HACK`）、token 用「字符数求和」粗估、提示词与保留条数都是模块级常量。新子插件把这些全部配置化（`keep_count` / `prompt_file` / `calculate.mode`），并**读模型真实配置**判断阈值（`usage + max_tokens >= context_window` 才压，为输出预留空间）。同时把 `GraphState` 的 `event` / `segments` / `provider_name` / `model_name` / `final_answer` / `system_prompt` 六个键从普通键改为 `Annotated[T, UntrackedValue]` —— 它们只在**单次 `ainvoke` 内**可见，**不再写入 checkpoint**（`channel_values` 现在只剩 `messages`）。
+>
+> ⚠️ **破坏性**：① `base_nodes` 不再提供上下文压缩，升级后需自行加载 `context_compactor`，否则长对话不再自动压缩；② `GraphState` 这 6 个键不再跨轮持久化 —— 子插件若在**后续轮次**读它们将读到 `None`（同一次 `ainvoke` 内跨事件读仍正常，实测 `system_prompt` 可跨 3 个以上事件传到 `call_llm`）；③ `manifest.toml` 新增 `pillow` / `tiktoken` 两个硬依赖。
+
+### Added
+
+- **`plugins/context_compactor/`（新子插件，入口类 `ContextCompactor`）**：上下文压缩。`compact` 节点挂在 `ON_BEFORE_REQUEST`（`priority=NORMAL`），流程为「算 token → 比阈值 → 压 → 整体替换」：阈值判断是 `usage_tokens + max_tokens < context_window` 时不压、直接返回 `None`（不写任何增量）；压缩请求体为 `[SystemMessage(system_prompt), *messages, HumanMessage(prompt)]`（无 `system_prompt` 时省略）；最后返回 `{"messages": Overwrite([HumanMessage("<compaction>摘要</compaction>"), *最近 keep_count 条])}`。
+  - **配置化**（`config.yaml`）：`enable` / `encoding` / `prompt_file`（绝对路径）/ `keep_count` / `calculate.mode`（`base` 或 `tiktoken`）/ `calculate.encoder`（`o200k_base` / `cl100k_base`，`mode=tiktoken` 时必填，由 `CalculateConfig` 的 `model_validator` 校验）
+  - **提示词可编辑**：`data/compact_prompt.md`（懒加载，`encoding` 指定编码）
+  - **utils 四个模块**：`image_ops.py`（`b64_to_image` / `image_to_tokens`）/ `block_ops.py`（`HOLDER` + `handle_block` / `handle_dict_block` / `handle_str_block`）/ `sugar.py`（`keep_recent_messages` / `merge_contents`）/ `easier_calculate.py`（`base_calculate` / `tiktoken_calculate`），依赖方向单向 `easier_calculate → sugar → block_ops → image_ops`
+  - **保留规则**：`keep_recent_messages` 从后往前收，只对 `HumanMessage` / `AIMessage` / `SystemMessage` 计数，**`ToolMessage` 不占配额**，避免把「有请求没返回」的 `tool_calls` 切开
+- **`manifest.toml` 新增两个依赖**：`pillow`（`>=12.3.0`，图片宽高解析）与 `tiktoken`（`>=0.14.0`，精确 token 计数；此前是直接 import 但未声明，靠 `langchain-openai` 的传递依赖混进来）—— `pillow` 是本版新引入，`tiktoken` 是补声明
+- **7 份子插件 `README.md`**：`account_injector` / `base_nodes` / `base_parsers` / `base_platform_tools` / `base_topology` / `orphan_tool_fixer` / `pending_tool_fixer` —— 加上原有的 `base_system_tools` / `meme_extension` / `tool_permission_manager` 与新插件，**11 个子插件全部有 README**
+- **`GraphState` 引入 `UntrackedValue`**（`from langgraph.channels import UntrackedValue`）：`event` / `segments` / `provider_name` / `model_name` / `final_answer` / `system_prompt` 六键改为 `Annotated[T, UntrackedValue]`，`messages` 保持 `add_messages` 不变
+
+### Changed
+
+- **`GraphState` 的 6 个键不再落盘（破坏性）**：实测改造前 `channel_values` 含 7 个键，改造后**只剩 `['messages']`**；20 轮真实对话的 checkpoint 存储量**省 34%**。`UntrackedValue` 与 `EphemeralValue` 的区别是「不落盘」vs「落盘但下一步清空」，后者是 langgraph 内部件（`START` 通道、扇入屏障），对「要跨 3 个以上事件存活」的 `system_prompt` 不适用
+- **`main.py` 的 `final_answer` 取值改 `.get()` 兜底**：`answer_string = (raw_output or {}).get("final_answer")` + `if answer_string is None: self.logger.warning(...); return`。两个原因 —— ① `UntrackedValue` 不落盘，本轮没走到 `on_agent_end` 时该键**不存在**（原来直接下标会 `KeyError`）；② `ainvoke` 在**无任何通道值时返回 `None`**（实测），原来的 `output[...]` 会当场崩
+- **顺带修掉一个真 bug（陈旧读）**：改造前不写的轮次会把**上一轮的旧值**带回（实测第 1 轮读到 `'第一轮的答案'`、第 2/3 轮键不存在），改造后行为一致
+- **`node_connection_fix` → `base_topology`**：0.11.0 的提交信息里写的是旧名，本次改名落地（目录、`plugin.toml`、入口类、两处 `SHARE_STORE` 键字符串、`config.yaml` 路径同步）
+- **`orphan_tool_fixer` / `pending_tool_fixer` 的注册事件从 `on_before_request` 移到 `on_request`**（优先级相应改为 `NORMAL+2`），与 `compact` 分开事件
+- **`base_calculate` 公式修正**：`len(contents)` → `int(len(contents) * 0.7)`。原式相当于 1 token/字，实测真实语料约 0.55 tok/字（消息里大量 JSON 事件体）、纯中文约 0.9，于是触发点被推到 96% 以上、几乎没有余量；新系数在真实语料下触发时占用约 76%（留 24% 余量）。返回类型同时从 `float` 修正为 `int`（原与 `-> int` 注解不符）
+
+### Removed
+
+- **`plugins/base_nodes/nodes/_compact.py` 整个删除**（含 `MAX_KEEP_MESSAGES = 5` / `CONTEXT_WINDOW = 128000` / `COMPACT_MESSAGE` / `_last_common_idx`）
+- **`base_nodes` 的 `compact` 注册与导入**：`main.py` 的 `self.registry.on_request(compact, priority=NORMAL+1)` 与 `from .nodes import compact`、`nodes/__init__.py` 的 `from ._compact import compact` 与 `__all__` 条目全部移除。改后全图 `compact` 节点数由 **2 个降为 1 个**（原来新旧两套压缩同时注册，新的先跑并压缩、老的再跑时字符数已小于是恒返回 `None`，属死重）
+
+### Fixed
+
+- 🔴 **`context_compactor` 的 6 处必崩**（插件在开发期修复，一并记录）：① `PrivateAttr(default=None, description=...)` → `TypeError`（`PrivateAttr` 签名只有 `default` / `default_factory` / `init`）；② `Field(default=CalculateConfig)` → **实例共享**（实测改一个另一个跟着变），改 `default_factory`；③ `easier_calculate.py` 的 `encoding.encode(contents, ...)` 里 `contents` 从未定义 → `NameError`；④ 入口类没继承 `PluginProtocol` → 实例化 `TypeError`；⑤ `main.py` 的 `if plugin_cfg.enable: return None` **逻辑反了**（`enable: true` 时永不注册）；⑥ `nodes/compact.py` 读 `state["provider"]` 而该键不存在（应为 `provider_name`）
+- 🔴 **`context_compactor/utils/sugar.py` 的 `except <???>:` 语法错误**：`<???>` 不是合法异常名（`od` 确认字节即 `3c 3f 3f 3f 3e`），`import` 即 `SyntaxError`；改为 `except Exception:`（内置名，无需导入）
+- 🔴 **`image_to_tokens` 的两处必崩**：`image.weight`（拼写错误，应为 `image.width` → `AttributeError`）与 `image_b64.split(",")[-1]` **缺赋值**（`data:` 前缀没剥掉 → `b64decode` 抛 `binascii.Error`）
+- 🔴 **`context_compactor` 的 5 个文件缺导入 + 1 个空导出**：`models/plugin_config.py` 缺 `PrivateAttr`，`utils/sugar.py` 缺 `Any` / `List` / `AIMessage` / `HumanMessage` / `SystemMessage`（3 个文件共 8 个缺失名字），`utils/easier_calculate.py` 缺 `Any` / `List`，`nodes/compact.py` 与 `main.py` 则整套缺失；`nodes/__init__.py` 为空、`compact` 未导出。**服务器是 Python 3.12（注解在 `def` 时立即求值）**，漏导入的类型名会直接 `NameError`，不像本地 3.14 那样延迟到使用时才炸
+- **`prompt` 属性的返回类型撒谎**：注解写 `-> str` 但 `prompt_file` 为 `None` 时实际返回 `None`，改为 `Optional[str]`
+
+### Note
+
+- **图片 token 估算的实测依据**：`image_to_tokens` 用 `int(sqrt(min(宽,1920) × min(高,1080)))` 折算占位符个数，占位符取汉字 `图` —— 它在 `o200k_base` 里**严格 1 字符 = 1 token**（可打印 ASCII 全部会被 BPE 合并，实测 `'a'×1000 → 125 token`、`' '×1000 → 9 token`；`\0` 也会 2 字符并成 1 token）。实测 DeepSeek 真实图片成本是 **216（起步，≤512×512）→ 1026（封顶）**，本估算给 32 → 1440，偏差在 **2.4 倍以内**且方向偏保守
+- **摘要提示词对照实验**（真实数据 `private-3640942712`，497 条消息，生产温度，每组 5 次）：**A（无 system_prompt + 第三人称）0/5 错；B（带 system_prompt + 第三人称）0/5 错；C（带 system_prompt + 第一人称）2/5 错**。出错的变量是「第一人称」而非「带 system_prompt」，且 B 的事实覆盖率最高 —— 因此仓库默认提示词用**第三人称**。C 的具体错误：把「一千米跑 3 分 19 秒」与「拼车回罗定」混成一个事实、把 10 月 4 日写成 8 月 4 日
+- **`prompt_file` 用绝对路径**：不再依赖进程 CWD（原相对路径要求 CWD 恰为仓库父目录，否则 `ValidationError: Path does not point to a file`）。服务器部署时路径不同，需单独改或加进 rsync 排除名单
+- **验证**（真跑）：① 全仓 `compileall` rc=0；② `ruff --select F401,F811,F821,F841` 全仓只剩 `main.py:153` 一处既有 F841；③ 全量插件加载 **11/11**，`ON_BEFORE_REQUEST` 处理器为 `pick_tools(1) → compact(0) → 默认跳转(-9999)`；④ `compact` 节点实跑 —— 低于阈值返回 `None`、超阈值返回 `Overwrite` 6 条（1 摘要 + 5 保留）；⑤ `image_to_tokens` 真 PNG 全链路（64×64→64、1024×1024→1024、3000×2000→1440，`min()` 归一化生效），空 url → `0`、坏图 → `1000`；⑥ 边界 7 组（纯字符串列表 / 无 `data:` 前缀 / 空 url / 缺 `image_url` / 未知模态 / 缺 `type` / 嵌套 list）全部不崩；⑦ `on_close` 的 `drop` 生效（`recall` 抛 `KeyError`）；⑧ **服务器 Python 3.12** 独立验证 import 与数值一致；⑨ `manifest.toml` 经 `tomllib` 解析通过
+- **未验证**：NcatBot 运行时下的端到端对话仍未跑；本版只在真实插件 + 真实 config + 假模型下验证，未真实调用 LLM 端点；`context_compactor` 的 tiktoken 模式**未在服务器上验证**（服务器连不上 `openaipublic.blob.core.windows.net`，编码文件下不下来，故 `config.yaml` 默认 `mode: base`）
+
+### Future
+
+- 🐛 **`system_prompt` 通道的覆盖问题（已知 Bug，待重新设计）**：`GraphState.system_prompt` 是**普通键**（无 reducer → last-write-wins），于是**多个子插件往同一通道注入时，后写的会静默覆盖先写的** —— 实测 `NORMAL+1` 的注入者内容被 `NORMAL` 的注入者整个吞掉。但这个键当初写成普通键是有原因的：它需要「每轮重置、跨轮不累积」，而单纯的 concat 通道（`operator.add`）会让片段逐轮累加（实测 3 轮后 `'AAA'`）。**两条需求相互冲突** —— 多插件共存要求「追加」，跨轮干净要求「重置」，因此必须「concat 通道 + 每轮用 `Overwrite` 重置」两件事一起做（已实测该组合可行：3 个片段全在、顺序稳定、跨轮不累积；重置节点须挂最高优先级 `MAXIMUM`，且必须用 `Overwrite` 而非直接写值，否则仍会被 reducer 当成追加）。**当前未落地，方案与实测数据见开发记录**；触发条件是「有第二个子插件需要注入提示词」，现在只有一个注入者（`account_injector`），暂无实际影响。
+- 🐛 **坏图片会让压缩一并失败（自锁）**：`compact` 与 `call_llm` 都发送全量 `messages`，若其中含 API 拒绝的图片（截断 PNG、非图片字节等），两侧会**同时 `400`** —— 压缩自救的路被堵死，坏图片留在 checkpoint 里导致每轮都失败。API 确实会拒绝（`400 unsupported image`），且 `read_image` 的类型白名单只看 magic number（**仅 8 字节的 PNG 头也能通过 `filetype.guess`**）。方向：写一个插件在请求前验证并替换坏图片块，而不是在 `read_image` 里塞 `PIL.open`（会把「图片语义」耦合进「文件读取」）。
+
 ## [0.11.0] - 2026-10-04
 
-> 🔌 **补上 0.10.0 留下的缺口：新增 `node_connection_fix` 子插件，图重新可端到端跑通**。0.10.0 把 `wire()` 改成 edgeless 之后，`tools_condition` 条件边随之一并删除，「下一个事件是谁」改由处理器主动返回跳转指令决定 —— 但当时**没有任何处理器负责这件事**，于是图跑完 `ON_REQUEST` 就静默结束、`final_answer` 缺失、`main.py` 当场 `KeyError`。本版补上的 `node_connection_fix` 就是那个「默认跳转」：**一个事件一个节点文件**（`nodes/on_agent_start.py` / `on_turn_start.py` / … / `on_agent_end.py`），每个节点只返回一条 `Goto`，把旧 `wire()` 的 8 条静态边与那条条件边**原样搬到插件层**（`ON_AFTER_REQUEST` 该去 `ON_TOOL_CALLING` 还是 `ON_TURN_END` 的分支判断由节点里的 `is_tool_calling(messages)` 承担）。它注册在**最低优先级** `MINIMUM`，因此任何子插件挂在任何更高档位都能抢在默认跳转之前改道或叫停 —— **框架不定义顺序，默认顺序由插件声明，且随时可被覆盖**。
+> 🔌 **补上 0.10.0 留下的缺口：新增 `base_topology` 子插件，图重新可端到端跑通**。0.10.0 把 `wire()` 改成 edgeless 之后，`tools_condition` 条件边随之一并删除，「下一个事件是谁」改由处理器主动返回跳转指令决定 —— 但当时**没有任何处理器负责这件事**，于是图跑完 `ON_REQUEST` 就静默结束、`final_answer` 缺失、`main.py` 当场 `KeyError`。本版补上的 `base_topology` 就是那个「默认跳转」：**一个事件一个节点文件**（`nodes/on_agent_start.py` / `on_turn_start.py` / … / `on_agent_end.py`），每个节点只返回一条 `Goto`，把旧 `wire()` 的 8 条静态边与那条条件边**原样搬到插件层**（`ON_AFTER_REQUEST` 该去 `ON_TOOL_CALLING` 还是 `ON_TURN_END` 的分支判断由节点里的 `is_tool_calling(messages)` 承担）。它注册在**最低优先级** `MINIMUM`，因此任何子插件挂在任何更高档位都能抢在默认跳转之前改道或叫停 —— **框架不定义顺序，默认顺序由插件声明，且随时可被覆盖**。
 >
 > ⚠️ **本次是破坏性变更**：优先级常量从 `EARLIEST`(200) / `LATEST`(-200) / `NORMAL`(0) **三档改为九档等比阶梯** —— `MAXIMUM`(9999) / `HIGHEST`(1000) / `HIGH`(100) / `MEDIUM`(10) / `NORMAL`(0) / `LOW`(-10) / `LOWEST`(-100) / `TRIVIAL`(-1000) / `MINIMUM`(-9999)。`EARLIEST` 与 `LATEST` **两个名字已不存在**，任何引用它们的子插件会 `ImportError`。改等比阶梯的理由是插件里已经在用 `NORMAL+1` / `NORMAL+2` / `NORMAL+3` 这类微调，档间差 10 倍才能保证这些微调不跨档（如 `MEDIUM+3`=13 仍 < `HIGH`=100）。
 
 ### Added
 
-- **`plugins/node_connection_fix/`（新子插件，入口类 `NodeConnectionFix`）**：edgeless 拓扑下的**默认跳转**，把 0.10.0 删掉的 8 条静态边与 1 条条件边在插件层复原。目录结构照惯例（`plugin.toml` / `config.yaml` / `main.py` / `models/` / `nodes/`），`nodes/` 下**一个事件一个文件**：
+- **`plugins/base_topology/`（新子插件，入口类 `BaseTopology`）**：edgeless 拓扑下的**默认跳转**，把 0.10.0 删掉的 8 条静态边与 1 条条件边在插件层复原。目录结构照惯例（`plugin.toml` / `config.yaml` / `main.py` / `models/` / `nodes/`），`nodes/` 下**一个事件一个文件**：
   - `on_agent_start` → `Goto(ON_TURN_START)`
   - `on_turn_start` → `Goto(ON_BEFORE_REQUEST)`
   - `on_before_request` → `Goto(ON_REQUEST)`
@@ -25,14 +77,14 @@
 ### Changed
 
 - **优先级常量 `EARLIEST` / `LATEST` → 九档阶梯（破坏性）**：`EARLIEST`(200) 与 `LATEST`(-200) 两个名字删除，原 `NORMAL`(0) 保留。`register()` 仍是 `sort(key=…, reverse=True)`，**数值大的先跑**
-- **`node_connection_fix` 注册在 `MINIMUM`（不是 `TRIVIAL`）**：它是绝对地板，保证「任何插件、任何档位都能抢在默认跳转前面」。`MAXIMUM` / `MINIMUM` 在这里是**可用档位**而非「禁止使用的哨兵」—— 若后续想改成哨兵语义，把默认跳转挪到 `TRIVIAL` 即可
+- **`base_topology` 注册在 `MINIMUM`（不是 `TRIVIAL`）**：它是绝对地板，保证「任何插件、任何档位都能抢在默认跳转前面」。`MAXIMUM` / `MINIMUM` 在这里是**可用档位**而非「禁止使用的哨兵」—— 若后续想改成哨兵语义，把默认跳转挪到 `TRIVIAL` 即可
 - **`ON_TOOL_CALLING` 的下一跳由 `ON_BEFORE_REQUEST` 改为 `ON_TURN_START`（有意为之）**：旧 `wire()` 的静态边是 `ON_TOOL_CALLING → ON_BEFORE_REQUEST`，新默认跳转改成回 `ON_TURN_START`，即**每轮工具调用都重走一遍「轮开始」**（`build_client` 会重建一次 `Chat[OI]`，幂等，代价是多一次对象构造与配置查找）。这是刻意模仿 pi 的回合语义，**不是笔误**
 
 ### Fixed
 
 - 🔴 **`consts/node_priorities.py` 语法错误（`import miaoli_bot.consts` 直接 `SyntaxError`）**：草稿里 `HIGHEST` / `HIGH` / `MEDIUM` / `LOW` / `LOWEST` / `TRIVIAL` 六个名字写成了空值（`HIGHEST\t= ` 没有右值），Python 解析即失败
 - 🔴 **`consts/__init__.py` 导出没跟上改名（`ImportError`）**：文件已换成九档阶梯，导出表却仍是 `from .node_priorities import EARLIEST, LATEST, NORMAL` —— 这两个名字在新文件里已不存在。导入块与 `__all__` 同步换成九个新名
-- **`plugins/node_connection_fix/main.py` 的 `LATEST` 引用（共 8 处 + 1 处 import + 1 处 docstring）**：全仓唯一还在用旧名的地方，改为 `MINIMUM`
+- **`plugins/base_topology/main.py` 的 `LATEST` 引用（共 8 处 + 1 处 import + 1 处 docstring）**：全仓唯一还在用旧名的地方，改为 `MINIMUM`
 - **`nodes/on_after_request.py` / `nodes/on_turn_end.py` 两处语法错误**：前者 `def is_tool_calling(messages: ???)` 的 `???` 不是合法类型注解，后者 `async def (state: …)` 缺函数名 —— 两个文件都编译不过。已分别补为 `List[BaseMessage]` 与 `on_turn_end`
 - **8 个节点文件全部缺导入**：只有 `GraphRuntimeContext` / `GraphState` / `Runtime`，裸用 `Goto` / `ON_*` / `END` / `BaseMessage` 会在运行时 `NameError`。已按需补齐，并删掉 `on_after_request.py` 里没用上的 `tools_condition` 导入
 - **`is_tool_calling` 的返回类型与注解不符**：`return messages and getattr(…)` 在 `messages` 为空时返回 `[]` 而非 `bool`（注解写的是 `-> bool`），改为 `bool(…)`
@@ -41,9 +93,13 @@
 ### Note
 
 - **破坏性清单**（升级需同步改动）：① 优先级常量 `EARLIEST` / `LATEST` 已删除，改用九档阶梯中的对应档位。**其余 5 条 0.10.0 的破坏性变更仍然有效**（事件名 / `core/graph/graph_pipeline.py` 路径 / `consts/graph_events.py` + `node_priorities.py` 路径 / `Update` 类删除 / `PipelineStopDispatch` 不再被 `_dispatch` 捕获）
-- **验证**（真跑）：① `compileall` 全仓 rc=0；② `ruff --select F401,F811,F841` 全仓只剩 `main.py:158` 一处既有 F841；③ `consts.__all__` 共 28 项**逐项可解析**，九档阶梯导入值 `9999 1000 100 10 0 -10 -100 -1000 -9999`，严格递减与上下对称均成立；④ 全量插件加载 **10/10**（新增 `node_connection_fix`），8 个事件的处理器列表**末位均为默认跳转且 `priority=-9999`**；⑤ **端到端正常路径**（真插件 + 真 config + 假模型）—— `final_answer='（假模型回复）'`、消息序列 `[HumanMessage, AIMessage]`；⑥ **端到端工具路径** —— 轨迹 `… → after_request → tool_calling → turn_start → before_request → request → after_request → turn_end → agent_end`、模型调用 **2** 次、消息序列 `[HumanMessage, AIMessage, ToolMessage, AIMessage]`、`final_answer='结果是 3'`；⑦ **覆盖能力** —— 在 `ON_AGENT_START` 额外挂一个 `NORMAL` 优先级的「抢跑」处理器返回 `Goto(ON_AGENT_END)`，轨迹为 `['inject_account', 'format_input', 'hijack']`，**默认跳转被短路、未执行**；⑧ 回归套件 `accumulate_unit_test` **27/27**、`fixer_test2` **31/31**、`candidate_g_test` **18/18**、`compact_dispatch_check` **7/7**
+- **验证**（真跑）：① `compileall` 全仓 rc=0；② `ruff --select F401,F811,F841` 全仓只剩 `main.py:158` 一处既有 F841；③ `consts.__all__` 共 28 项**逐项可解析**，九档阶梯导入值 `9999 1000 100 10 0 -10 -100 -1000 -9999`，严格递减与上下对称均成立；④ 全量插件加载 **10/10**（新增 `base_topology`），8 个事件的处理器列表**末位均为默认跳转且 `priority=-9999`**；⑤ **端到端正常路径**（真插件 + 真 config + 假模型）—— `final_answer='（假模型回复）'`、消息序列 `[HumanMessage, AIMessage]`；⑥ **端到端工具路径** —— 轨迹 `… → after_request → tool_calling → turn_start → before_request → request → after_request → turn_end → agent_end`、模型调用 **2** 次、消息序列 `[HumanMessage, AIMessage, ToolMessage, AIMessage]`、`final_answer='结果是 3'`；⑦ **覆盖能力** —— 在 `ON_AGENT_START` 额外挂一个 `NORMAL` 优先级的「抢跑」处理器返回 `Goto(ON_AGENT_END)`，轨迹为 `['inject_account', 'format_input', 'hijack']`，**默认跳转被短路、未执行**；⑧ 回归套件 `accumulate_unit_test` **27/27**、`fixer_test2` **31/31**、`candidate_g_test` **18/18**、`compact_dispatch_check` **7/7**
 - **未验证**：NcatBot 运行时下的端到端对话（`on_message` → 发送循环）仍未跑；本版**只在真实插件 + 真实 config + 假模型下验证**，未真实调用 LLM 端点
 - **待清理**（本次未动，沿用 0.10.0）：`errors/pipeline_stop_dispatch.py` 已无消费方；`main.py:158` 的 F841；`_compact.py` 的 `CONTEXT_WINDOW` 仍是硬编码 `128000`
+
+### Future
+
+- 🐛 **`system_prompt` 通道的覆盖问题（已知 Bug，待重新设计）**：`GraphState.system_prompt` 是**普通键**（无 reducer → last-write-wins），于是**多个子插件往同一通道注入时，后写的会静默覆盖先写的** —— 实测 `NORMAL+1` 的注入者内容被 `NORMAL` 的注入者整个吞掉。但这个键当初写成普通键是有原因的：它需要「每轮重置、跨轮不累积」，而单纯的 concat 通道（`operator.add`）会让片段逐轮累加（实测 3 轮后 `'AAA'`）。**两条需求相互冲突** —— 多插件共存要求「追加」，跨轮干净要求「重置」，因此必须「concat 通道 + 每轮用 `Overwrite` 重置」两件事一起做（已实测该组合可行：3 个片段全在、顺序稳定、跨轮不累积；重置节点须挂最高优先级 `MAXIMUM`，且必须用 `Overwrite` 而非直接写值，否则仍会被 reducer 当成追加）。**当前未落地，方案与实测数据见开发记录**；触发条件是「有第二个子插件需要注入提示词」，现在只有一个注入者（`account_injector`），暂无实际影响。
 
 ## [0.10.0] - 2026-10-04
 

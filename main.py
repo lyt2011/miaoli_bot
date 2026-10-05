@@ -136,12 +136,7 @@ class MiaoLiBot(NcatBotPlugin):
 			self.logger.warning("群消息无@ 已跳过")
 			return
 		
-		segment = getattr(event, "message", None)
-		if not segment:
-			self.logger.warning("segment 无内容或 event 不含 segment")
-			return
-		
-		parse_result = await parse_message(event, segment)
+		parse_result = await parse_message(event, event.message)
 		if parse_result is None:
 			self.logger.warning("事件解析失败 跳过")
 			return
@@ -158,7 +153,14 @@ class MiaoLiBot(NcatBotPlugin):
 		except AgentAborted as e:
 			return
 		
-		answer_string	= str(raw_output["final_answer"])
+		# final_answer 是 UntrackedValue 不落盘 本轮没走到 on_agent_end 就没有这个键
+		answer_string	= (raw_output or {}).get("final_answer")
+		
+		if answer_string is None:
+			self.logger.warning("本轮没有产出 final_answer 已跳过发送")
+			return
+		
+		answer_string	= str(answer_string)
 		answer_chunks	= split_string(string=answer_string, separator=plugin_cfg.output.split_separator)
 		
 		self.logger.debug(f"输出 {len(answer_string)} 个字符")

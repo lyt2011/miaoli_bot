@@ -16,6 +16,6 @@ class OrphanToolFixer(PluginProtocol):
 		if not config.enable:
 			return None
 		
-		self.registry.on_before_request(fix_orphan_tool_message, priority=NORMAL+2)
+		self.registry.on_request(fix_orphan_tool_message, priority=NORMAL+2)
 	
 	async def on_close(self) -> None: ...

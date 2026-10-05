@@ -1,0 +1,7 @@
+enable: true
+encoding: "utf-8"
+prompt_file: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins/context_compactor/data/compact_prompt.md"
+keep_count: 5
+calculate:
+  mode: "base"
+  encoder: "o200k_base"

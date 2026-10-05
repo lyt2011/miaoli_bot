@@ -1,16 +1,17 @@
 from typing						import Annotated, Any, Dict, List, TypedDict
 from langgraph.graph.message	import add_messages
+from langgraph.channels			import UntrackedValue
 
 
 class GraphState(TypedDict):
 	
 	messages: Annotated[list, add_messages]
 	
-	event	: Dict[str, Any]
-	segments: List[Dict[str, Any]]
+	system_prompt	: Annotated[str, UntrackedValue]
+	event			: Annotated[Dict[str, Any], UntrackedValue]
+	segments		: Annotated[List[Dict[str, Any]], UntrackedValue]
 	
-	provider_name	: str
-	model_name		: str
-
-	final_answer	: str
-	system_prompt	: str
+	provider_name	: Annotated[str, UntrackedValue]
+	model_name		: Annotated[str, UntrackedValue]
+	
+	final_answer	: Annotated[str, UntrackedValue]

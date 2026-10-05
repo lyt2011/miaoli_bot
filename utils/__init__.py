@@ -22,6 +22,8 @@ from .sugar			import (
 	split_string,
 	get_thread_id,
 	get_tool_calls,
+	get_sub_plugin_root,
+	get_model_config,
 )
 
 
@@ -47,5 +49,7 @@ __all__ = [
 	"split_string",
 	"get_thread_id",
 	"get_tool_calls",
+	"get_sub_plugin_root",
+	"get_model_config",
 
 ]

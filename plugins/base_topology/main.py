@@ -13,10 +13,10 @@ from .nodes		import (
 	on_agent_end,
 )
 
-class NodeConnectionFix(PluginProtocol):
+class BaseTopology(PluginProtocol):
 	
 	"""
-	节点连接修复
+	基础拓扑
 	
 	给每个事件挂一个默认跳转 图才有了顺序
 	注册在 MINIMUM(最低优先级) 因为优先级大的先跑 且 Goto 会短路本事件剩余处理器

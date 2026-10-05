@@ -1,0 +1,5 @@
+enable: true
+models:
+  - "deepseek/deepseek-flash"
+  - "deepseek-flash"
+replace_text: "该工具产生的附件已被添加进入上下文中。"

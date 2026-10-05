@@ -10,7 +10,7 @@ async def call_llm(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> 
 
 	"""
 	请求模型并追加回复
-	压缩后的摘要已由 compact 写进 messages，这里无需再拼
+	压缩后的摘要已由 context_compactor 写进 messages，这里无需再拼
 	"""
 
 	client		= runtime.context["client"].bind_tools(runtime.context["tools"])

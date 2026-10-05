@@ -3,6 +3,48 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.13.0] - 2026-10-06
+
+> 🖼️ **工具附件修复从 `base_nodes` 拆出、独立成子插件 `tool_attachment_fixer`（破坏性）**。`base_nodes/nodes/_attach_image.py` 整个删除 —— 它把所有模型都当作「不接受 `tool` 消息带多模态块」来处理、只扫末尾连续的一段 `ToolMessage`、且只挑 `image` / `image_url` 两种块（其余模态**静默丢弃**，实测确认 `audio` 块会消失）。新子插件把这三点全部改掉：按 `models` 名单门控、扫全表、整个 content 列表原样搬运。
+>
+> ⚠️ **破坏性**：`base_nodes` 不再提供工具附件改写，升级后需自行加载 `tool_attachment_fixer`，否则工具结果里的多模态块会原样进上下文（对不接受这种形状的模型将直接 `400`）。
+
+### Added
+
+- **`plugins/tool_attachment_fixer/`（新子插件，入口类 `ToolAttachmentFixer`）**：工具附件修复。`fix_tool_attachment` 节点挂在 `ON_TOOL_CALLING`（`priority=NORMAL-2`），把**非字符串**的 `ToolMessage.content` 整体挪进紧跟其后的一条 `HumanMessage`（`id=f"image-{tool_call_id}"`），原 `ToolMessage` 正文换成配置里的 `replace_text`，返回 `Overwrite` 整表替换；无改动时（`is_changed == False`）返回 `None`，不写任何增量。
+  - **配置**（`config.yaml`）：`enable` / `models`（生效的模型名单，`<provider>/<model>` 与 `<model>` 两种写法都认，命中任一即生效；**留空 = 对所有模型生效**）/ `replace_text`（替换后 `ToolMessage` 的正文）
+  - **`utils/guards.py`**：判据函数 `is_target_model` / `is_tool_message` / `is_block_content` / `is_target_message`（依赖方向单向 `nodes → utils → consts`）；`__init__.py` 只导出节点消费的两个（`is_target_model` / `is_target_message`）
+  - **自带 `README.md`**：含配置说明与「与 `base_nodes` 的关系」（说明本节点由 `attach_image` 移植而来、两处不可同时启用），**12 个子插件全部有 README**
+
+### Changed
+
+- **`base_nodes` 的 `attach_image` → `tool_attachment_fixer` 的 `fix_tool_attachment`，四处行为有意差异**：① **模型门控** —— 只对 `models` 里声明的模型生效（旧节点对所有模型无条件改写）；② **扫描全表**而非只扫末尾连续的一段 `ToolMessage`（旧节点依赖「附件只可能出现在本轮最后一条消息」的隐含前提，历史里有旧残留时永远修不到，而那类残留恰恰每轮 `400`）；③ **搬运整个 content 列表**而非只挑图片（旧节点的 `_pick_images` 只认 `type in ("image", "image_url")`，`audio` 等其余模态块**静默丢弃**，实测确认）；④ **原地改 `content`** 而非新建 `ToolMessage` 逐字段复制。新建 `HumanMessage` 的 `id` 由 `f"images-{tc1}-{tc2}"`（多条合并成一条）改为 `f"image-{tool_call_id}"`（一个 `ToolMessage` 配一条）
+- **`ON_TOOL_CALLING` 优先级链收窄**：`invoke_tools(0) → attach_image(-1) → 默认跳转(-9999)` → `invoke_tools(0) → fix_tool_attachment(-2) → 默认跳转(-9999)`
+- **两处陈旧注释修正**（纯注释，行为未变）：`base_nodes/nodes/call_llm.py` 的「压缩后的摘要已由 `compact` 写进 messages」→ `context_compactor`（`compact` 已不在 `base_nodes`）；`pending_tool_fixer/main.py` 的「优先级高于 `compact(1)` 与 `call_llm(0)`」→ 去掉 `compact(1)`（该节点现在是 `ON_BEFORE_REQUEST` 的 `NORMAL`，与本节点不在同一事件上，`(1)` 还是 0.12.0 前的旧值）
+
+### Removed
+
+- **`plugins/base_nodes/nodes/_attach_image.py` 整个删除**（119 行，含 `_pick_images` / `_pick_text` 两个私有辅助函数与 `DEFAULT_NOTICE` / `IMAGE_PREFIX` 两个常量）
+- **`base_nodes` 的 `attach_image` 注册与导入导出**：`main.py` 的 `self.registry.on_tool_call(attach_image, priority=NORMAL-1)` 与 `from .nodes import attach_image`、`nodes/__init__.py` 的 `from ._attach_image import attach_image` 与 `__all__` 条目全部移除
+- **`base_nodes/README.md` 的 `attach_image` 与 `compact` 两行表格**：`compact` 那行是 0.12.0 拆出 `context_compactor` 时漏改的遗留（源码已无该节点），本次一并删掉，连同「`compact` 必须排在 `call_llm` 之前」那句排序说明
+
+### Fixed
+
+- 🔴 **`tool_attachment_fixer` 的 5 处缺导入**（插件在开发期修复，一并记录）：`nodes/fix_attachment.py` 缺 `SHARE_STORE` / `PLUGIN_CONFIG` / `ToolMessage` / `HumanMessage` / `Overwrite` —— 前两个会 `NameError`，后三个会让节点静默失效；同时补上节点所依赖的 `consts/PLUGIN_CONFIG` 键（`main.py` 的 `on_load` / `on_close` 相应 `set` / `drop`）
+- 🔴 **`models/plugin_config.py` 缺 `from typing import List`**：服务器 Python 3.12 在 `def` 时立即求值注解，漏导入会 import 即 `NameError`
+- 🔴 **节点读错 state 键名**：`state.get("provider", "null")` / `state.get("model", "null")` 读的两个键在 `GraphState` 里都不存在（真名是 `provider_name` / `model_name`，由 `main.py` 写入）—— 实测门控恒拿到 `"null"`、`models` 非空时永远不命中，**整个节点等于没装**；修正后实测命中模型返回 `Overwrite`、未命中返回 `None`
+
+### Note
+
+- **`isinstance(content, list)` 等价于「非字符串」**：`ToolMessage` 会把 `dict` / `None` / `int` / `bool` 等非 list 输入全部 coerce 成 `str`（实测 `None → 'None'`、`123 → '123'`、`True → 'True'`、裸 `dict → "{'type': 'text', …}"`），所以 `.content` 只可能是 `str` 或 `list` 两种，判据无需再单独写 `not isinstance(content, str)`
+- **判据名从 `is_vision_block` 改为 `is_block_content`**：该函数只看「是不是块列表」、**不检查有没有图片**，`vision` 一词会误导（旧 `attach_image` 里叫这个名字是因为它真的只挑图片块）
+- **空 `list` 也会被迁移**：`content=[]` 属「非字符串」，会产出 `HumanMessage(content=[])`（一条正文为空的消息）—— 按「非 str 全部迁移」的口径这是预期行为（工具返回空列表也在内），未做特判
+
+### Future
+
+- **`base_nodes/README.md` 的 `compact` 表格行已于本版删除**，但同类「文档滞后于代码」的遗留可能还有 —— 子插件表与 README 的对应关系尚未有自动化校验
+- **`tool_attachment_fixer` 的 `models` 门控依赖 `state` 里的 `provider_name` / `model_name`**：这两个键是 `UntrackedValue`（单次 `ainvoke` 内可见），若将来在**跨轮**场景下读它们会拿到 `None` → 门控退化为不命中
+
 ## [0.12.0] - 2026-10-05
 
 > 🧠 **上下文压缩从 `base_nodes` 拆出、独立成子插件 `context_compactor`；`GraphState` 里「每轮用完即丢」的 6 个键改用 `UntrackedValue`（破坏性）**。`base_nodes/nodes/_compact.py` 整个删除 —— 它把 `CONTEXT_WINDOW = 128000` 写死在代码里（原注释即标 `# HACK`）、token 用「字符数求和」粗估、提示词与保留条数都是模块级常量。新子插件把这些全部配置化（`keep_count` / `prompt_file` / `calculate.mode`），并**读模型真实配置**判断阈值（`usage + max_tokens >= context_window` 才压，为输出预留空间）。同时把 `GraphState` 的 `event` / `segments` / `provider_name` / `model_name` / `final_answer` / `system_prompt` 六个键从普通键改为 `Annotated[T, UntrackedValue]` —— 它们只在**单次 `ainvoke` 内**可见，**不再写入 checkpoint**（`channel_values` 现在只剩 `messages`）。

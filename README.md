@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.12.0
+- **版本**：0.13.0
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -18,6 +18,7 @@
 - 📜 **状态与运行时分离**：`models.GraphState`（会话状态：`messages` 用 `add_messages` **进 checkpoint**；`event` / `segments` / `provider_name` / `model_name` / `final_answer` / `system_prompt` 六键用 `Annotated[T, UntrackedValue]` —— 单次 `ainvoke` 内可见、**不落盘**）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖：`client` / `tools`）分离 —— `context` 不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`（放 state 会因 msgpack 无法序列化而当场崩）。
 - 🎛️ **配置模型化（分层 + 更名）**：`PluginConfig` 含 `providers`（`{供应商名: Provider(base_url / api_key / models: {模型名: LLM(protocol / context_window / max_tokens / support_visions)})}` —— 名字由字典键承担）、`account`（`bot_id` / `admin_id` / `bot_nickname` / `admin_nickname`，四项全必填）、`output`、`checkpointer`、`sub_plugin` 与 `session_dir` / `prompt_file` / `system_prompt`；`DirectoryPath` / `FilePath` 让路径在**加载期**就被校验，缺失即 `ValidationError`。
 - 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolNode` 执行，返回值经 `utils.tool_result_builder` 的 `success` / `fail` / `custom` 收敛成 `{"status": bool, "message": …}`；主包不再内置任何工具，平台 / 系统 / meme 工具全部由内置子插件注册；`tool_permission_manager` 子插件可在此基础上按身份做工具级权限控制（`on_before_request` 摘 `runtime.context["tools"]`，未声明即拒绝）。
+- 🖼️ **工具附件兜底**：部分模型不接受 `tool` 消息携带多模态块（无论块里是什么内容都会 `400` 或静默忽略），`tool_attachment_fixer` 子插件的 `fix_tool_attachment` 节点（`ON_TOOL_CALLING`，`priority=NORMAL-2`）把**非字符串**的 `ToolMessage.content` 整体挪进紧跟其后的一条 `HumanMessage`、原 `ToolMessage` 正文换成 `replace_text`；只对 `models` 里声明的模型生效，无改动时返回 `None` 不写增量。
 - 🧩 **两级解析链**：`EventParseChain`（群 / 私聊事件元数据）与 `SegmentParseChain`（文本 / AT / 图片 / 文件 / 引用消息段）双链分发，`utils.easier_parser.parse_message` 一步合并产出 `ParseResult(event, segments)` 喂给图；解析器由 `base_parsers` 子插件注册。
 - 🖼️ **多类型消息段**：`Text` → `{text}`、`At` → `{at}`、`Image` → `{image, size, is_meme}`（`QQImageSegmentParser` 只接受 QQ 平台侧 `ncatbot.types.qq.QQImage`，`is_meme` 即其 `sub_type` 非 0）、`File` → `{file, size}`、`Reply` → `{reply}`。
 - 🦆 **鸭子类型适配**：`adapters/EventAdapter` 不依赖具体 ncatbot 类型，通过属性探测兼容不同消息事件形态（`user_id` / `group_id` / `is_group` / `send`）；`utils.get_id_from_event` 群取 `group_id`、私聊取 `user_id`。
@@ -60,7 +61,6 @@ core/GraphPipeline.ainvoke({"event", "segments"}, thread_id=session_id, context=
    ON_AFTER_REQUEST ── base_topology: on_after_request（末条有 tool_calls？）
         │
         ├─ 有 tool_calls ──▶ ON_TOOL_CALLING ── invoke_tools（ToolNode → ToolMessage）
-        │                                      attach_image（图片块 → HumanMessage）
         │                                      └── 回到 ON_TURN_START（重走一轮）
         │
         └─ 无 tool_calls ──▶ ON_TURN_END ──▶ ON_AGENT_END ── latest_to_answer（messages[-1] → final_answer）
@@ -122,6 +122,7 @@ miaoli_bot/
 │   ├── meme_extension/            #   meme 工具（tools/ + core/ + models/ + consts/ + config.yaml 默认值 + README）
 │   ├── orphan_tool_fixer/         #   孤儿工具返回修复（nodes/ + utils/ + config.yaml 默认值）
 │   ├── pending_tool_fixer/        #   悬空工具调用修复（nodes/ + utils/ + models/ + consts/ + config.yaml 默认值）
+│   ├── tool_attachment_fixer/     #   工具附件修复（nodes/ + utils/ + models/ + consts/ + config.yaml 默认值 + README）
 │   └── tool_permission_manager/   #   工具权限控制（nodes/ + models/ + consts/ + config.yaml 权限表 + README）
 ├── protocols/                     # 抽象协议
 │   ├── abc/                       #   编译期抽象：PluginProtocol / ChainProtocol / StoreProtocol / BaseCheckpointerSaverAdapter
@@ -144,19 +145,19 @@ miaoli_bot/
 4. `graph_pipeline.ainvoke({"event": …, "segments": …, "provider_name": …, "model_name": …}, thread_id=session_id, context={"client": None, "tools": tool_registry.tools})`。
 5. `ON_AGENT_START` 的 `format_input` 把 `event` + `segments` 序列化成 JSON 文本包成 `HumanMessage` **追加**进 `messages`；同事件的 `inject_account`（`account_injector` 子插件）把账号信息块 + 人设写进 `system_prompt` 键（**`UntrackedValue` 通道：单次 `ainvoke` 内可见、不写入 checkpoint**）；`ON_TURN_START` 的 `build_client` 按 state 里的 `provider_name` / `model_name` 从根配置建 `ChatOpenAI` 写进 `runtime.context["client"]`。
 6. 同一批次里（`ON_BEFORE_REQUEST`，按 priority 降序）：`pick_tools`（`priority=1`）按 `config.yaml` 权限表与 `event.sender.user_id` 摘掉无权使用的工具（未声明的工具默认拒绝并打 warning）、`compact`（`priority=0`，`context_compactor` 子插件）读模型真实 `context_window` / `max_tokens` 判阈值，超窗时把历史压成一条 `<compaction>` 摘要并返回 `{"messages": Overwrite([摘要, *保留窗口])}` 整体替换历史（`Overwrite` 是 langgraph 官方的「绕过 reducer 直接写入」包装，`accumulate_data` 折叠多个处理器的产出时保留它、`merge_data` 构建视图时消费它，因此「整体替换」与其它处理器的「追加 / 定向删除」可以任意顺序组合）；随后 `ON_REQUEST` 先跑 `pending_tool_fixer`（`priority=2`）给悬空的 `tool_calls` 补上合成返回、`orphan_tool_fixer`（`priority=2`）删掉找不到发起者的 `ToolMessage`（两者只在上一轮异常中断留下坏形状时才有产出，历史本就合法时直接返回 `None`、不写任何增量），再由 `call_llm` 以 `[SystemMessage(state["system_prompt"]), *state["messages"]]` 请求模型，返回的 `AIMessage` 追加进 `messages`。
-7. `ON_AFTER_REQUEST` 由 `base_topology` 的 `on_after_request` 节点分流（它注册在最低优先级 `MINIMUM`，因此任何插件都能抢在它之前改道）：末条消息带 `tool_calls` → 跳 `ON_TOOL_CALLING`，由 `invoke_tools` 用 `ToolNode` 执行工具、`ToolMessage` 追加进 `messages`，若工具结果带图片 `attach_image` 会把图片块挪成一条 `HumanMessage`，然后跳回 `ON_TURN_START` 重走一轮（重跑 `build_client` / `pick_tools` / `call_llm`）；无 `tool_calls` → 跳 `ON_TURN_END`，再经 `on_turn_end` 跳 `ON_AGENT_END`，最后 `on_agent_end` 返回 `Goto(END)` 收尾（`END` 被 langgraph 过滤，于是没有下一跳）。
+7. `ON_AFTER_REQUEST` 由 `base_topology` 的 `on_after_request` 节点分流（它注册在最低优先级 `MINIMUM`，因此任何插件都能抢在它之前改道）：末条消息带 `tool_calls` → 跳 `ON_TOOL_CALLING`，由 `invoke_tools` 用 `ToolNode` 执行工具、`ToolMessage` 追加进 `messages`，若工具结果是**非字符串**内容（多模态块列表），由 `tool_attachment_fixer` 子插件把它整体挪成一条 `HumanMessage`（原 `ToolMessage` 正文换成 `replace_text`，只对 `models` 里声明的模型生效），然后跳回 `ON_TURN_START` 重走一轮（重跑 `build_client` / `pick_tools` / `call_llm`）；无 `tool_calls` → 跳 `ON_TURN_END`，再经 `on_turn_end` 跳 `ON_AGENT_END`，最后 `on_agent_end` 返回 `Goto(END)` 收尾（`END` 被 langgraph 过滤，于是没有下一跳）。
 8. `ON_AGENT_END` 的 `latest_to_answer` 取 `messages[-1]`，是 `AIMessage` 就把 `content` 写进 `final_answer`（否则回退成携带 `thread_id` 的提示文案）。
 9. `on_message` 拿 `output` 的 `final_answer`（用 `.get()` 兜底 —— 该键是 `UntrackedValue`，本轮没走到 `on_agent_end` 时不存在）交给 `utils.split_string`，按 `output.split_separator` 切块（**未设置分隔符 → 整条一块**）并跳过空块，每块按 `len(块) * typing_speed ± typing_speed_offset` 随机 sleep 后交给 `EventAdapter.send(self.api, …)` 发回 QQ。
 10. 插件卸载（`on_close`）：先显式 `drop` 掉已知键（含 `TOOL_REGISTRY` / `EVENT_PARSER` / `SEGMENT_PARSER` / `GRAPH_PIPELINE`），再 `plugin_loader.unload_all()` 卸载子插件（逐个 `on_close()` 并从 `sys.modules` 抹掉整包），最后 `await self.cpa.close()` 显式关闭 checkpointer（sqlite 关 `aiosqlite` 连接、postgresql 关连接池、memory 无副作用），残留键只记 warning。
 
 ## 内置子插件
 
-主包只保留图管线与加载框架，业务能力由子插件提供。以下十一个内置子插件位于本仓库的 `plugins/` 目录，`plugin.toml` 与子插件自带的 `config.yaml` 默认值都随仓库提交（根目录的 `config.yaml` 仍 gitignore，不进版本控制）：
+主包只保留图管线与加载框架，业务能力由子插件提供。以下十二个内置子插件位于本仓库的 `plugins/` 目录，`plugin.toml` 与子插件自带的 `config.yaml` 默认值都随仓库提交（根目录的 `config.yaml` 仍 gitignore，不进版本控制）：
 
 | 子插件 | 提供 |
 |---|---|
 | `account_injector` | 账号注入：`inject_account` 在 `on_agent_start` 把管理员 / 机器人的 QQ 号与昵称拼进 `system_prompt` |
-| `base_nodes` | 图节点：`format_input` / `build_client` / `call_llm` / `invoke_tools` / `attach_image` / `latest_to_answer`；含图片附加 |
+| `base_nodes` | 图节点：`format_input` / `build_client` / `call_llm` / `invoke_tools` / `latest_to_answer` |
 | `base_parsers` | 两级解析器：群 / 私聊事件 + 文本 / AT / 图片 / 文件 / 引用消息段 |
 | `base_platform_tools` | 平台工具：发消息 / 发文件 / 下载文件 / 查消息 ID / 撤回消息 |
 | `base_system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml` 与 `README.md`） |
@@ -165,6 +166,7 @@ miaoli_bot/
 | `meme_extension` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除（自带 `config.yaml`）；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
 | `orphan_tool_fixer` | 坏历史修复：`fix_orphan_tool_message` 在 `on_before_request`（`priority=2`）删掉找不到发起 `tool_calls` 的 `ToolMessage`（只产出定向删除增量） |
 | `pending_tool_fixer` | 坏历史修复：`fix_pending_tool_call` 在 `on_before_request`（`priority=3`）给悬空的 `tool_calls` 补一条「工具未执行」的合成 `ToolMessage`（返回 `Overwrite` 整表替换） |
+| `tool_attachment_fixer` | 工具附件修复：`fix_tool_attachment` 在 `on_tool_calling`（`priority=-2`）把非字符串的 `ToolMessage.content` 挪进紧跟其后的一条 `HumanMessage`（原 `ToolMessage` 正文换成 `replace_text`），让不接受 `tool` 消息带多模态块的模型不再 `400`；只对 `models` 里声明的模型生效（留空 = 全部），无改动时返回 `None`。自带 `README.md` |
 | `tool_permission_manager` | 工具权限控制：按自带 `config.yaml` 的权限表（`admin` / `white_list` / `anyone`），在 `on_before_request` 把当前身份无权使用的工具从 `runtime.context["tools"]` 摘掉；未声明的工具默认拒绝并打 warning。自带 `README.md` |
 
 > `orphan_tool_fixer` 与 `pending_tool_fixer` 成对：前者治「有返回没请求」，后者治「有请求没返回」。两者互不依赖、各自独立判断，谁先跑都不影响结果（`accumulate_data` 保证不同形态的增量可以任意顺序折叠）；触发场景是上一轮工具执行中途异常／并发冲突导致消息形状坏掉，此后每轮请求模型都会 `400 insufficient tool messages following tool_calls`。
@@ -240,6 +242,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.13.0 — **工具附件修复从 `base_nodes` 拆出、独立成子插件 `tool_attachment_fixer`（破坏性）**：`base_nodes/nodes/_attach_image.py` 整个删除（119 行，含 `_pick_images` / `_pick_text` 两个私有辅助与 `DEFAULT_NOTICE` / `IMAGE_PREFIX` 两个常量），其 `on_tool_call(attach_image, priority=NORMAL-1)` 注册与导入导出同步移除。新插件的 `fix_tool_attachment` 节点改挂 `ON_TOOL_CALLING`（`priority=NORMAL-2`），行为上有四处有意差异：① **只对 `models` 里声明的模型生效**（`<provider>/<model>` 与 `<model>` 两种写法都认，留空 = 全部）—— 旧节点对所有模型无条件改写，而实际只有部分模型拒绝 `tool` 消息带多模态块；② **扫描全表**而非只扫末尾连续的一段 `ToolMessage` —— 旧节点依赖「附件只可能出现在本轮最后一条消息」的隐含前提，历史里有旧残留时永远修不到，而那类残留恰恰每轮 `400`；③ **搬运整个 content 列表**而非只挑图片 —— 旧节点的 `_pick_images` 只认 `type in ("image", "image_url")`，其余模态块（`audio` 等）**静默丢弃**（实测确认）；④ **原地改 `content`** 而非新建 `ToolMessage` 逐字段复制。判据 `isinstance(content, list)` 等价于「非字符串」—— `ToolMessage` 会把 `dict` / `None` / `int` 等非 list 输入全部 coerce 成 `str`（实测 `None → 'None'`、`123 → '123'`），所以 `.content` 只可能是 `str` 或 `list` 两种。新建的 `HumanMessage` 带确定性 `id`（`f"image-{tool_call_id}"`，旧节点是 `f"images-{tc1}-{tc2}"` 合并成一条）；无改动时返回 `None` 不写任何增量。判据函数收进 `utils/guards.py`（`is_target_model` / `is_tool_message` / `is_block_content` / `is_target_message`，依赖方向 `nodes → utils → consts`），节点文件只剩主函数。**破坏性**：不加载 `tool_attachment_fixer` 时工具附件不再被改写（旧行为是 `base_nodes` 无条件提供）。**顺带**：修两处陈旧注释（`base_nodes/nodes/call_llm.py` 的「已由 `compact` 写进」→ `context_compactor`；`pending_tool_fixer/main.py` 的「高于 `compact(1)`」删除 —— 该节点已不在同一事件上，`(1)` 还是 0.12.0 前的旧值）。**验证**：全仓 `compileall` rc=0、`ruff --select F,E9` 仅剩 4 处既有（`main.py:153` F841、`bash.py:40/41` F541、`sugar.py:50` F541，均不在本次改动文件内）、全量插件加载 **12/12**、`ON_TOOL_CALLING` 为 `invoke_tools(0) → fix_tool_attachment(-2) → 默认跳转(-9999)`、全仓 `attach_image` 残留 0（README 里两处是历史版本记录）、`base_nodes` 的 `compact` 残留 0、迁移前后主函数 AST 级逐字相同、**新旧节点 5 组用例对照实测**（末尾单条带图 / 只有文本块 / 带图但在中间 / 末尾两条连续 / 混合块含 audio）、命中模型 → `Overwrite`、未命中 → `None`、纯文本输入 → `None`、**第二次跑 → `None`（幂等）**、`utils.__all__` 逐项可解析。**未验证**：NcatBot 运行时下的端到端对话仍未跑；「模型确实对非字符串 `tool` 消息报错」是用户实测结论，仓库内未复现。
 
 v0.12.0 — **上下文压缩从 `base_nodes` 拆出、独立成子插件 `context_compactor`；`GraphState` 的 6 个非持久化键改用 `UntrackedValue`（破坏性）**：`base_nodes/nodes/_compact.py` 整个删除 —— 它把 `CONTEXT_WINDOW = 128000` 写死在代码里（原注释即标 `# HACK`）、token 用「字符数求和」粗估、提示词与保留条数都是模块级常量。新子插件的 `compact` 节点改挂 `ON_BEFORE_REQUEST`（`priority=NORMAL`），流程为「算 token → 比阈值 → 压 → 整体替换」：阈值判断 `usage_tokens + max_tokens < context_window` 时不压、直接返回 `None`（不写任何增量，为输出预留空间）；压缩请求体为 `[SystemMessage(system_prompt), *messages, HumanMessage(prompt)]`（无 `system_prompt` 时省略）；返回 `{"messages": Overwrite([HumanMessage("<compaction>摘要</compaction>"), *最近 keep_count 条])}`。保留规则从后往前收，只对 `HumanMessage` / `AIMessage` / `SystemMessage` 计数，**`ToolMessage` 不占配额**（避免把「有请求没返回」的 `tool_calls` 切开）。**全部配置化**：`keep_count` / `encoding` / `prompt_file`（绝对路径）/ `calculate.mode`（`base` 粗估或 `tiktoken` 精确）/ `calculate.encoder`（`o200k_base` / `cl100k_base`，`mode=tiktoken` 时必填，由 `CalculateConfig` 的 `model_validator` 校验）；提示词落在 `data/compact_prompt.md`，懒加载。utils 拆成四个单向依赖模块 `easier_calculate → sugar → block_ops → image_ops`。**图片 token 估算**：`image_to_tokens` 用 `int(sqrt(min(宽,1920) × min(高,1080)))` 折算，占位符取汉字 `图`（在 `o200k_base` 里**严格 1 字符 = 1 token**；可打印 ASCII 全部会被 BPE 合并，实测 `'a'×1000 → 125 token`；`\0` 也会 2 字符并成 1 token）。**`GraphState` 改造**：`event` / `segments` / `provider_name` / `model_name` / `final_answer` / `system_prompt` 六键由普通键改为 `Annotated[T, UntrackedValue]` —— 只在单次 `ainvoke` 内可见、不写入 checkpoint（实测 `channel_values` 从 7 个键降到**只剩 `['messages']`**，20 轮真实对话**省 34%** 存储）；`main.py` 的取值相应改 `.get()` 兜底 + warning（`ainvoke` 在无任何通道值时返回 `None`，原下标写法会 `KeyError`），并顺带修掉「不写的轮次带回上一轮旧值」的陈旧读。**破坏性**：① `base_nodes` 不再提供上下文压缩，升级后需自行加载 `context_compactor`；② 上述 6 键不再跨轮持久化；③ `manifest.toml` 新增 `pillow` / `tiktoken`。**修掉 9 处必崩**：`context_compactor` 的 `PrivateAttr(description=...)` `TypeError`、`Field(default=CalculateConfig)` 实例共享、`encoding.encode(contents)` 里 `contents` 未定义 `NameError`、入口类没继承 `PluginProtocol`、`enable` 判断逻辑反了、`state["provider"]` 键名错、`utils/sugar.py` 的 `except <???>:` `SyntaxError`、`image.weight` 拼写错、`data:` 前缀未剥掉（缺赋值）；另补 6 个文件 8 处缺导入（服务器 Python 3.12 注解立即求值，漏导入会直接 `NameError`）。**顺带**：`base_calculate` 公式由 `len(contents)` 改为 `int(len(contents) * 0.7)`（原式相当于 1 token/字，实测真实语料约 0.55 tok/字、纯中文约 0.9，触发点被推到 96% 以上；新系数触发时占用约 76%）、`prompt` 属性返回类型由 `str` 修正为 `Optional[str]`、`node_connection_fix` → `base_topology` 改名落地（0.11.0 提交信息里写的是旧名）、两个 fixer 的注册事件从 `on_before_request` 移到 `on_request`、补齐 7 份子插件 README（11/11 全覆盖）。**验证**：全仓 `compileall` rc=0、`ruff --select F401,F811,F821,F841` 只剩 `main.py:153` 一处既有 F841、全量插件加载 **11/11**（`ON_BEFORE_REQUEST: pick_tools(1) → compact(0) → 默认跳转(-9999)`）、`compact` 实跑（低于阈值 `None` / 超阈值 `Overwrite` 6 条）、`image_to_tokens` 真 PNG 全链路与 7 组边界、`on_close` 的 `drop` 生效、**服务器 Python 3.12** 独立验证、`manifest.toml` 经 `tomllib` 解析。**未验证**：NcatBot 运行时下的端到端对话仍未跑；`tiktoken` 模式未在服务器验证（连不上 `openaipublic.blob.core.windows.net`，编码文件下不下来，故默认 `mode: base`）。
 

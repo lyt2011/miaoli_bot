@@ -3,6 +3,25 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.14.1] - 2026-10-06
+
+> 🔐 **补上 `web_search` 的权限声明，并把服务器部署的密钥配置收口**。`tool_permission_manager` 的权限表此前没有 `lang_search` 条目 —— 按它的规则「未声明即拒绝」，工具注册后**所有人都会被拒**并每轮打 warning；本次补上 `anyone`（15 → 16 条，与注册表的 16 个工具一一对应）。
+>
+> ⚠️ **服务器网络无法访问 langsearch**：实测该服务器只能访问国内服务，所有国际搜索 API（含 `api.langsearch.com`）**全部连接超时**。`lang_search` 在服务器上当前不可用，调用会返回 `fail("联网搜索出错: TimeoutError: ")` —— 已验证是**优雅降级**（返回 `fail` 字典、不抛异常、不打断图），但拿不到结果。
+
+### Added
+
+- **`tool_permission_manager/config.yaml` 补 `lang_search` → `anyone`**：此前权限表 15 条、注册表 16 个工具，`lang_search` 是唯一未声明项（未声明的工具会被摘除并每轮打 warning）。补上后**声明 16 = 注册 16**，无漏声明、无多余条目
+
+### Note
+
+- **服务器部署 0.13.0 → 0.14.1（rsync）**：`--delete` + 排除 `.git` / `__pycache__/` / `*.pyc` / `*.log` / `.ruff_cache/` / **`config.yaml`**；**10 个文件更新 + 10 个新增**（`web_search/` 整目录），**0 删除**。`web_search/config.yaml` 与 `tool_permission_manager/config.yaml` 因被排除而单独 `scp`（两份 md5 与仓库一致）；根 `config.yaml` 未被触碰（md5 `11314fd7a0b43857f100974a840ea740` 前后一致）
+- **API key 写进 systemd unit**：`/etc/systemd/system/ncatbot.service` 新增 `Environment=SEARCH_API_KEY=…`（紧随 `PYTHONIOENCODING` 行），`daemon-reload` 后 `systemctl show ncatbot -p Environment` 可见；文件权限由 `644` 收紧到 **`600`**（现含密钥）。已从 `/proc/<pid>/environ` 确认密钥真进了 bot 进程（长度 35），启动日志无 ERROR / Traceback / CRITICAL
+- **服务器侧独立验证**（Python 3.12）：子插件 **13/13**（`web_search` 已加载）、工具 **16 个**（`lang_search` 在）、权限表 **16 条**且与注册表零差异、管理员 **16** 个工具 / 路人 **10** 个（被摘掉 `archive_meme` / `bash` / `read_file` / `remove_meme_by_hash` / `replace` / `write`），`lang_search` 双方均可见
+- **⚠️ 服务器出口网络限制（本次新发现）**：实测可达 `api.deepseek.com`（401，0.03s）/ `www.bing.com`（302，0.05s）/ `api.bochaai.com`（404，0.11s）；不可达 `api.langsearch.com` / `api.tavily.com` / `api.search.brave.com` / `google.serper.dev` / `duckduckgo.com` / `github.com` / `www.google.com` / `api.openai.com`（均连接超时，3/3 重试一致）。即该服务器只能访问国内服务 —— `web_search` 的**多后端设计**正好在此派上用场，可考虑适配一个国内可达的后端
+- **DNS 坏缓存已清理**：排查中发现 systemd-resolved 对 `api.langsearch.com` 返回伪造的 `cname.lab.`（DNS 污染/劫持残留），`resolvectl flush-caches` 后解析恢复正常；但恢复后仍是连接超时，**根因是出口网络限制而非 DNS**
+- **未验证**：NcatBot 运行时下的端到端对话仍未跑（本版服务器侧为直接调用插件验证）
+
 ## [0.14.0] - 2026-10-06
 
 > 🔍 **新增 `web_search` 子插件（LangSearch 联网搜索），并把 7 个工具函数签名里的默认值全部去掉**。`lang_search` 工具把 langsearch.com 的 `POST /v1/web-search` 接给模型；`aiohttp.ClientSession` 由子插件 `on_load` 建、`on_close` 关；**API key 只从环境变量读、不进仓库**（密钥不再落进随仓库提交的 `config.yaml`）。实测英文检索质量明显优于中文（技术 / 包名类 query 相关率约 **65% vs 30%**），工具 docstring 已注明「任何时候都优先使用英文」。

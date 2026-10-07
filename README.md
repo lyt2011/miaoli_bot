@@ -116,7 +116,7 @@ miaoli_bot/
 │   ├── account_injector/          #   账号注入节点（nodes/ + plugin.toml）
 │   ├── base_nodes/                #   图节点（nodes/ + plugin.toml）
 │   ├── base_parsers/              #   两级解析器（event_parsers/ + segment_parsers/）
-│   ├── base_platform_tools/       #   平台工具（file_ops/ + message_ops/）
+│   ├── base_platform_tools/       #   平台工具（tools/）
 │   ├── base_system_tools/         #   系统工具（tools/ + models/ + consts/ + config.yaml 默认值 + README）
 │   ├── base_topology/             #   默认跳转（nodes/ 一个事件一个文件 + config.yaml 默认值）
 │   ├── context_compactor/         #   上下文压缩（nodes/ + utils/ + models/ + consts/ + data/ 提示词 + config.yaml 默认值 + README）

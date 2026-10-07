@@ -35,6 +35,8 @@ permissions:
     permission: "anyone"
   - tool_name: "query_qq_message_id"
     permission: "anyone"
+  - tool_name: "send_poke"
+    permission: "anyone"
 
   # —— meme_extension ——
   - tool_name: "archive_meme"

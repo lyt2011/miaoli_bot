@@ -3,6 +3,42 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.15.0] - 2026-10-07
+
+> 👉 **新增 `send_poke` 戳一戳工具，`base_platform_tools` 目录结构对齐其他子插件，`PluginConfig` 移除 `session_dir`**。新增的工具按 `group_id` 有无自动分流到「群内戳」与「私聊戳」两条 ncatbot API；`base_platform_tools` 此前的 `file_ops/` + `message_ops/` 两个功能子包合并为统一的 `tools/`，与其余 12 个子插件一致。
+>
+> ⚠️ **`session_dir` 是移除模型字段、不是移除配置键**：`PluginConfig` 带 `extra="allow"`，旧配置里残留的 `session_dir` **仍能通过校验**（只是落进 extras、不再是模型字段），故本次**非破坏性变更**。服务器根配置里就有 `session_dir: /tmp/`，已实测兼容。
+
+### Added
+
+- **`plugins/base_platform_tools/tools/send_poke.py`：工具 `send_poke`（戳一戳）**。参数 `user_id`（`str`，必填）/ `group_id`（`Optional[str]`，默认 `None`）；`group_id` 有值 → `ncatbot_api.qq.messaging.send_poke(group_id=…, user_id=…)`（群内戳），无值 → `friend_poke(user_id=…)`（私聊戳）。异常返回 `fail(f"戳 {user_id} 失败: {类型}: {信息}")`、成功返回 `success(f"成功戳了 {user_id}")`，与其他工具同走 `{"status", "message"}` 契约。两条分支的参数名与位置均与 `ncatbot/api/qq/messaging.py` 的 `send_poke(self, group_id, user_id)` / `friend_poke(self, user_id)` 逐字核对一致
+- **`tools/__init__.py` 导出 `send_poke`**（5 → 6 项）；**`main.py` 的 `on_load` 注册 `send_poke`**
+- **权限表补 `send_poke` → `anyone`**（`tool_permission_manager/config.yaml`，16 → 17 条）：按该插件的「未声明即拒绝」规则，不补则工具注册后**所有人都会被拒**
+- **`base_platform_tools/README.md` 补 `send_poke` 说明与目录结构小节**（工具列表 5 → 6）
+
+### Changed
+
+- **`base_platform_tools` 目录结构对齐其余子插件**：`file_ops/`（`send_file` / `download_file`）与 `message_ops/`（`send_message` / `delete_message` / `query_message_id`）两个功能子包合并为 `tools/`。5 个工具文件**内容一字未改**（用 `git mv` 移动以保留历史；它们本就用绝对导入 `miaoli_bot.*`，无需改导入路径）
+- **`base_platform_tools/__init__.py` 清空（297 B → 0 B）**：此前它转导出 5 个工具，而其余 12 个子插件的根 `__init__.py` **全为空**、`main.py` 直接从 `.tools` 导入 —— 现统一为后者
+- **`base_platform_tools/main.py` 导入合并**：`from .file_ops import (…)` + `from .message_ops import (…)` 两处合并为 `from .tools import (6 个)`
+- **`models/config/plugin.py` 字段重排**：`prompt_file` / `system_prompt` 提前到 `providers` 之前，`providers` / `account` / `output` / `checkpointer` / `sub_plugin` 一组靠后；**无字段增删以外的语义变化**
+
+### Removed
+
+- **`plugins/base_platform_tools/file_ops/` 与 `message_ops/` 两个子包**（含各自的 `__init__.py`）
+- **`PluginConfig.session_dir` 字段（`DirectoryPath`）**：全仓代码 **0 引用**（`grep` 仅命中 README / CHANGELOG 的历史条目与 `config.example.yaml`）。**非破坏性** —— `extra="allow"` 使旧配置里残留的该键仍能通过校验（实测：模型字段里为 `False`、`getattr` 仍可取到值、`model_dump()` 里仍在），服务器根配置的 `session_dir: /tmp/` 已实测兼容
+- **`models/config/plugin.py` 的 `tempfile.gettempdir` 导入**：它此前只服务 `session_dir` 的 `default_factory`，字段移除后成为未使用导入（`F401`）
+
+### Fixed
+
+- **`models/config/plugin.py` 消除 `F401`**：随 `session_dir` 移除一并删掉 `from tempfile import gettempdir`
+
+### Note
+
+- **本版验证**：全仓 `compileall` rc=0；`ruff --select F,E9` 全仓 **4 处既有**（`main.py:153` F841、`base_system_tools/tools/bash.py:40/41` F541、`utils/sugar.py:50` F541，均不在本次改动文件内）；全量插件加载 **13/13**；工具 **16 → 17 个**；权限表 **16 → 17 条**且与注册表**零差异**；`send_poke` 的 `args_schema` 为 `required=['user_id']`、`properties=['user_id','group_id']`；真实调用**两条分支**（`group_id=None` 与 `group_id="67890"`）均走到 ncatbot API 并以 `fail` 优雅返回（假 API 对象下报 `AttributeError`，未抛异常）；`PluginConfig.model_validate` 对真实根配置通过，含 `session_dir` 的配置同样通过
+- **未验证**：NcatBot 运行时下的端到端对话仍未跑（本版为 `plugins/` 直接调用验证）；`send_poke` 未在真实 QQ 环境实际戳过
+- **主 README 本版有意未更新**：其第 19 行（`PluginConfig` 字段列举）与第 208 行（`session_dir` 配置表条目）仍描述 `session_dir`，与本次改动不一致，留待后续统一
+
 ## [0.14.1] - 2026-10-06
 
 > 🔐 **补上 `web_search` 的权限声明，并把服务器部署的密钥配置收口**。`tool_permission_manager` 的权限表此前没有 `lang_search` 条目 —— 按它的规则「未声明即拒绝」，工具注册后**所有人都会被拒**并每轮打 warning；本次补上 `anyone`（15 → 16 条，与注册表的 16 个工具一一对应）。

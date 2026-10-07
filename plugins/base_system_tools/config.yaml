@@ -6,3 +6,5 @@ read_image:
     - "png"
     - "jpeg"
     - "jpg"
+    - "gif"
+    - "webp"

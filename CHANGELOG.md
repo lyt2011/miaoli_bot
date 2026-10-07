@@ -3,6 +3,29 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.16.0] - 2026-10-07
+
+> 🖼️ **`read_image` 支持更多图片格式，并把格式名单写进文档**。`support_image` 实际启用的格式由 3 个（`png` / `jpeg` / `jpg`）扩到 **5 个**（新增 `gif` / `webp`），`Image`（`Literal`）则由 5 项扩到 **17 项** —— 覆盖 `filetype` 能嗅探出的**全部**图片扩展名，此后往 `config.yaml` 加任何 `filetype` 认得的格式都能通过加载期校验，不必再改代码。
+>
+> ⚠️ **这道过滤的用途是「限制 `read_image` 读什么」，不是「给模型过滤不同类型的图片」**：不做过滤的话，**读取什么都会弄成 b64 当成图片塞进上下文**，模型 API 直接回 **400**。过滤发生在读盘之前 —— 不在名单里的图片返回 `不支持的数据类型 xxx`，压根不是图片的文件（如 `svg`）返回 `无法识别 … 的类型`，两者都**不读盘、不塞上下文**。已实测 `deepseek-flash` 只接受 `webp` / `png` / `jpeg` / `gif` 四种，**`Literal` 宽于 API 能力，真正的开关是 `config.yaml` 的 `support_image`**。
+
+### Added
+
+- **`base_system_tools/config.yaml` 的 `read_image.support_image` 新增 `gif` 与 `webp`**（3 → 5 个）：实测 `deepseek-flash` 两种格式均能正确识图（正向 4/4：png→红圆、jpeg→蓝方、gif→绿三角、webp→黄星），且负向对照（BMP / 非图片内容 / 伪造 mime）一律 400，证明 API 同时校验 mime 与实际内容
+- **`base_system_tools/README.md` 新增「`read_image` 的格式过滤」小节**：写明 `support_image` 与 `Image` 是同一个开关（前者实际生效、后者只保证值能通过加载期校验）、过滤发生在读盘之前、以及「`Literal` 宽于模型 API 实际能力，加值前请确认目标模型支持」
+
+### Changed
+
+- **`base_system_tools/models/plugin_config.py` 的 `Image`（`Literal`）由 5 项扩到 17 项**：`apng` / `avif` / `bmp` / `cr2` / `dwg` / `gif` / `heic` / `ico` / `jpeg` / `jpg` / `jpx` / `jxr` / `png` / `psd` / `tif` / `webp` / `xcf` —— 取值即 `filetype` 能嗅探出的全部图片扩展名（命名沿用 `filetype` 的写法：`tif` 而非 `tiff`、`jpg` 而非 `jpeg`）。同时改为**多行折行**并加行内注释「限制 read_image 只能读取图片」
+
+### Note
+
+- **`Image` 是超集，`support_image` 才是开关**：`Literal` 现在覆盖 `filetype` 的全部 16 个可嗅探图片扩展名（外加历史遗留的 `jpeg`），校验「`filetype` 能出但 `Literal` 缺」为**空** —— 保证任何可被嗅探到的格式都能在配置里声明；但**能否真正用**取决于模型 API，`deepseek-flash` 实测仅支持 `webp` / `png` / `jpeg` / `gif`
+- **`jpeg` 是死值**：`filetype` 对 JPEG 文件返回的 `extension` 恒为 `jpg`（mime 才是 `image/jpeg`），故 `config.yaml` 里 `- "jpeg"` 匹配不到任何文件、`- "jpg"` 才是生效的那条；两条均保留未动
+- **`svg` 无法支持**：`filetype` 识别不出 svg（返回 `None`），`read_image` 在类型检测那步就返回 `无法识别 … 的类型`，走不到 `support_image` 判断，故未列入 `Literal`
+- **本版验证**：`compileall` rc=0；`ruff --select F,E9` 仅剩 2 处既有（均在 `base_system_tools/tools/bash.py`，本次未动）；`Image` 多行折行后解析结果与单行等价（17 项、注释不破坏语法）；`PluginConfig.model_validate` 对真实 `config.yaml` 通过；`read_image` 对启用中的 4 种格式各返回 2 个内容块；未启用的 `bmp` / `tif` / `ico` 与无法识别的 `svg` 均被拦下且返回 `fail` 不抛异常；真机 API 端到端 4/4 正确识图
+- **未验证**：NcatBot 运行时下的端到端对话仍未跑；`gif` / `webp` 未在真实 QQ 消息链路中实际走过
+
 ## [0.15.0] - 2026-10-07
 
 > 👉 **新增 `send_poke` 戳一戳工具，`base_platform_tools` 目录结构对齐其他子插件，`PluginConfig` 移除 `session_dir`**。新增的工具按 `group_id` 有无自动分流到「群内戳」与「私聊戳」两条 ncatbot API；`base_platform_tools` 此前的 `file_ops/` + `message_ops/` 两个功能子包合并为统一的 `tools/`，与其余 12 个子插件一致。

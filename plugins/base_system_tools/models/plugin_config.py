@@ -3,7 +3,12 @@ from typing		import List, Literal, Optional
 
 
 CWD		= Optional[DirectoryPath]
-Image	= Literal["gif", "png", "jpeg", "jpg"]
+Image	= Literal[ # 限制read_image只能读取图片
+"apng", "avif", "bmp", "cr2", "dwg",
+"gif", "heic", "ico", "jpeg", "jpg",
+"jpx", "jxr", "png", "psd", "tif",
+"webp", "xcf"
+]
 
 
 class BashConfig(BaseModel):

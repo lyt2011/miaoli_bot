@@ -3,6 +3,24 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.16.1] - 2026-10-07
+
+> 📄 **主 README 同步，本版无代码改动**。把 0.15.0 / 0.16.0 两版漏掉的主文档变更一次补齐 —— 前两版只更新了 `manifest.toml` 与 `CHANGELOG.md`，主 `README.md` 的版本行与子插件表停留在 0.14.1 时的状态。
+
+### Changed
+
+- **`README.md` 版本行 `0.14.1` → `0.16.1`**：此前两版有意未动（0.15.0 时按「主包的 readme 不用动」处理），本次一并补齐
+- **「配置模型化」行移除 `session_dir`**：该字段已在 0.15.0 移除；同行的 `DirectoryPath` 也随之收窄为仅 `FilePath`（`DirectoryPath` 已不在主包 `models/` 下使用）
+- **子插件表的 `base_platform_tools` 行补 `send_poke`**（戳一戳，`group_id` 有值为群内戳、无值为私聊戳）
+- **子插件表的 `base_system_tools` 行补 `read_image` 的格式过滤说明**：写明这道过滤**是为了限制读取**（不做的话读什么都会被 b64 成图片塞进上下文，导致 400），**不是**给模型过滤不同类型的图片
+- **配置键表删掉 `session_dir` 一行**（`gettempdir()` 默认值 + `DirectoryPath` 校验）
+- **「项目状态」区新增 `v0.16.1` / `v0.16.0` / `v0.15.0` 三条**（此前只到 `v0.14.1`）
+
+### Note
+
+- **本版验证**：版本号三处一致（`manifest.toml` / `README.md` / `CHANGELOG.md` 均为 `0.16.1`）；`README.md` 中 `session_dir` 仅剩历史版本记录（`v0.8.0` 及以前），当前态描述已无残留；子插件表 **13 行**与 `plugins/` 下 **13 个目录**逐一对齐；`manifest.toml` 经 `tomllib` 解析
+- **未验证**：NcatBot 运行时下的端到端对话仍未跑
+
 ## [0.16.0] - 2026-10-07
 
 > 🖼️ **`read_image` 支持更多图片格式，并把格式名单写进文档**。`support_image` 实际启用的格式由 3 个（`png` / `jpeg` / `jpg`）扩到 **5 个**（新增 `gif` / `webp`），`Image`（`Literal`）则由 5 项扩到 **17 项** —— 覆盖 `filetype` 能嗅探出的**全部**图片扩展名，此后往 `config.yaml` 加任何 `filetype` 认得的格式都能通过加载期校验，不必再改代码。

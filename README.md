@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.14.1
+- **版本**：0.16.1
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -16,7 +16,7 @@
 - 🧠 **LLM 接入**：`main.py` 只把 `provider_name` / `model_name` 两个**名字**写进 state，由 `build_client` 节点（`ON_TURN_START`）读根配置建 `ChatOpenAI` 写进 `runtime.context["client"]`（**刻意不在建实例时绑工具** —— 工具表按身份每请求变化）；`call_llm` 节点用 `runtime.context["tools"]`（来自 `ToolRegistry`）`bind_tools` 后请求模型；工具循环由 `base_topology` 的 `on_after_request` 节点分流 —— 末条消息有 `tool_calls` 就跳 `ON_TOOL_CALLING` 执行工具、再回到 `ON_TURN_START` 重走一轮；没有就跳 `ON_TURN_END` 收尾。
 - 🗜️ **上下文压缩**：`context_compactor` 子插件的 `compact` 节点（`ON_BEFORE_REQUEST`，`priority=NORMAL`）读模型真实 `context_window` / `max_tokens` 判阈值（为输出预留空间），超窗时把历史压成一条 `<compaction>` 摘要并用 `Overwrite` 整体替换；保留条数 / 提示词 / 计数方式（`base` 粗估或 `tiktoken` 精确）全部配置化，提示词落在 `data/compact_prompt.md`。
 - 📜 **状态与运行时分离**：`models.GraphState`（会话状态：`messages` 用 `add_messages` **进 checkpoint**；`event` / `segments` / `provider_name` / `model_name` / `final_answer` / `system_prompt` 六键用 `Annotated[T, UntrackedValue]` —— 单次 `ainvoke` 内可见、**不落盘**）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖：`client` / `tools`）分离 —— `context` 不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`（放 state 会因 msgpack 无法序列化而当场崩）。
-- 🎛️ **配置模型化（分层 + 更名）**：`PluginConfig` 含 `providers`（`{供应商名: Provider(base_url / api_key / models: {模型名: LLM(protocol / context_window / max_tokens / support_visions)})}` —— 名字由字典键承担）、`account`（`bot_id` / `admin_id` / `bot_nickname` / `admin_nickname`，四项全必填）、`output`、`checkpointer`、`sub_plugin` 与 `session_dir` / `prompt_file` / `system_prompt`；`DirectoryPath` / `FilePath` 让路径在**加载期**就被校验，缺失即 `ValidationError`。
+- 🎛️ **配置模型化（分层 + 更名）**：`PluginConfig` 含 `providers`（`{供应商名: Provider(base_url / api_key / models: {模型名: LLM(protocol / context_window / max_tokens / support_visions)})}` —— 名字由字典键承担）、`account`（`bot_id` / `admin_id` / `bot_nickname` / `admin_nickname`，四项全必填）、`output`、`checkpointer`、`sub_plugin` 与 `prompt_file` / `system_prompt`；`FilePath` 让路径在**加载期**就被校验，缺失即 `ValidationError`。
 - 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolNode` 执行，返回值经 `utils.tool_result_builder` 的 `success` / `fail` / `custom` 收敛成 `{"status": bool, "message": …}`；主包不再内置任何工具，平台 / 系统 / meme / 联网搜索工具全部由内置子插件注册；`tool_permission_manager` 子插件可在此基础上按身份做工具级权限控制（`on_before_request` 摘 `runtime.context["tools"]`，未声明即拒绝）。
 - 🔍 **联网搜索**：`web_search` 子插件的 `lang_search` 工具调 langsearch.com 的 `POST /v1/web-search`（**设计上支持多后端**，`config.yaml` 的 `provider` 决定注册哪个工具，目前只适配了 `langsearch`）。**API key 只从环境变量读**（`env_key`，默认 `SEARCH_API_KEY`），不落进随仓库提交的 `config.yaml`。实测**英文检索质量明显优于中文**（技术 / 包名类相关率约 65% vs 30%），工具 docstring 已要求模型优先用英文搜。
 - 🖼️ **工具附件兜底**：部分模型不接受 `tool` 消息携带多模态块（无论块里是什么内容都会 `400` 或静默忽略），`tool_attachment_fixer` 子插件的 `fix_tool_attachment` 节点（`ON_TOOL_CALLING`，`priority=NORMAL-2`）把**非字符串**的 `ToolMessage.content` 整体挪进紧跟其后的一条 `HumanMessage`、原 `ToolMessage` 正文换成 `replace_text`；只对 `models` 里声明的模型生效，无改动时返回 `None` 不写增量。
@@ -161,8 +161,8 @@ miaoli_bot/
 | `account_injector` | 账号注入：`inject_account` 在 `on_agent_start` 把管理员 / 机器人的 QQ 号与昵称拼进 `system_prompt` |
 | `base_nodes` | 图节点：`format_input` / `build_client` / `call_llm` / `invoke_tools` / `latest_to_answer` |
 | `base_parsers` | 两级解析器：群 / 私聊事件 + 文本 / AT / 图片 / 文件 / 引用消息段 |
-| `base_platform_tools` | 平台工具：发消息 / 发文件 / 下载文件 / 查消息 ID / 撤回消息 |
-| `base_system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml` 与 `README.md`） |
+| `base_platform_tools` | 平台工具：发消息 / 发文件 / 下载文件 / 查消息 ID / 撤回消息 / 戳一戳（`send_poke`，`group_id` 有值为群内戳、无值为私聊戳） |
+| `base_system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml` 与 `README.md`）。`read_image` 按 `support_image` 名单过滤格式 —— 这道过滤是**为了限制读取**（不做的话读什么都会被 b64 成图片塞进上下文，导致 400），**不是**给模型过滤不同类型的图片 |
 | `base_topology` | 默认跳转（edgeless 拓扑的顺序来源）：**一个事件一个节点文件**，8 个节点各返回一条 `Goto`，把旧 `wire()` 的静态边与 `tools_condition` 条件边在插件层复原；`on_after_request` 按 `is_tool_calling(messages)` 分流工具循环与收尾。注册在最低优先级 `MINIMUM`，可被任何子插件抢跑 |
 | `context_compactor` | 上下文压缩：`compact` 在 `on_before_request`（`priority=0`）读模型真实 `context_window` / `max_tokens` 判阈值，超窗时把历史压成一条 `<compaction>` 摘要并用 `Overwrite` 整体替换；保留条数 / 提示词 / 计数方式全部配置化（`base` 粗估或 `tiktoken` 精确），自带 `data/compact_prompt.md` 与 `README.md` |
 | `meme_extension` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除（自带 `config.yaml`）；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
@@ -205,7 +205,6 @@ miaoli_bot/
 | `providers.<供应商名>.api_key` | **必填** | 鉴权密钥 |
 | `providers.<供应商名>.models` | `{}` | 模型字典，键 = 模型名，值 `LLM(protocol / context_window / max_tokens / support_visions)`；`protocol` 必填，`support_visions` 至少一项 |
 | `account` | **必填** | `bot_id` / `admin_id` / `bot_nickname` / `admin_nickname`，四项全必填；`account_injector` 子插件的 `inject_account` 用它拼提示词块，`admin_id` 也是工具权限插件判定管理员的依据 |
-| `session_dir` | `gettempdir()`（`/tmp`） | 会话保存路径（`DirectoryPath` 校验存在性） |
 | `prompt_file` | `null` | 系统提示词文件（`FilePath` 校验存在性，加载时按 UTF-8 读入），优先于 `system_prompt` |
 | `system_prompt` | `null` | 内联系统提示词，仅在未配置 `prompt_file` 时使用（可为 `null`） |
 | `output` | `OutputConfig()` | `typing_speed`（默认 `0.01`，每个字的打字时间）/ `typing_speed_offset`（默认 `0`，随机延迟偏移）/ `split_separator`（默认 `null`，输出切块分隔符；空串会被校验拒绝，`null` 表示整条不切块）—— `on_message` 用它把回复切块并按字数模拟打字延迟 |
@@ -247,6 +246,12 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.16.1 — **主 README 同步，本版无代码改动**：把此前两版（0.15.0 / 0.16.0）漏掉的主文档变更一次补齐 —— ① 版本行 `0.14.1` → `0.16.1`；② 「配置模型化」行移除已删除的 `session_dir`（`DirectoryPath` 也随之在主包 `models/` 下不再使用，收窄为仅 `FilePath`）；③ 子插件表的 `base_platform_tools` 行补上 `send_poke` 戳一戳；④ `base_system_tools` 行补上 `read_image` 的格式过滤说明（写明**是为了限制读取**、不是给模型过滤图片类型，不做的话读什么都会被 b64 成图片塞进上下文导致 400）；⑤ 配置键表删掉 `session_dir` 一行。**验证**：版本号三处一致（`manifest.toml` / `README.md` / `CHANGELOG.md` 均为 `0.16.1`）；README 中 `session_dir` 仅剩历史版本记录（v0.8.0 及以前），当前态描述已无残留；子插件表 13 行与 `plugins/` 下 13 个目录逐一对齐。**未验证**：NcatBot 运行时下的端到端对话仍未跑。
+
+v0.16.0 — **`read_image` 支持更多图片格式，并把格式名单写进文档**：`support_image` 实际启用的格式由 3 个（`png` / `jpeg` / `jpg`）扩到 **5 个**（新增 `gif` / `webp`），`Image`（`Literal`）则由 5 项扩到 **17 项** —— 覆盖 `filetype` 能嗅探出的**全部**图片扩展名，此后往 `config.yaml` 加任何 `filetype` 认得的格式都能通过加载期校验，不必再改代码。**这道过滤的用途是「限制 `read_image` 读什么」，不是「给模型过滤不同类型的图片」**：不做过滤的话，读取什么都会弄成 b64 当成图片塞进上下文，模型 API 直接回 **400**。过滤发生在读盘之前 —— 不在名单里的图片返回 `不支持的数据类型 xxx`，压根不是图片的文件（如 `svg`）返回 `无法识别 … 的类型`，两者都**不读盘、不塞上下文**。实测 `deepseek-flash` 只接受 `webp` / `png` / `jpeg` / `gif` 四种，**`Literal` 宽于 API 能力，真正的开关是 `config.yaml` 的 `support_image`**。**验证**：`compileall` rc=0、`ruff --select F,E9` 仅剩 4 处既有（均不在本次改动文件内）、`PluginConfig.model_validate` 对真实 `config.yaml` 通过、Literal 覆盖 `filetype` 全部可嗅探扩展名（差集为空）、`read_image` 对启用中的 4 种格式各返回 2 个内容块、未启用的 `bmp` / `tif` / `ico` 与无法识别的 `svg` 均被拦下且返回 `fail` 不抛异常、真机 API 端到端 **4/4** 正确识图（png 红圆 / jpeg 蓝方 / gif 绿三角 / webp 黄星）、插件加载 **13/13**。**未验证**：NcatBot 运行时下的端到端对话仍未跑；`gif` / `webp` 未在真实 QQ 消息链路中实际走过。
+
+v0.15.0 — **新增 `send_poke` 戳一戳工具，`base_platform_tools` 目录结构对齐其他子插件，`PluginConfig` 移除 `session_dir`**：新增的工具按 `group_id` 有无自动分流到「群内戳」（`qq.messaging.send_poke(group_id, user_id)`）与「私聊戳」（`friend_poke(user_id)`）两条 ncatbot API，两条分支的参数名与位置均与 `ncatbot/api/qq/messaging.py` 逐字核对一致；权限表补 `send_poke` → `anyone`（**16 → 17 条**，与注册表 17 个工具零差异）。`base_platform_tools` 此前的 `file_ops/` + `message_ops/` 两个功能子包合并为统一的 `tools/`（5 个工具文件**内容一字未改**，用 `git mv` 保留历史），根 `__init__.py` 由 297 B **清空为 0 B**（与其余 12 个子插件一致，`main.py` 直接从 `.tools` 导入），`main.py` 的两处导入合并为一处。**`session_dir` 字段移除但非破坏性** —— 全仓代码 **0 引用**（`grep` 仅命中 README / CHANGELOG 历史条目与 `config.example.yaml`），且 `PluginConfig` 带 `extra="allow"`，旧配置里残留的该键**仍能通过校验**（只是落进 extras、不再是模型字段），服务器根配置的 `session_dir: /tmp/` 已实测兼容；随之删掉 `models/config/plugin.py` 里只服务它的 `tempfile.gettempdir` 导入。**验证**：全仓 `compileall` rc=0、`ruff --select F,E9` 回到 4 处既有、全量插件加载 **13/13**、工具 **16 → 17 个**、权限表 **16 → 17 条**且与注册表零差异、`send_poke` 的 `args_schema` 为 `required=['user_id']`、真实调用**两条分支**均走到 ncatbot API 并以 `fail` 优雅返回、`PluginConfig.model_validate` 对含 `session_dir` 的配置同样通过。**未验证**：NcatBot 运行时下的端到端对话仍未跑；`send_poke` 未在真实 QQ 环境实际戳过。
 
 v0.14.1 — **补上 `web_search` 的权限声明，并把服务器部署的密钥配置收口**：`tool_permission_manager/config.yaml` 补 `lang_search` → `anyone`（15 → 16 条，与注册表 16 个工具一一对应）—— 此前它是唯一未声明项，按「未声明即拒绝」会被摘掉并每轮打 warning。**服务器部署 0.13.0 → 0.14.1**：rsync（`--delete` + 排除 `.git` / `__pycache__/` / `*.pyc` / `*.log` / `.ruff_cache/` / **`config.yaml`**）共 10 个文件更新 + 10 个新增、0 删除；`web_search` 与 `tool_permission_manager` 的 `config.yaml` 因被排除而单独 `scp`（md5 与仓库一致），根 `config.yaml` 未被触碰（md5 `11314fd7a0b43857f100974a840ea740` 前后一致）。**API key 写进 systemd unit** —— `/etc/systemd/system/ncatbot.service` 新增 `Environment=SEARCH_API_KEY=…`，`daemon-reload` 后 `systemctl show` 可见，文件权限 `644` → **`600`**（现含密钥），并从 `/proc/<pid>/environ` 确认密钥真进了 bot 进程。**服务器侧独立验证**（Python 3.12）：子插件 **13/13**、工具 **16 个**、权限表 16 条且与注册表零差异、管理员 16 / 路人 10 个工具且 `lang_search` 双方可见、启动日志无 ERROR。**⚠️ 服务器出口网络限制（本次新发现）**：该服务器只能访问国内服务 —— `api.deepseek.com` / `www.bing.com` / `api.bochaai.com` 可达，而 `api.langsearch.com` / `api.tavily.com` / `api.search.brave.com` / `google.serper.dev` / `duckduckgo.com` / `github.com` / `api.openai.com` **全部连接超时**（3/3 重试一致），故 `lang_search` 在服务器上当前不可用，调用返回 `fail("联网搜索出错: TimeoutError: ")` —— 已验证是优雅降级（返回 `fail` 字典、不抛异常、不打断图）。排查中另发现 systemd-resolved 对 `api.langsearch.com` 返回伪造 `cname.lab.`（DNS 污染残留），`resolvectl flush-caches` 后解析恢复，但**根因是出口网络限制而非 DNS**。**未验证**：NcatBot 运行时下的端到端对话仍未跑。
 

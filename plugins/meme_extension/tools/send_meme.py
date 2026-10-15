@@ -6,7 +6,7 @@ from typing					import Dict, Any
 from ..consts	import PLUGIN_CONFIG
 from ..core		import MemeSqlite
 
-from miaoli_bot.utils	import fail, success, easier_send
+from miaoli_bot.utils	import easier_send
 from miaoli_bot.stores	import SHARE_STORE
 from miaoli_bot.consts	import NCATBOT_API
 
@@ -36,14 +36,14 @@ async def send_meme_to_qq(
 	plugin_config	= SHARE_STORE.recall(PLUGIN_CONFIG)
 	
 	if not plugin_config.is_enable:
-		return fail("meme被禁用")
+		return {"status": False, "message": "meme被禁用"}
 	
 	try:
 	
 		async with MemeSqlite(plugin_config.db_path) as meme_sqlite:
 			
 			if not await meme_sqlite.is_hash_existing(hash):
-				return fail(f"找不到 hash 为 {hash} 的表情包")
+				return {"status": False, "message": f"找不到 hash 为 {hash} 的表情包"}
 			
 			meme_info	= await meme_sqlite.fetch_meme_from_hash(hash)
 			base64_data	= meme_info["base64"].decode()
@@ -56,6 +56,6 @@ async def send_meme_to_qq(
 		)
 	
 	except Exception as e:
-		return fail(f"发送失败: {type(e).__name__}: {e}")
+		return {"status": False, "message": f"发送失败: {type(e).__name__}: {e}"}
 	
-	return success(send_result.model_dump())
+	return {"status": True, "message": send_result.model_dump()}

@@ -1,5 +1,3 @@
-EVENT_PARSER	= "miaoli_bot/chains.event_parser"
-SEGMENT_PARSER	= "miaoli_bot/chains.segment_parser"
 NCATBOT_API		= "miaoli_bot/ncatbot.api"
 RAW_CONFIG		= "miaoli_bot/ncatbot.plugin.config"
 PLUGIN_CONFIG	= "miaoli_bot/models.plugin_config"

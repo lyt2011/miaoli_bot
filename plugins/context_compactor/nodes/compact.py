@@ -32,8 +32,8 @@ async def compact(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> O
 	
 	else: raise RuntimeError(f"未知的模式: {s_plugin_config.calculate.mode}")
 	
-	provider_config	= r_plugin_config.providers[state["provider_name"]]
-	model_config	= provider_config.models[state["model_name"]]
+	provider_config	= r_plugin_config.providers[state["provider"]]
+	model_config	= provider_config.models[state["model"]]
 	
 	# 保证有压缩余量
 	if (usage_tokens + model_config.max_tokens) < model_config.context_window:

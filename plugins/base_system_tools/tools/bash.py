@@ -6,7 +6,6 @@ from asyncio.streams		import StreamReader
 from asyncio.subprocess		import Process
 from contextlib				import suppress
 
-from miaoli_bot.utils	import custom
 from miaoli_bot			import SHARE_STORE
 
 from ..consts	import PLUGIN_CONFIG
@@ -68,7 +67,7 @@ async def bash(
 		reader	= asyncio.create_task(_read_stream(stream=proc.stdout, buffer=buffer))
 	
 	except Exception as e:
-		return custom(False, error=f"{type(e).__name__}: {str(e)}")
+		return {"status": False, "error": f"{type(e).__name__}: {str(e)}"}
 	
 	try:
 	
@@ -77,9 +76,9 @@ async def bash(
 		await wait_for(reader, timeout=bash_config.reader_timeout)
 	
 	except Exception as e:
-		return custom(False, exit_code=proc.returncode, stdout=_buffer_to_string(buffer, encoding), error=f"{type(e).__name__}: {e}")
+		return {"status": False, "exit_code": proc.returncode, "stdout": _buffer_to_string(buffer, encoding), "error": f"{type(e).__name__}: {e}"}
 	
 	finally:
 		await _ensure_end(proc=proc, reader=reader)
 	
-	return custom(True, exit_code=proc.returncode, stdout=_buffer_to_string(buffer, encoding))
+	return {"status": True, "exit_code": proc.returncode, "stdout": _buffer_to_string(buffer, encoding)}

@@ -4,5 +4,8 @@ from pathlib	import Path
 
 
 class SubPluginConfig(BaseModel):
-	is_enable: bool				= Field(default=False, description="是否加载插件")
-	load_from: Optional[Path]	= Field(default=None, description="插件加载目录")
+	
+	"""子插件配置"""
+	
+	enable		: bool				= Field(default=False, description="是否加载插件")
+	load_from	: Optional[Path]	= Field(default=None, description="插件加载目录")

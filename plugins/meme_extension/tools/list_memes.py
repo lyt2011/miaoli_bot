@@ -1,5 +1,4 @@
 from miaoli_bot.stores	import SHARE_STORE
-from miaoli_bot.utils	import fail, success
 
 from langchain_core.tools	import tool
 from typing					import Dict, Any
@@ -16,7 +15,7 @@ async def list_memes() -> Dict[str, Any]:
 	plugin_config	= SHARE_STORE.recall(PLUGIN_CONFIG)
 	
 	if not plugin_config.is_enable:
-		return fail("meme被禁用")
+		return {"status": False, "message": "meme被禁用"}
 	
 	try:
 		
@@ -24,11 +23,11 @@ async def list_memes() -> Dict[str, Any]:
 			rows = await meme_sqlite.fetch_memes()
 	
 	except Exception as e:
-		return fail(f"数据库查询失败: {type(e).__name__}: {e}")
+		return {"status": False, "message": f"数据库查询失败: {type(e).__name__}: {e}"}
 	
 	result = {
 		meme_id: {"hash": hash, "description": description}
 		for (meme_id, description, hash, _) in rows
 	}
 	
-	return success(result)
+	return {"status": True, "message": result}

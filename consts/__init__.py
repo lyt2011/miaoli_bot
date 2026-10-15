@@ -1,6 +1,4 @@
 from .share_store_keys	import (
-	EVENT_PARSER,
-	SEGMENT_PARSER,
 	NCATBOT_API,
 	PLUGIN_CONFIG,
 	RAW_CONFIG,
@@ -42,8 +40,6 @@ from .node_priorities	import (
 __all__ = [
 
 	# share_store_keys
-	"EVENT_PARSER",
-	"SEGMENT_PARSER",
 	"NCATBOT_API",
 	"PLUGIN_CONFIG",
 	"RAW_CONFIG",

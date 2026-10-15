@@ -8,20 +8,15 @@ from typing		import Optional
 from langgraph.checkpoint.base		import BaseCheckpointSaver
 
 from .core		import GraphPipeline, ToolRegistry, PluginLoader, registry
-from .chains	import EventParseChain, SegmentParseChain
 from .errors	import AgentAborted
 from .stores	import SHARE_STORE
 from .protocols	import BaseCheckpointerSaverAdapter as BCSA
 from .models	import GraphRuntimeContext, GraphState, PluginConfig
 from .utils		import (
-	parse_message,
-	get_id_from_event,
+	easier_send,
 	concatenate_id,
-	split_string,
 )
 from .consts	import (
-	EVENT_PARSER,
-	SEGMENT_PARSER,
 	NCATBOT_API,
 	PLUGIN_CONFIG,
 	RAW_CONFIG,
@@ -31,7 +26,6 @@ from .consts	import (
 	WORKSPACE_DIR,
 )
 from .adapters	import (
-	EventAdapter,
 	InMemoryAdapter,
 	SQLiteAdapter,
 	PostgresqlAdapter,
@@ -84,8 +78,6 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.set(WORKSPACE_DIR, self.workspace)
 		
 		SHARE_STORE.set(TOOL_REGISTRY, ToolRegistry())
-		SHARE_STORE.set(SEGMENT_PARSER, SegmentParseChain())
-		SHARE_STORE.set(EVENT_PARSER, EventParseChain())
 		SHARE_STORE.set(GRAPH_PIPELINE, self._build_graph(checkpointer=self.cpa))
 		
 		self.plugin_loader = PluginLoader(
@@ -108,8 +100,6 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.drop(WORKSPACE_DIR)
 		
 		SHARE_STORE.drop(TOOL_REGISTRY)
-		SHARE_STORE.drop(SEGMENT_PARSER)
-		SHARE_STORE.drop(EVENT_PARSER)
 		SHARE_STORE.drop(GRAPH_PIPELINE)
 		
 		await self.plugin_loader.unload_all()
@@ -123,11 +113,12 @@ class MiaoLiBot(NcatBotPlugin):
 	@registrar.on_message(priority=-100)
 	async def on_message(self, event: MessageEvent) -> None:
 		
-		is_group		= event.is_group_msg()
-		target_id		= get_id_from_event(event)
-		event_adapter	= EventAdapter.build(event)
-		session_id		= concatenate_id(target_id, is_group=is_group)
+		# 获取 event 信息
+		is_group	= event.is_group_msg()
+		chat_id		= event.group_id if is_group else event.sender.user_id
+		session_id	= concatenate_id(chat_id, is_group=is_group)
 		
+		# 获取图以及根配置和工具配置
 		graph_pipeline	= SHARE_STORE.recall(GRAPH_PIPELINE)
 		plugin_cfg		= SHARE_STORE.recall(PLUGIN_CONFIG)
 		tool_registry	= SHARE_STORE.recall(TOOL_REGISTRY)
@@ -136,44 +127,46 @@ class MiaoLiBot(NcatBotPlugin):
 			self.logger.warning("群消息无@ 已跳过")
 			return
 		
-		parse_result = await parse_message(event, event.message)
-		if parse_result is None:
-			self.logger.warning("事件解析失败 跳过")
-			return
-		
-		# HACK: 默认使用第一个
-		provider_name	= next(iter(plugin_cfg.providers))
-		model_name		= next(iter(plugin_cfg.providers[provider_name].models))
-		input			= {"event": parse_result.event, "segments": parse_result.segments, "provider_name": provider_name, "model_name": model_name}
-		context			= {"client": None, "tools": tool_registry.tools}
-		
+		# 调用模型产生回复
 		try:
-			raw_output	= await graph_pipeline.ainvoke(input, thread_id=session_id, context=context)
+			
+			final_state = await graph_pipeline.ainvoke(
+				{"provider": plugin_cfg.provider, "model": plugin_cfg.model, "event": event._data.model_dump()},
+				thread_id	= session_id,
+				context		= {"client": None, "tools": tool_registry.tools}
+			)
 		
 		except AgentAborted as e:
+			await event.reply(f"agent 被内部中断: {e.reason}")
 			return
 		
-		# final_answer 是 UntrackedValue 不落盘 本轮没走到 on_agent_end 就没有这个键
-		answer_string	= (raw_output or {}).get("final_answer")
-		
-		if answer_string is None:
-			self.logger.warning("本轮没有产出 final_answer 已跳过发送")
+		except Exception as e:
+			await event.reply(f"agent 内部出错: {type(e).__name__}: {e}")
 			return
 		
-		answer_string	= str(answer_string)
-		answer_chunks	= split_string(string=answer_string, separator=plugin_cfg.output.split_separator)
+		# 根据实际情况给内容分块
+		if plugin_cfg.split.enable:
+			content_parts = final_state["final_answer"].split(plugin_cfg.split.delimiter)
 		
-		self.logger.debug(f"输出 {len(answer_string)} 个字符")
-		self.logger.debug(f"分隔符 '{plugin_cfg.output.split_separator}' 分割出 {len(answer_chunks)} 个块")
+		else:
+			content_parts = [final_state["final_answer"]]
 		
-		for chunk in answer_chunks:
+		# 遍历内容块并发送
+		for index, content_part in enumerate(content_parts):
 			
-			if not chunk:
+			# 若打字配置被启用则计算打字时间并等待
+			if plugin_cfg.typing.enable:
+				
+				max_speed = plugin_cfg.typing.base_speed + plugin_cfg.typing.speed_offset
+				min_speed = plugin_cfg.typing.base_speed - plugin_cfg.typing.speed_offset
+				ram_speed = random.uniform(min_speed, max_speed)
+				tol_speed = len(content_part) * ram_speed
+				
+				await asyncio.sleep(tol_speed)
+			
+			# REVIEW: 试行，首个块使用 event.reply 回复，如果好用我将会保留
+			if index == 0:
+				await event.reply(content_part)
 				continue
 			
-			total_char_time	= len(chunk) * plugin_cfg.output.typing_speed
-			max_char_time	= total_char_time + plugin_cfg.output.typing_speed_offset
-			mim_char_time	= total_char_time - plugin_cfg.output.typing_speed_offset
-			
-			await asyncio.sleep(random.uniform(mim_char_time, max_char_time))
-			await event_adapter.send(self.api, chunk)
+			await easier_send(self.api, chat_id, content_part, to_group=is_group)

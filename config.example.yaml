@@ -10,15 +10,16 @@
 # 配置键名与 models/config/plugin.py 的 PluginConfig 字段一一对应。
 # 插件加载时（on_load）会做一次校验：必填缺失 / 路径不存在 / 类型不符都会抛 ValidationError。
 
-session_dir: "/tmp/"
 prompt_file: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/data/prompts/prompt_v1.3.md"
+provider: "deepseek"                          # 使用的供应商（providers 的键名）
+model: "deepseek-flash"                       # 使用的模型（该供应商 models 的键名）
 
 providers:
-  deepseek:                                     # 键名 = 供应商名，与 state 里的 provider_name 对应
+  deepseek:                                     # 键名 = 供应商名（provider 字段的取值）
     base_url: "https://api.deepseek.com/v1"     # 请求地址，不会拼路径，填到 /v1 这一层
     api_key: "YOUR_API_KEY_HERE"
     models:
-      deepseek-flash:                           # 键名 = 模型名，与 state 里的 model_name 对应
+      deepseek-flash:                           # 键名 = 模型名（model 字段的取值）
         protocol: "openai-completions"          # openai-completions / openai-response
         context_window: 128000                  # 上下文窗口
         max_tokens: 4096                        # 最大输出
@@ -33,11 +34,16 @@ account:
   bot_nickname: "喵璃"
   admin_nickname: "主人"
 
-# output：回复切块与打字延迟已落地消费（on_message），下面全是默认值，不用配也能跑。
-# output:
-#   typing_speed: 0.01           # 每个字的打字时间
-#   typing_speed_offset: 0       # 打字速度偏移
-#   split_separator: "\n\n"      # 输出切块分隔符；不写（默认 null）= 不切块，空串会被校验拒绝
+# split：回复切块（on_message 消费）
+split:
+  enable: true                  # 是否启用切块
+  delimiter: "\n\n"             # 分隔符；enable=true 时必须非空
+
+# typing：打字延迟（on_message 消费）
+typing:
+  enable: true                  # 是否启用打字延迟（base_speed=0 等价于关）
+  base_speed: 0.06              # 每个字的打字时间（秒）
+  speed_offset: 0.02            # 每字速度偏移（须 < base_speed，否则每字时间可为负）
 
 sub_plugin:                    # 子插件加载（缺失 load_from 会报 TypeError）
   is_enable: false             # 当前未被消费（PluginLoader 无条件加载）

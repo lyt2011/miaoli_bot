@@ -10,12 +10,9 @@ from langgraph.typing		import StateT, ContextT
 from langchain_core.tools	import BaseTool
 
 from ..stores		import SHARE_STORE
-from ..protocols	import Parser
 from ..consts		import (
 	GRAPH_PIPELINE,
 	TOOL_REGISTRY,
-	EVENT_PARSER,
-	SEGMENT_PARSER,
 	ON_AGENT_START,
 	ON_TURN_START,
 	ON_BEFORE_REQUEST,
@@ -35,12 +32,6 @@ class Registry:
 	
 	def register_tool(self, tool: BaseTool) -> None:
 		SHARE_STORE.recall(TOOL_REGISTRY).register(tool)
-	
-	def register_segment_parser(self, parser: Parser) -> None:
-		SHARE_STORE.recall(SEGMENT_PARSER).register_parser(parser)
-	
-	def register_event_parser(self, parser: Parser) -> None:
-		SHARE_STORE.recall(EVENT_PARSER).register_parser(parser)
 	
 	def on_agent_start(self, node: Node, priority: int = 0) -> None:
 		self._register_node(event=ON_AGENT_START, node=node, priority=priority)

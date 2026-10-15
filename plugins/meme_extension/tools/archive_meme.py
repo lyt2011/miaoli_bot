@@ -6,7 +6,6 @@ from base64					import b64encode
 from hashlib				import md5
 
 from miaoli_bot.stores	import SHARE_STORE
-from miaoli_bot.utils	import fail, custom
 
 from ..consts	import PLUGIN_CONFIG
 from ..core		import MemeSqlite
@@ -26,7 +25,7 @@ async def archive_meme(meme_path: str, description: str, tags: List[str]) -> Dic
 	plugin_config = SHARE_STORE.recall(PLUGIN_CONFIG)
 	
 	if not plugin_config.is_enable:
-		return fail("meme被禁用")
+		return {"status": False, "message": "meme被禁用"}
 	
 	try:
 		
@@ -38,11 +37,11 @@ async def archive_meme(meme_path: str, description: str, tags: List[str]) -> Dic
 			
 			if await meme_sqlite.is_hash_existing(meme_hash):
 				meme_info = await meme_sqlite.fetch_meme_from_hash(meme_hash)
-				return custom(False, message="该表情包已被归档", description=meme_info["description"], hash=meme_info["hash"])
+				return {"status": False, "message": "该表情包已被归档", "description": meme_info["description"], "hash": meme_info["hash"]}
 			
 			await meme_sqlite.insert_meme(tags=tags, base64=meme_base64, description=description, hash_=meme_hash)
 	
 	except Exception as e:
-		return fail(f"归档失败: {type(e).__name__}: {e}")
+		return {"status": False, "message": f"归档失败: {type(e).__name__}: {e}"}
 
-	return custom(True, hash=meme_hash)
+	return {"status": True, "hash": meme_hash}

@@ -1,5 +1,3 @@
-from .base_adapter		import BaseAdapter
-from .event_adapter		import EventAdapter
 from .check_pointers	import (
 	InMemoryAdapter,
 	SQLiteAdapter,
@@ -9,8 +7,6 @@ from .check_pointers	import (
 
 __all__ = [
 	
-	"BaseAdapter",
-	"EventAdapter",
 	"InMemoryAdapter",
 	"SQLiteAdapter",
 	"PostgresqlAdapter",

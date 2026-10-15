@@ -1,7 +1,6 @@
 from pydantic				import BaseModel, Field
 from typing					import Dict
 from pathlib				import Path
-from miaoli_bot				import success, fail
 from langchain_core.tools	import tool
 
 import aiofiles
@@ -38,6 +37,6 @@ async def replace(
 			await file.write(new_content)
 	
 	except Exception as e:
-		return fail(f"替换失败: {type(e).__name__}: {e}")
+		return {"status": False, "message": f"替换失败: {type(e).__name__}: {e}"}
 	
-	return success(f"替换成功: {old_text} -> {new_text}")
+	return {"status": True, "message": f"替换成功: {old_text} -> {new_text}"}

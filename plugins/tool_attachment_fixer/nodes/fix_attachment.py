@@ -15,8 +15,8 @@ async def fix_tool_attachment(state: GraphState, runtime: Runtime[GraphRuntimeCo
 	
 	plugin_cfg	= SHARE_STORE.recall(PLUGIN_CONFIG)
 	
-	provider	= state.get("provider_name", "null")
-	model		= state.get("model_name", "null")
+	provider	= state.get("provider", "null")
+	model		= state.get("model", "null")
 	messages	= state.get("messages", [])
 	
 	# 未命中不继续

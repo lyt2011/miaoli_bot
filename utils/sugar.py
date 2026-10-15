@@ -1,13 +1,18 @@
-from typing		import Optional, List
+from __future__	import annotations
+
+from typing		import Optional, List, TYPE_CHECKING
 
 from langgraph.config			import get_config
 from langchain_core.messages	import AIMessage, ToolCall
 
 from ..consts	import GROUP_PREFIX, PRIVATE_PREFIX, PLUGIN_CONFIG
 from ..stores	import SHARE_STORE
-from ..models	import LLM
 
 import os
+
+if TYPE_CHECKING:
+	
+	from ..models.config	import LLM
 
 
 def concatenate_id(session_id: str, is_group: bool) -> str:
@@ -51,16 +56,8 @@ def get_sub_plugin_root(sub_plugin_name: str) -> str:
 	
 	return os.path.join(plugin_config.sub_plugin.load_from, sub_plugin_name)
 
-def get_model_config(provider_name: str, model_name: str) -> "LLM":
+def get_model_config(provider_name: str, model_name: str) -> Optional[LLM]:
+	"""通过供应商+模型名直接获取 LLM 信息"""		
+	provider = SHARE_STORE.recall(PLUGIN_CONFIG).providers.get(provider_name)
 	
-	plugin_config = SHARE_STORE.recall(PLUGIN_CONFIG)
-	
-	if provider_name not in plugin_config.providers:
-		raise RuntimeError()
-	
-	provider_cfg = plugin_config.providers[provider_name]
-	
-	if model_name not in provider_cfg.models:
-		raise RuntimeError()
-	
-	return provider_cfg.models[model_name]
+	return provider.models.get(model_name) if provider else None

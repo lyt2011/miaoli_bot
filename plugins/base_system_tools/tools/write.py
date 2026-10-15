@@ -1,6 +1,5 @@
 from pydantic				import BaseModel, Field
 from typing					import Dict
-from miaoli_bot				import success, fail
 from langchain_core.tools	import tool
 
 import aiofiles
@@ -26,6 +25,6 @@ async def write(path: str, content: str, encoding: str) -> Dict[str, str]:
 			await file.write(content)
 	
 	except Exception as e:
-		return fail(f"写入失败: {type(e).__name__}: {e}")
+		return {"status": False, "message": f"写入失败: {type(e).__name__}: {e}"}
 	
-	return success("写入成功")
+	return {"status": True, "message": "写入成功"}

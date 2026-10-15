@@ -2,7 +2,6 @@ from langchain_core.tools	import tool
 from pydantic				import BaseModel, Field
 from typing					import Any, Dict, List, Literal
 
-from miaoli_bot.utils	import fail, success
 from miaoli_bot.stores	import SHARE_STORE
 
 from ..consts	import PLUGIN_CONFIG, CLIENT_SESSION
@@ -64,6 +63,6 @@ async def lang_search(
 			query_result = await response.json()
 	
 	except Exception as e:
-		return fail(f"联网搜索出错: {type(e).__name__}: {e}")
+		return {"status": False, "message": f"联网搜索出错: {type(e).__name__}: {e}"}
 	
-	return success(query_result)
+	return {"status": True, "message": query_result}

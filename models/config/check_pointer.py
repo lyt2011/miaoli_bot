@@ -6,6 +6,9 @@ Database = Literal["memory", "sqlite", "postgresql"]
 
 
 class CheckPointerConfig(BaseModel):
+	
+	"""checkpointer 配置"""
+	
 	database	: Database			= Field(default="memory", description="要使用的数据库")
 	connect_to	: Optional[str]		= Field(default=None, description="数据库地址")
 	extra		: Dict[str, Any]	= Field(default_factory=dict, description="为数据库提供的额外参数")

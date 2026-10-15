@@ -3,6 +3,62 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.17.0] - 2026-10-16
+
+> 🧱 **架构重构：`qq_bot` → `qq_adapter`（纯解析 adapter）+ 拆出 `qq_platform_tools`；解析子系统整体迁入 adapter；事件以「字典」进图，而不是把原始 ncatbot 对象塞进 `runtime.context`；发送从图内节点移回 core 的 `main.py`**。
+>
+> 收口后的形状：**图只吃平台无关的字典、只吐 `final_answer`；adapter 只解析（不发送）；发送由 `main.py` 负责**。core 对「QQ 平台」零认知。
+
+### Changed
+
+- **`plugins/qq_bot/` → `plugins/qq_adapter/`**（`git mv`，历史保留）：入口类 `QQBotPlugin` → `QQAdapterPlugin`，`plugin.toml` 的 `enter_class` 同步；`SHARE_STORE` 键命名空间 `miaoli_bot/subplugin/qq_bot.*` → `miaoli_bot/subplugin/qq_adapter.*`
+- **解析子系统整体迁入 adapter**：`Parser` 协议、`ChainProtocol` / `BaseParserChain`、`EventParseChain` / `SegmentParseChain`、`DispatchResult`、`EVENT_PARSER` / `SEGMENT_PARSER` 两个常量从 core 删除，改由 adapter 自带（自带 `api/Registry` 注册器）
+- **发送移回 core**：`main.py` 的 `on_message` 拿 `final_state["final_answer"]`，按根配置 `split`（`enable` / `delimiter`）切块、按 `typing`（`enable` / `base_speed` / `speed_offset`）延迟，首块 `event.reply`、其余 `utils.easier_send`
+- **`event` 改走字典进 state**：`main.py` 传 `input["event"] = event._data.model_dump()`，`handle_event` 从 `state["event"]` 读（详见下方 Note）
+- **`GraphState` 键名收口**：`provider_name` / `model_name` → `provider` / `model`（连带 `build_client` / `compact` / `fix_attachment`）；`segments` 键删除
+- **解析器全面 dict 化**：`is_accept` 由 `isinstance(data, GroupMessageEvent)` 改为按 `data["message_type"]` / `data["type"]` 判别，整条解析链不再 import ncatbot 任何类
+- **`tools/` 拆成独立子插件 `qq_platform_tools`**（`git mv`，历史保留）：只依赖 core，无 `config.yaml`
+- **输出配置回到 core**：`OutputConfig` → `SplitConfig` + `TypingConfig`，`PluginConfig` 新增 `provider` / `model` / `split` / `typing`；`config.example.yaml` 同步
+
+### Removed
+
+- **`adapters/event_adapter.py`（`EventAdapter`）+ `adapters/base_adapter.py`（`BaseAdapter`）**：发送改由 `main.py` 直调 `easier_send`，鸭子类型适配层不再需要
+- **`utils/easier_parser.py`（`parse_event` / `parse_segment` / `parse_message`）、`utils/event_ops.py`（`get_id_from_event`）、`utils/tool_result_builder.py`**（工具结果构造器统一改字面字典）
+- **`models/runtime/parse_result.py`（`ParseResult`）、`protocols/runtime/`（`Parser`）**
+- **`plugins/base_nodes/nodes/format_input.py`**（由 adapter 的 `handle_event` 取代）
+- **`plugins/qq_adapter/nodes/send_output.py` + `utils/sugar.py` 的 `reply_event`**（发送移回 core 后成为死代码）
+
+### Added
+
+- **`plugins/qq_adapter/nodes/handle_event.py`**：`on_agent_start`（`priority=HIGH`）解析事件 → 回填 `state["event"]` → 序列化 JSON 追加进 `messages`
+- **`plugins/base_nodes/nodes/output_checker.py`**：`on_agent_end`（`priority=NORMAL+1`）校验末条是 `AIMessage`，非则 `Abort`
+- **`plugins/qq_platform_tools/README.md`**、重写 **`plugins/qq_adapter/README.md`**
+- `models/config/` 新增 `split.py`（`SplitConfig`）/ `typing.py`（`TypingConfig`），并从 `models` 顶层导出
+- **`data/prompts/prompt_v1.4.md`**：新版「喵璃」人设提示词（71 行）；当前 `config.yaml` 仍指向 `prompt_v1.3.md`
+
+### Fixed
+
+- **`At.to_dict()` 的字段是 `qq` 而非 `user_id`**：段解析器改 dict 后 `{"at": data["data"]["qq"]}`（想当然按 `user_id` 会拿不到）
+- **`is_accept` 谓词用 `[]` 取键会 `KeyError`**：判别位与形状校验统一改用 `.get()`，畸形 / 无关 dict 一律返回 `False`，不再炸解析链
+- **`PrivateAttr(default="", description=…)` → `TypeError`**（`PrivateAttr` 不接受 `description`）
+- **`PluginConfig` 校验器 `self.model not in self.providers[self.provider]` 永远为真**：`Provider` 不是容器（`in` 会遍历字段元组），改为 `.models`
+- **`SplitConfig` 校验器 `not delimiter` → `NameError`**：改为 `self.delimiter`
+- **`utils/sugar.py` 的 `from __future__ import __annotations__` → `SyntaxError`**：改为 `annotations`
+- 补齐 `main.py` 缺导入（`easier_send` / `asyncio` / `random`）、`PrivateAttr` 导入；修 `state` → `final_state`、`typing.split_offset` → `speed_offset` 等笔误
+
+### Note
+
+> ⚠️ **踩过的坑：为什么最终放弃「把 `event` 塞进 `runtime.context`」，改成「把 `event._data.model_dump()` 当字典塞进 state（图的 input）」**
+>
+> 1. **`event.model_dump()` 根本不存在。** ncatbot 的 `GroupMessageEvent` / `PrivateMessageEvent` 只是**转发层**（一个 `_data` 加一堆 `@property`），真正的 pydantic 模型在 **`event._data`**（`GroupMessageEventData` / `PrivateMessageEventData`）。能 dump 的是 `event._data.model_dump()`。
+> 2. **`context` 是「本次调用的环境」，不是「本次运行的数据」。** 放进去的 `event` 只在图外可读，**进不了 state、也不参与数据流** —— 于是 `tool_permission_manager.pick_tools` 读 `state["event"]["sender"]["user_id"]` 直接 `KeyError`（它要的 `event` 在 `context` 里、不在 `state` 里，而且这个异常被 `_dispatch` 的 `except Exception` 吞掉，表现为「权限控制静默失效」）。
+> 3. **图的两端被劈成两半。** 入口 `provider` / `model` 走 `input`（进 state），`event` 走 `context`；出口 `final_answer` 在 state、发送却是图内副作用。数据「从哪进、往哪出」对不上一个整点 —— 就是那种「两脚空空、脚不踏实」的感觉。
+> 4. **原始 ncatbot 对象把图焊死在平台上。** 把 `event` 对象传进图，图就依赖 ncatbot 的运行时类（不可序列化、不能落盘、无法脱离 ncatbot 单测）；解析器里的 `isinstance(data, GroupMessageEvent)` 同理。
+> 5. **改成字典后全部消解。** `event._data.model_dump()` 是纯 dict → 进 `state`、进数据流、可序列化；解析器按 `data["message_type"]` / `data["type"]` 判别，**整条解析链不 import ncatbot 任何类**；图的契约变成干净的 `f(字典) → final_answer`，发送回到 `main.py`。
+
+- **本版验证**：全仓 `compileall` rc=0；`ruff --select F,E9` 仅剩 3 处既有 F541；全量子插件加载 **13/13**、工具 **17 个**；`output_checker` / 事件解析器 / 段解析器逐分支实测；解析链喂真实 `seg.to_dict()` 与畸形 dict 均正确；`build_client(state={"provider","model"})` 构出 `ChatOpenAI`；`get_model_config` 命中 / 未命中；版本号三处一致（`manifest.toml` / `README.md` / `CHANGELOG.md` 均为 `0.17.0`）
+- **未验证**：NcatBot 运行时下的端到端对话仍未跑
+
 ## [0.16.1] - 2026-10-07
 
 > 📄 **主 README 同步，本版无代码改动**。把 0.15.0 / 0.16.0 两版漏掉的主文档变更一次补齐 —— 前两版只更新了 `manifest.toml` 与 `CHANGELOG.md`，主 `README.md` 的版本行与子插件表停留在 0.14.1 时的状态。

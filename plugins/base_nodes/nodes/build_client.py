@@ -12,8 +12,8 @@ async def build_client(state: GraphState, runtime: Runtime[GraphRuntimeContext])
 	
 	root_config	= SHARE_STORE.recall(PLUGIN_CONFIG)
 	
-	provider_name	= state["provider_name"]
-	model_name		= state["model_name"]
+	provider_name	= state["provider"]
+	model_name		= state["model"]
 	
 	provider	= root_config.providers[provider_name]
 	model		= provider.models[model_name]

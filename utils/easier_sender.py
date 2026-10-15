@@ -1,4 +1,4 @@
-from ncatbot						import api as nc_api
+from ncatbot.api					import QQAPIClient
 from ncatbot.types.napcat.message	import SendMessageResult
 from ncatbot.types					import MessageArray
 
@@ -6,7 +6,7 @@ from typing	import Union
 
 
 async def private_easier_send(	
-	ncatbot_api	: nc_api,
+	ncatbot_api	: QQAPIClient,
 	chat_id		: str,
 	message		: Union[str, MessageArray],
 ) -> SendMessageResult:
@@ -23,7 +23,7 @@ async def private_easier_send(
 	return await sender_coro
 
 async def group_easier_send(
-	ncatbot_api	: nc_api,
+	ncatbot_api	: QQAPIClient,
 	chat_id		: str,
 	message		: Union[str, MessageArray]
 ) -> SendMessageResult:
@@ -40,7 +40,7 @@ async def group_easier_send(
 	return await sender_coro
 
 async def easier_send(
-	ncatbot_api	: nc_api,
+	ncatbot_api	: QQAPIClient,
 	chat_id		: Union[str, int],
 	message		: Union[str, MessageArray],
 	to_group	: bool = False

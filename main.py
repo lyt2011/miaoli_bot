@@ -2,8 +2,9 @@ from ncatbot.plugin		import NcatBotPlugin
 from ncatbot.core		import registrar
 from ncatbot.event.qq	import MessageEvent
 
-from pathlib	import Path
-from typing		import Optional
+from collections	import defaultdict
+from pathlib		import Path
+from typing			import Optional, Dict
 
 from langgraph.checkpoint.base		import BaseCheckpointSaver
 
@@ -50,6 +51,7 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		self.plugin_loader	: Optional[PluginLoader]	= None
 		self.cpa			: Optional[BCSA]			= None
+		self.session_locks	: Dict[str, asyncio.Lock]	= defaultdict(asyncio.Lock)
 	
 	@staticmethod
 	def _build_graph(checkpointer: BaseCheckpointSaver) -> GraphPipeline:
@@ -127,49 +129,52 @@ class MiaoLiBot(NcatBotPlugin):
 			self.logger.warning("群消息无@ 已跳过")
 			return
 		
-		# 调用模型产生回复
-		try:
-			
-			final_state = await graph_pipeline.ainvoke(
-				{"provider": plugin_cfg.provider, "model": plugin_cfg.model, "event": event._data.model_dump()},
-				thread_id	= session_id,
-				context		= {"client": None, "tools": tool_registry.tools}
-			)
+		# 保证并发顺序
+		async with self.session_locks[session_id]:
 		
-		except AgentAborted as e:
-			await event.reply(f"agent 被内部中断: {e.reason}")
-			return
-		
-		except Exception as e:
-			await event.reply(f"agent 内部出错: {type(e).__name__}: {e}")
-			return
-		
-		# 根据实际情况给内容分块
-		if plugin_cfg.split.enable:
-			content_parts = final_state["final_answer"].split(plugin_cfg.split.delimiter)
-		
-		else:
-			content_parts = [final_state["final_answer"]]
-		
-		# 遍历内容块并发送
-		for index, content_part in enumerate(content_parts):
-			
-			# 先格式化内容块
-			content_part = content_part.strip()
-			
-			# 若打字配置被启用则计算打字时间并等待
-			if plugin_cfg.typing.enable:
+			# 调用模型产生回复
+			try:
 				
-				max_speed = plugin_cfg.typing.base_speed + plugin_cfg.typing.speed_offset
-				min_speed = plugin_cfg.typing.base_speed - plugin_cfg.typing.speed_offset
-				ram_speed = random.uniform(min_speed, max_speed)
-				tol_speed = len(content_part) * ram_speed
+				final_state = await graph_pipeline.ainvoke(
+					{"provider": plugin_cfg.provider, "model": plugin_cfg.model, "event": event._data.model_dump()},
+					thread_id	= session_id,
+					context		= {"client": None, "tools": tool_registry.tools}
+				)
+			
+			except AgentAborted as e:
+				await event.reply(f"agent 被内部中断: {e.reason}")
+				return
+			
+			except Exception as e:
+				await event.reply(f"agent 内部出错: {type(e).__name__}: {e}")
+				return
+			
+			# 根据实际情况给内容分块
+			if plugin_cfg.split.enable:
+				content_parts = final_state["final_answer"].split(plugin_cfg.split.delimiter)
+			
+			else:
+				content_parts = [final_state["final_answer"]]
+			
+			# 遍历内容块并发送
+			for index, content_part in enumerate(content_parts):
 				
-				await asyncio.sleep(tol_speed)
-			
-			# REVIEW: 试行，首个块使用 event.reply 回复，如果好用我将会保留
-			if index == 0:
-				await event.reply(content_part)
-				continue
-			
-			await easier_send(self.api, chat_id, content_part, to_group=is_group)
+				# 先格式化内容块
+				content_part = content_part.strip()
+				
+				# 若打字配置被启用则计算打字时间并等待
+				if plugin_cfg.typing.enable:
+					
+					max_speed = plugin_cfg.typing.base_speed + plugin_cfg.typing.speed_offset
+					min_speed = plugin_cfg.typing.base_speed - plugin_cfg.typing.speed_offset
+					ram_speed = random.uniform(min_speed, max_speed)
+					tol_speed = len(content_part) * ram_speed
+					
+					await asyncio.sleep(tol_speed)
+				
+				# REVIEW: 试行，首个块使用 event.reply 回复，如果好用我将会保留
+				if index == 0:
+					await event.reply(content_part)
+					continue
+				
+				await easier_send(self.api, chat_id, content_part, to_group=is_group)

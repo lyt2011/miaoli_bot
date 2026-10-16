@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.18.0
+- **版本**：0.18.1
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -238,6 +238,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.18.1 — **文档版：记录 `tool_attachment_fixer` 的两个缺陷，无代码改动**。0.18.0 部署后某个私聊会话在「一次调用多个工具」时每轮 `400`（`insufficient tool messages following tool_calls message`），定位为本插件附件搬移逻辑产出非法消息结构：① **`utils/guards.py:26-28` 判定过宽** —— `return isinstance(content, list)` 把 MCP 工具返回的纯文本块列表 `[{"type": "text", …}]` 也当成附件，真实结果被换成占位符；② **`nodes/fix_attachment.py:35-44` flush 时机错** —— 遇到任何非 target 消息就倒出 `pending`，同批工具只有部分被改写时把 `HumanMessage` 插到 `ToolMessage` 序列中间，打断「`AI(tool_calls)` 之后 `ToolMessage` 连续」这一不变式。后果分两种：**硬崩**（`400`，坏结构落进 `checkpoint_blobs` 后不会自愈、该会话从此每轮必崩）或**静默失效**（`200` 但模型当附件不存在）。**处置**：服务器两个坏会话按 `thread_id` 删三表 + `VACUUM FULL`，`tool_attachment_fixer` 改 `enable: false`、`mcp_adapter_demo` 改 `enable: true`；插件 `README.md` 新增「⚠️ 已知问题（待修复）」，四条修复方向与实测数据记入 CHANGELOG 的 Note / Future。**实测**（判定插件价值）：`deepseek-flash` 对 `tool` content 的 `str` / `[text]` / `[text, text]` / `[image_url]` / `[text, image_url]` 五种形态**全部 `200`**，唯一 `400` 的形态就是 `AI(tool_calls) → TM, Human, TM`；另有一类模型对同样的坏结构返回 `200`，却对 `tool` 消息里的图片回答「我看不到」—— 插件对它仍有价值，故修复方向是修好而非删掉。**验证**：版本号三处一致、关闭后 `on_tool_calling` 只剩 `invoke_tools(0)`、同批工具混合返回 `list`（MCP）与 `str`（本地）端到端跑通且落库 3 条 `ToolMessage` 连续无改写。**未验证**：NcatBot 运行时下的端到端对话仍未跑。
 
 v0.18.0 — **子插件配置模板化 + 权限表精简 + 两处插件改名**：① **配置外置** —— 11 个子插件新增入库的 `config.example.yaml`，真实 `config.yaml` 一律 gitignore（`.gitignore` 去掉 `!plugins/*/config.yaml` 例外），部署时从模板复制，避免每次同步服务器都要改配置；② **权限表默认收紧** —— `tool_permission_manager` 的 `enable` 默认值 `false → true`、新增 `debug` 字段（默认 `true`，仅控制未配置工具的 warning 是否打印），并**修复一处权限绕过**（`debug=false` 时 `pick_tools` 的 `and` 短路让未配置权限的工具落到 `is_allowed(None, …)` 抛 `AttributeError`，被 `_dispatch` 的 `except Exception` 吞掉 → `runtime.context["tools"]` 保持全量、`bash` / `write` / `replace` / `read_file` 对路人可见）；③ **权限类型扩到五种** —— 新增 `nobody`（谁都不可用）与 `passerby`（仅非管理员）；④ **插件改名（破坏性）** —— `mcp_extension` → `mcp_adapter_demo`（`MCPExtension` → `MCPAdapterDemo`）、`meme_extension` → `meme_ops`（`MemeExtension` → `MemeOps`），`plugin.toml` 的 `enter_class` 与 `SHARE_STORE` 命名空间键同步更新；⑤ **日志解耦** —— `graph_pipeline` / `pick_tools` 不再依赖 `ncatbot.utils.get_log`，改用标准库 `logging.getLogger`（不再耦合 ncatbot 的日志封装）。**验证**：`ruff --select F,E9` 全仓 0 错误、23 个 YAML 语法全过、11 个 `config.example.yaml` 与 11 个真实 `config.yaml` 均过 pydantic 校验、插件加载 **14/14**、真实图端到端（真 OmniQQ-MCP over SSH，74 工具）跑通。**未验证**：NcatBot 运行时下的端到端对话仍未跑。
 

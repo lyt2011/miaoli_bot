@@ -3,6 +3,32 @@
 本项目所有重要变更均记录在此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循语义化版本（[SemVer](https://semver.org/lang/zh-CN/)）。
 
+## [0.18.1] - 2026-10-17
+
+> 📄 **文档版：记录 `tool_attachment_fixer` 的两个缺陷，本版无代码改动**。0.18.0 部署到服务器后，某个私聊会话在「一次调用多个工具」时开始每轮 `400`（`insufficient tool messages following tool_calls message`），定位为本插件的附件搬移逻辑产出非法消息结构。本版只补文档（插件 `README.md` 的「已知问题」+ 下方 `Future`），代码修复留待后续版本。
+
+### Note
+
+- **为什么不直接修**：本插件只对「拒绝 `tool` 消息携带多模态块」的模型有价值，而当前部署的 `deepseek-flash` 属于**相反**的一类 —— 它接受且能正确读取 `tool` 消息里的图片（实测同一张图放在 `tool` / `Human` / `user` 三种位置均能答对）。对这类模型插件是纯负担，先关掉即可；真正的代码修复等确认要接那类模型时再做。
+- **实测数据**（判定插件价值用，仓库内不可复现）：① `tool` 消息 content 取 `str` / `[text]` / `[text, text]` / `[image_url]` / `[text, image_url]` 五种形态，`deepseek-flash` **全部 `200`**；② 唯一 `400` 的形态是 `AI(tool_calls) → TM, Human, TM`；③ 另一类模型对同样的坏结构返回 `200`，但对 `tool` 消息里的图片回答「我看不到」。
+- **服务器已处理**：两个坏会话（均为私聊）按 `thread_id` 删除三表并 `VACUUM FULL`；`tool_attachment_fixer/config.yaml` 改 `enable: false`，`mcp_adapter_demo/config.yaml` 改 `enable: true`。
+- **本版验证**：版本号三处一致（`manifest.toml` / `README.md` / `CHANGELOG.md` 均为 `0.18.1`）；`tool_attachment_fixer` 关闭后 `on_tool_calling` 只剩 `invoke_tools(0)`；同批工具混合返回 `list`（MCP）与 `str`（本地）的端到端跑通，落库 3 条 `ToolMessage` **连续**、无占位符改写。
+- **未验证**：NcatBot 运行时下的端到端对话仍未跑。
+
+### Docs
+
+- **`tool_attachment_fixer/README.md` 新增「⚠️ 已知问题（待修复）」**：完整记录两个缺陷（判定过宽 / flush 时机）、可复现的坏结构形态、两种后果（`400` 硬崩 / `200` 静默失效）、临时规避（`enable: false`）与四条修复方向。
+
+### Future
+
+- **🔴 `tool_attachment_fixer` 的两个缺陷**（本版只记录、未修）：
+  1. **`utils/guards.py:26-28` 的 `is_block_content` 判定过宽** —— `return isinstance(content, list)` 把 MCP 工具返回的纯文本块列表 `[{"type": "text", …}]` 也当成附件。
+  2. **`nodes/fix_attachment.py:35-44` 的 `pending` flush 时机错误** —— 遇到任何非 target 消息就倒出，同批工具只有部分被改写时会把 `HumanMessage` 插到 `ToolMessage` 序列中间。
+
+  修复方向：收窄判定（只认含真正多模态块的 `list`）+ flush 只在遇到非 `ToolMessage` 时发生（整段附件统一在段末插入）；另可考虑「只搬非文本块」与「写回前结构自检」。详见 `plugins/tool_attachment_fixer/README.md`。
+- **`is_target_model` 无法表达「谁都不生效」**：`models` 留空 = 对所有模型生效，所以停用只能靠 `enable: false`；后续可考虑支持空列表语义。
+- **`config.example.yaml` 的 `enable: true` 是危险默认值**：照模板复制会重新踩上这两个缺陷，修复落地时一并改成 `false` 或加警告注释。
+
 ## [0.18.0] - 2026-10-17
 
 > 📦 **子插件配置外置 + 权限表精简 + 两处插件改名** —— 11 个子插件的配置模板入库（`config.example.yaml`），真实 `config.yaml` 一律 gitignore，同步服务器时不必再改配置；`tool_permission_manager` 默认收紧并**修掉一处权限绕过**；`mcp_extension` / `meme_extension` 改名为 `mcp_adapter_demo` / `meme_ops`；日志层与 ncatbot 解耦。
@@ -73,7 +99,7 @@
 
 ## [0.17.3] - 2026-10-16
 
-> 🐛 **修复 `tool_attachment_fixer` 把图片消息插进 `ToolMessage` 段中间导致的 400** —— 这正是 `private-1514159584` 尾部永远停在 `HumanMessage`、图每轮中止的根因。
+> 🐛 **修复 `tool_attachment_fixer` 把图片消息插进 `ToolMessage` 段中间导致的 400** —— 这正是某个私聊会话尾部永远停在 `HumanMessage`、图每轮中止的根因。
 
 ### Fixed
 
@@ -90,9 +116,9 @@
 
 ### Note
 
-- **根因定位**：`journalctl -u ncatbot` 抓到 `2026-10-08T20:26:09` 的 `OpenAIInvalidRequestError: 400 ... insufficient tool messages following tool_calls message`；对照 `private-1514159584` 的消息序列，图片 `HumanMessage` 确实夹在 `ToolMessage` 之间
+- **根因定位**：`journalctl -u ncatbot` 抓到 `2026-10-08T20:26:09` 的 `OpenAIInvalidRequestError: 400 ... insufficient tool messages following tool_calls message`；对照该私聊会话的消息序列，图片 `HumanMessage` 确实夹在 `ToolMessage` 之间
 - **本版验证**：全仓 `compileall` rc=0；`ruff --select F,E9` 仅剩 3 处既有 F541；`miaoli_bot.utils` 与三个修复节点 import 冒烟通过；`fix_attachment` 用真实消息序列仿真，`AI → Tool×2 → Human(img)×2` 与「图片在后续消息之前倒出」均符合预期，已修复的纯文本 `ToolMessage` 幂等返回 `None`
-- **未处理**：`private-1514159584` 的历史数据仍是脏的（图片消息已在库中），本版只防未来；该会话修数据或清空待定
+- **未处理**：该私聊会话的历史数据仍是脏的（图片消息已在库中），本版只防未来；该会话修数据或清空待定
 
 ## [0.17.2] - 2026-10-16
 
@@ -411,7 +437,7 @@
 ### Note
 
 - **图片 token 估算的实测依据**：`image_to_tokens` 用 `int(sqrt(min(宽,1920) × min(高,1080)))` 折算占位符个数，占位符取汉字 `图` —— 它在 `o200k_base` 里**严格 1 字符 = 1 token**（可打印 ASCII 全部会被 BPE 合并，实测 `'a'×1000 → 125 token`、`' '×1000 → 9 token`；`\0` 也会 2 字符并成 1 token）。实测 DeepSeek 真实图片成本是 **216（起步，≤512×512）→ 1026（封顶）**，本估算给 32 → 1440，偏差在 **2.4 倍以内**且方向偏保守
-- **摘要提示词对照实验**（真实数据 `private-3640942712`，497 条消息，生产温度，每组 5 次）：**A（无 system_prompt + 第三人称）0/5 错；B（带 system_prompt + 第三人称）0/5 错；C（带 system_prompt + 第一人称）2/5 错**。出错的变量是「第一人称」而非「带 system_prompt」，且 B 的事实覆盖率最高 —— 因此仓库默认提示词用**第三人称**。C 的具体错误：把「一千米跑 3 分 19 秒」与「拼车回罗定」混成一个事实、把 10 月 4 日写成 8 月 4 日
+- **摘要提示词对照实验**（真实数据（某长会话，497 条消息，生产温度，每组 5 次）：**A（无 system_prompt + 第三人称）0/5 错；B（带 system_prompt + 第三人称）0/5 错；C（带 system_prompt + 第一人称）2/5 错**。出错的变量是「第一人称」而非「带 system_prompt」，且 B 的事实覆盖率最高 —— 因此仓库默认提示词用**第三人称**。C 的具体错误：把「一千米跑 3 分 19 秒」与「拼车回罗定」混成一个事实、把 10 月 4 日写成 8 月 4 日
 - **`prompt_file` 用绝对路径**：不再依赖进程 CWD（原相对路径要求 CWD 恰为仓库父目录，否则 `ValidationError: Path does not point to a file`）。服务器部署时路径不同，需单独改或加进 rsync 排除名单
 - **验证**（真跑）：① 全仓 `compileall` rc=0；② `ruff --select F401,F811,F821,F841` 全仓只剩 `main.py:153` 一处既有 F841；③ 全量插件加载 **11/11**，`ON_BEFORE_REQUEST` 处理器为 `pick_tools(1) → compact(0) → 默认跳转(-9999)`；④ `compact` 节点实跑 —— 低于阈值返回 `None`、超阈值返回 `Overwrite` 6 条（1 摘要 + 5 保留）；⑤ `image_to_tokens` 真 PNG 全链路（64×64→64、1024×1024→1024、3000×2000→1440，`min()` 归一化生效），空 url → `0`、坏图 → `1000`；⑥ 边界 7 组（纯字符串列表 / 无 `data:` 前缀 / 空 url / 缺 `image_url` / 未知模态 / 缺 `type` / 嵌套 list）全部不崩；⑦ `on_close` 的 `drop` 生效（`recall` 抛 `KeyError`）；⑧ **服务器 Python 3.12** 独立验证 import 与数值一致；⑨ `manifest.toml` 经 `tomllib` 解析通过
 - **未验证**：NcatBot 运行时下的端到端对话仍未跑；本版只在真实插件 + 真实 config + 假模型下验证，未真实调用 LLM 端点；`context_compactor` 的 tiktoken 模式**未在服务器上验证**（服务器连不上 `openaipublic.blob.core.windows.net`，编码文件下不下来，故 `config.yaml` 默认 `mode: base`）
@@ -545,7 +571,7 @@
 
 ### Note
 
-- **验证**（真跑，共 **98 项断言**）：① `fixer_test2` **31/31** —— 两个插件真加载与注册、**真实坏数据**（服务器 `private-3640942712` 的 checkpoint `1f1be453-88be-659e-8789-b64c7bfcd617`，550 条）修复后 **550 → 551 条**且原有消息一条不少、顺序不变，优先级正/反序结果等价，幂等（修好后再跑无 `messages` 写入），八项边界；② `accumulate_unit_test` **27/27** —— 不含 `Overwrite` 时 `_accumulate` 与 `_merge` 逐位一致、替换+追加/删除双序、两次替换、非 `messages` 通道、空增量、真实 `_dispatch` 协同；③ `candidate_g_test` **18/18**；④ `compact_dispatch_check` **7/7** —— 正序 30 → 7、反序 30 → 6（修前反序 30 → 32）；⑤ `overwrite_graph_e2e_test` **15/15** —— 真实编译图 + checkpointer，含**通道还没有值时的首写 `Overwrite`**（langgraph 自己在 `update` 里处理了 MISSING）与「持久化后通道里是普通 list 而非 `Overwrite` 对象」；⑥ 全量插件加载 **9/9**（`account_injector` / `base_nodes` / `base_parsers` / `base_platform_tools` / `base_system_tools` / `meme_extension` / `orphan_tool_fixer` / `pending_tool_fixer` / `tool_permission_manager`），节点注册顺序不变；⑦ 端到端 `ainvoke` 管理员可见 **15** 工具 / 路人可见 **9** 工具；⑧ `compileall` 全仓 rc=0、`ruff --select F401,F821,F811` 全过
+- **验证**（真跑，共 **98 项断言**）：① `fixer_test2` **31/31** —— 两个插件真加载与注册、**真实坏数据**（服务器某会话的 checkpoint `1f1be453-88be-659e-8789-b64c7bfcd617`，550 条）修复后 **550 → 551 条**且原有消息一条不少、顺序不变，优先级正/反序结果等价，幂等（修好后再跑无 `messages` 写入），八项边界；② `accumulate_unit_test` **27/27** —— 不含 `Overwrite` 时 `_accumulate` 与 `_merge` 逐位一致、替换+追加/删除双序、两次替换、非 `messages` 通道、空增量、真实 `_dispatch` 协同；③ `candidate_g_test` **18/18**；④ `compact_dispatch_check` **7/7** —— 正序 30 → 7、反序 30 → 6（修前反序 30 → 32）；⑤ `overwrite_graph_e2e_test` **15/15** —— 真实编译图 + checkpointer，含**通道还没有值时的首写 `Overwrite`**（langgraph 自己在 `update` 里处理了 MISSING）与「持久化后通道里是普通 list 而非 `Overwrite` 对象」；⑥ 全量插件加载 **9/9**（`account_injector` / `base_nodes` / `base_parsers` / `base_platform_tools` / `base_system_tools` / `meme_extension` / `orphan_tool_fixer` / `pending_tool_fixer` / `tool_permission_manager`），节点注册顺序不变；⑦ 端到端 `ainvoke` 管理员可见 **15** 工具 / 路人可见 **9** 工具；⑧ `compileall` 全仓 rc=0、`ruff --select F401,F821,F811` 全过
 - **存储代价**（实测，sqlite checkpointer，400 条历史）：`Overwrite` 与旧的 `RemoveMessage` 哨兵**同级** —— 纯追加时节点自身写入 **184 字节**，整表替换时 `Overwrite` 257,335 字节 vs 哨兵 257,432 字节（差 97 字节只是包装开销）。另外顺带省掉两处遍历：`_accumulate` 不再扫列表找标记（折叠 1.2~1.3×），`_merge` 的替换分支从 O(n) 全表拷贝降为 O(1) 直接换值
 - **未验证**：NcatBot 运行时下的端到端对话（`on_message` → 发送循环）未跑；两个修复插件在真实运行环境里对「上一轮异常中断」的修复效果未观测（只用真实坏数据 checkpoint 验证了修复正确性）；`_compact.py` 的 `CONTEXT_WINDOW` 仍是硬编码 `128000`
 
@@ -968,7 +994,7 @@
 ### Changed
 
 - **`main.py` 大幅瘦身**：删掉 `_build_graph` 里的 5 处节点注册、`_register_event_parse_chain` / `_register_segment_parse_chain` 与 `store_lock`；`_build_graph` 改为静态方法，只负责 `wire()` + `compile(InMemorySaver())`；`on_load` 改为「建容器（`ToolRegistry` / 两级链 / 图）→ 起 `PluginLoader` 并 `load_all()`」，`on_close` 对称增加 `unload_all()` 与四个新键的显式 `drop`
-- **群消息 @ 判定不再硬编码 QQ 号**：由写死的 `is_at("2449906317", …)` 改为读 `plugin_cfg.account.bot_id`
+- **群消息 @ 判定不再硬编码 QQ 号**：由写死的 `is_at("<bot_id>", …)` 改为读 `plugin_cfg.account.bot_id`
 - **工具列表不再硬编码**：`context["tools"]` 由固定 `TOOLS` 常量改为 `tool_registry.tools`
 - **输出切块与打字延迟落地**（原 `main.py` 里两条 `# TODO`）：按 `output.split_separator` 切分 `final_answer`、跳过空块，每块按 `len(块) * typing_speed ± typing_speed_offset` 随机 sleep 后再发送（此前 `OutputConfig` 三个字段无消费方）
 - **配置键更名（破坏性）**：`account_config` → `account`（模型 `AccountConfig` → `Accounts`）、`meme_config` → `meme`、`output_config` → `output`（`config.example.yaml` 与 `config.yaml` 同步）

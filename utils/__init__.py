@@ -6,7 +6,6 @@ from .easier_sender	import (
 
 from .sugar			import (
 	concatenate_id,
-	split_string,
 	get_thread_id,
 	get_tool_calls,
 	get_sub_plugin_root,
@@ -22,7 +21,6 @@ __all__ = [
 	"easier_send",
 	
 	"concatenate_id",
-	"split_string",
 	"get_thread_id",
 	"get_tool_calls",
 	"get_sub_plugin_root",

@@ -21,13 +21,6 @@ def concatenate_id(session_id: str, is_group: bool) -> str:
 	
 	return f"{prefix}{session_id}"
 
-def split_string(string: str, separator: Optional[str] = None) -> List[str]:
-	
-	if not separator:
-		return [string]
-	
-	return string.split(separator)
-
 def get_thread_id() -> str:
 	
 	"""当前会话 id 仅用于日志 图外调用会抛异常 这里兜住"""

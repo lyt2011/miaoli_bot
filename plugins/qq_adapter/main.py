@@ -6,7 +6,7 @@ from .consts	import PLUGIN_CONFIG, RAW_CONFIG, EVENT_PARSER, SEGMENT_PARSER, REG
 from .chains	import EventParseChain, SegmentParseChain
 from .api		import Registry
 from .models	import PluginConfig
-from .nodes		import handle_event
+from .nodes		import event_adapter
 
 from .parsers	import (
 	PrivateMessageEventParser,
@@ -47,7 +47,7 @@ class QQAdapterPlugin(PluginProtocol):
 		event_chain.register_parser(PrivateMessageEventParser())
 		event_chain.register_parser(GroupMessageEventParser())
 		
-		self.registry.on_agent_start(handle_event, priority=HIGH)
+		self.registry.on_agent_start(event_adapter, priority=HIGH)
 	
 	async def on_close(self) -> None:
 		

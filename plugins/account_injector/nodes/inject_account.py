@@ -18,4 +18,4 @@ async def inject_account(state: GraphState, runtime: Runtime[GraphRuntimeContext
 		f"<bot_nickname>{account.bot_nickname}</bot_nickname>",
 	])
 
-	return { "system_prompt": "\n\n".join([account_info, cfg.system_prompt]) }
+	return { "system_prompt": "\n\n".join([account_info, cfg.prompt]) }

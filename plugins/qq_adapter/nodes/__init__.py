@@ -1,8 +1,8 @@
-from .handle_event	import handle_event
+from .event_adapter	import event_adapter
 
 
 __all__ = [
 
-	"handle_event",
+	"event_adapter",
 
 ]

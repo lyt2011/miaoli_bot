@@ -12,7 +12,7 @@ async def output_checker(state: GraphState, runtime: Runtime[GraphRuntimeContext
 	
 	messages = state.get("messages")
 	if not messages or not isinstance(messages, list):
-		return Abort(reason="没有可用消息")
+		return Abort(reason="上下文列表没有被注入")
 	
 	latest_msg = messages[-1]
 	

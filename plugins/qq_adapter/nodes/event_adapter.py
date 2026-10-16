@@ -9,13 +9,12 @@ from miaoli_bot.core	import Abort
 from ..consts	import EVENT_PARSER
 
 
-async def handle_event(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Union[Dict[str, Any], Abort]:
+async def event_adapter(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Union[Dict[str, Any], Abort]:
 	
 	"""通过 chain 解析事件并写入 messages"""
 	
-	event = runtime.context.get("event")
-	if event is None:
-		raise RuntimeError("上下文里没有 event 对象")
+	if (event := state.get("event")) is None:
+		return Abort(reason="上下文里没有 event 对象")
 	
 	# 解析事件 DispatchResult 可能没有/无效
 	dispatch_result	= await SHARE_STORE.recall(EVENT_PARSER).dispatch(event)

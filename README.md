@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.17.0
+- **版本**：0.17.1
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -26,7 +26,7 @@
 - 🗄️ **checkpointer 适配层**：`checkpointer.database` 在 `memory` / `sqlite` / `postgresql` 之间切换 checkpoint 存储 —— `adapters/check_pointers/` 的三个适配器把 `InMemorySaver` / `AsyncSqliteSaver` / `AsyncPostgresSaver` 收拢成同一门面（`protocols.BaseCheckpointerSaverAdapter`：1:1 转发 `BaseCheckpointSaver` 的同步 / 异步协议方法，`connect(connect_to, **extra)` 建连、`close()` 释放），`main.py` 的 `CPA_MAPPING` 按 `database` 取类，`on_load` 注入图、`on_close` 统一关闭。
 - 💾 **共享存储**：`stores/SHARE_STORE` 全局共享容器；core 的键在 `consts/share_store_keys.py`（`TOOL_REGISTRY` / `NCATBOT_API` / `PLUGIN_CONFIG` / `RAW_CONFIG` / `PLUGIN_DIR` / `WORKSPACE_DIR` / `GRAPH_PIPELINE`），子插件用自带命名空间键（如 `qq_adapter` 的 `EVENT_PARSER` / `SEGMENT_PARSER` / `REGISTRY`）。
 - 🔔 **事件优先级让位**：`on_message` 以 `priority=-100` 注册，排在后处理的位置 —— 扩展插件可用更高优先级抢先接收并停止事件传播（如 `miaoli_like` 的 `赞我` 用 `priority=100`），被上游截下的消息不会再进入 LLM。
-- 🎭 **角色扮演**：内置猫娘「喵璃」人设提示词（`data/prompts/prompt_v1.4.md`，另有 v1.0 ~ v1.3 历史版本）；`account_injector` 子插件的 `inject_account` 节点把人设与管理员 / 机器人的 QQ 号、昵称拼成提示词块，一起写进系统提示词。
+- 🎭 **角色扮演**：内置猫娘「喵璃」人设提示词（`data/prompts/prompt_v1.5.md`，另有 v1.0 ~ v1.4 历史版本）；`account_injector` 子插件的 `inject_account` 节点把人设与管理员 / 机器人的 QQ 号、昵称拼成提示词块，一起写进系统提示词。
 - ⏱️ **输出切块与打字延迟**：`on_message` 按根配置 `split`（`enable` / `delimiter`）把回复切块，跳过空块；若 `typing.enable`，每块按 `len(块) * uniform(base_speed ± speed_offset)` sleep 后再发送，模拟真人在打字。发送由 `main.py` 负责（首块 `event.reply`，其余 `easier_send`）。
 - 🧪 **本地测试（待重写）**：`tests/` 目录（gitignore，不随仓库提交）里的用例针对的是 pi 桥接层，随 0.8.0 重构整体失效。
 
@@ -91,7 +91,7 @@ miaoli_bot/
 │   ├── plugin_loader.py           #   PluginLoader：扫 plugin.toml → 注册成包 → 加载 / 卸载子插件
 │   ├── registry.py                #   Registry：子插件的注册门面（工具 / 解析器 / 图节点），含全局单例 registry
 │   └── tool_registry.py           #   ToolRegistry：按名字存工具（register / remove / tools）
-├── data/prompts/                  # 提示词资产（prompt_v1.0.md ~ prompt_v1.4.md）
+├── data/prompts/                  # 提示词资产（prompt_v1.0.md ~ prompt_v1.5.md）
 ├── errors/                        # 异常定义
 │   ├── base_bot_error.py          #   BaseBotError 基类
 │   ├── agent_aborted.py           #   AgentAborted（继承 GraphBubbleUp，从节点中止本轮图运行）
@@ -232,6 +232,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.17.1 — **提示词资产更新：新增 `prompt_v1.5.md`，显著压住「说几个字就输出一大串文本」的倾向**；`main.py` 发送逻辑加 `content_part.strip()` 兜底。v1.5 相对 v1.4：① 开头加「像在手机上发消息」的基调；② 新增 `# 我怎么聊天` 段（把「可以简短」改成默认性的「懒得打一大段」+ 三条场景规则）；③ 「习惯」里 `无论什么时候都简短` → `按对方这句话的需要来`；④ 恢复 v1.3 被删的「口癖/表情/嘲讽在严肃时可少用一点」；⑤ 结尾加「一次只说一件事」。**实测**（`deepseek-flash`，4 组输入 × 3 遍均值，字/段）：`你好` 90/70/**18**、代码题 281/212/**113**、情绪 70/46/**30**、被夸 80/61/**53**（v1.3 / v1.4 / v1.5）；「你好」v1.5 直接回 `干嘛～有事吗喵？`。**踩坑**：`` `\n\n` `` 反引号会被模型偶发照抄成字面量；「空两行」中文歧义（人读 `\n\n\n`、模型读 `\n\n`）→ 加 `.strip()` 兜底。**未验证**：NcatBot 运行时下的端到端对话仍未跑。
 
 v0.17.0 — **架构重构：`qq_bot` → `qq_adapter`（纯解析 adapter）+ 拆出 `qq_platform_tools`；解析子系统整体迁入 adapter；事件以「字典」进图（`event._data.model_dump()`）而非塞进 `runtime.context`；发送从图内节点移回 core 的 `main.py`**。收口后：**图只吃平台无关字典、只吐 `final_answer`；adapter 只解析；`main.py` 发送**，core 对「QQ 平台」零认知。要点：① 目录 / 类名 / `SHARE_STORE` 命名空间 `qq_bot` → `qq_adapter`（`QQBotPlugin` → `QQAdapterPlugin`）；② `Parser` / 两条链 / `DispatchResult` / `EVENT_PARSER` / `SEGMENT_PARSER` 从 core 删除、adapter 自带；③ `OutputConfig` → `SplitConfig` + `TypingConfig` 回到 core，`PluginConfig` 新增 `provider` / `model` / `split` / `typing`；④ `GraphState` 的 `provider_name` / `model_name` → `provider` / `model`，删 `segments`；⑤ 解析器全面 dict 化（`data["message_type"]` / `data["type"]`），整条链不 import ncatbot；⑥ `tools/` 拆成 `qq_platform_tools`；⑦ 删 `EventAdapter` / `BaseAdapter` / `easier_parser` / `event_ops` / `tool_result_builder` / `ParseResult` / `protocols/runtime/` / `format_input` / `send_output`；⑧ 新增 `handle_event`（回填 `state["event"]`）与 `output_checker`；⑨ 新增 `data/prompts/prompt_v1.4.md`（新版人设）。**踩坑**（详见 CHANGELOG 的 Note）：`event.model_dump()` 不存在（模型在 `event._data`）；`context` 进不了 state 导致 `pick_tools` 读 `state["event"]` 时 `KeyError`（被吞 → 权限静默失效）；图两端劈成两半（入参 `provider`/`model` 走 state、`event` 走 context）→「两脚空空」；原始对象把图焊死平台。**验证**：`compileall` rc=0、`ruff --select F,E9` 仅剩 3 处既有 F541、插件加载 **13/13**、工具 **17 个**、各解析器逐分支实测、`build_client({"provider","model"})` 构出 `ChatOpenAI`、版本号三处一致。**未验证**：NcatBot 运行时下的端到端对话仍未跑。
 

@@ -154,6 +154,9 @@ class MiaoLiBot(NcatBotPlugin):
 		# 遍历内容块并发送
 		for index, content_part in enumerate(content_parts):
 			
+			# 先格式化内容块
+			content_part = content_part.strip()
+			
 			# 若打字配置被启用则计算打字时间并等待
 			if plugin_cfg.typing.enable:
 				

@@ -12,7 +12,7 @@ from .tools		import (
 )
 
 
-class MemeExtension(PluginProtocol):
+class MemeOps(PluginProtocol):
 	
 	async def on_load(self) -> None:
 		

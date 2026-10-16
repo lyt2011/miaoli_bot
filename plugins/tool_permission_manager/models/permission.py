@@ -2,7 +2,7 @@ from pydantic	import BaseModel, Field
 from typing		import Literal, List
 
 
-PermissionT = Literal["admin", "white_list", "anyone"]
+PermissionT = Literal["admin", "white_list", "anyone", "nobody", "passerby"]
 
 
 class Permission(BaseModel):

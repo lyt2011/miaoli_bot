@@ -1,0 +1,15 @@
+# web_search 配置模板
+#
+# 用法：
+#   cp plugins/web_search/config.example.yaml plugins/web_search/config.yaml
+#
+# config.yaml 已加入 .gitignore，不会被提交。本文件是入库的模板。
+#
+# ⚠️ API key 不写在配置里：这里只声明「从哪个环境变量取」，
+#    真正的 key 放在环境变量里（如 export SEARCH_API_KEY=xxx），避免进仓库。
+
+enable: true                  # 是否启用该插件
+
+provider: "langsearch"        # 供应商（Literal，目前只支持 langsearch）
+base_url: "https://api.langsearch.com/v1/web-search"
+env_key: "SEARCH_API_KEY"     # 从该环境变量读 key

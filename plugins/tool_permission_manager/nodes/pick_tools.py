@@ -3,27 +3,35 @@ from miaoli_bot.stores	import SHARE_STORE
 from miaoli_bot.consts	import PLUGIN_CONFIG as ROOT_PLUGIN_CONFIG
 
 from typing					import List
-from ncatbot.utils			import get_log
 from langgraph.runtime		import Runtime
 from langchain_core.tools	import BaseTool
 
 from ..consts				import PLUGIN_CONFIG
 from ..models.permission	import Permission
 
+import logging
 
-LOGGER = get_log("ToolPermissionManager")
+
+LOGGER = logging.getLogger("ToolPermissionManager")
 
 
 def is_allowed(permission: Permission, user_id: str, admin_id: str) -> bool:
 	
-	"""三种权限的统一判定"""
+	"""5种权限的统一判定"""
 	
 	if permission.permission == "admin":
 		return user_id == admin_id
 	
+	if permission.permission == "passerby":
+		return user_id != admin_id
+	
 	if permission.permission == "white_list":
 		return user_id in permission.white_list
 	
+	if permission.permission == "nobody":
+		return False
+	
+	# 这是 anyone
 	return True
 
 
@@ -41,10 +49,13 @@ async def pick_tools(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -
 	
 	for tool in runtime.context["tools"]:
 		
-		permission = permissions.get(tool.name)
-		
-		if permission is None:
-			LOGGER.warning(f"{tool.name} 未配置权限 将隐藏该工具")
+		# 对于未配置权限的工具 打印警告日志(仅调试模式)
+		if not (permission := permissions.get(tool.name)):
+			
+			# 突然发现 debug = false 时全部工具都没有权限控制了😅 单独分支检查
+			if plugin_config.debug:
+				LOGGER.warning(f"{tool.name} 未配置权限 将隐藏该工具")
+			
 			continue
 		
 		if is_allowed(permission, user_id, admin_id):

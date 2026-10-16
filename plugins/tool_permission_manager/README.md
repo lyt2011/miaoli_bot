@@ -9,8 +9,16 @@
 | `admin` | 仅 `miaoli_bot` 根配置 `account.admin_id` 指定的管理员 |
 | `white_list` | 该条目 `white_list` 名单里的 QQ 号 |
 | `anyone` | 任何调用者 |
+| `passerby` | 任何**非管理员**的调用者（即 `admin` 的补集） |
+| `nobody` | 谁都不可用（等于把该工具彻底下架，但仍会在权限表里留一行占位） |
 
 ## 配置
+
+`config.yaml` 已随根配置一起 `gitignore`（各部署环境取值不同，不入库），从模板复制一份再改：
+
+```bash
+cp plugins/tool_permission_manager/config.example.yaml plugins/tool_permission_manager/config.yaml
+```
 
 ```yaml
 enable: true
@@ -26,6 +34,10 @@ permissions:
 ```
 
 未在权限表中声明的工具会被直接摘除并打印一条 warning（默认拒绝），新增工具后记得补配置。
+
+> ✅ **`config.yaml` 缺失时 `enable` / `debug` 都走默认值 `true`**，即「插件照常生效 + 打印 warning」。
+> 此时权限表为空，所有工具都会被摘掉（默认拒绝）—— 宁可误杀，也不会漏放重要工具。
+> 日志里能看到每个被隐藏的工具名，照它往 `permissions` 里补条目即可。
 
 ## 注意事项
 

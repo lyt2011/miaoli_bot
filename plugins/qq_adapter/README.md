@@ -11,7 +11,7 @@ QQ 平台适配 —— 把 ncatbot 的 QQ 事件**解析**成平台无关的字�
 qq_adapter/
 ├── plugin.toml
 ├── main.py             # 入口类 QQAdapterPlugin，on_load 显式逐个注册
-├── config.yaml
+├── config.example.yaml  # 配置模板（config.yaml 已 gitignore，不入库）
 ├── api/                # Registry：本插件自己的解析器注册器（register_segment_parser / register_event_parser）
 ├── chains/             # 解析链：ChainProtocol / BaseParserChain / EventParseChain / SegmentParseChain
 ├── consts/             # SHARE_STORE 键（PLUGIN_CONFIG / RAW_CONFIG / EVENT_PARSER / SEGMENT_PARSER / REGISTRY）

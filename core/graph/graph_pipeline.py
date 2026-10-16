@@ -1,6 +1,5 @@
 from collections	import defaultdict
 from typing			import Callable, Awaitable, Dict, List, Mapping, Any, Generic, Optional, Union
-from ncatbot.utils	import get_log
 
 from langgraph.graph			import StateGraph, START
 from langgraph.graph.state		import CompiledStateGraph
@@ -15,8 +14,10 @@ from ...consts	import ON_AGENT_START, ON_TURN_START, ON_BEFORE_REQUEST, ON_REQUE
 from ...errors	import AgentAborted
 from .actions	import Continue, Goto, Abort, BaseAction
 
+import logging
 
-LOGGER = get_log("GraphPipeline")
+
+LOGGER = logging.getLogger("GraphPipeline")
 
 
 # 处理器的返回值：Action / 纯增量 dict / None（无操作）

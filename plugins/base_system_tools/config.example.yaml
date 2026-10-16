@@ -1,0 +1,20 @@
+# base_system_tools 配置模板
+#
+# 用法：
+#   cp plugins/base_system_tools/config.example.yaml plugins/base_system_tools/config.yaml
+#
+# config.yaml 已加入 .gitignore（各部署环境的路径/取值可能不同），不会被提交。
+# 本文件是入库的模板；PluginConfig 字段有变动时请同步这里。
+# 键名与 models/plugin_config.py 的 PluginConfig 一一对应，缺失的键走模型默认值。
+
+bash:
+  limit: 65535              # 管道单次输出上限（字节），超出会被截断
+  reader_timeout: 5.0       # 进程结束后等待管道读取器的超时（秒），不用设太长
+
+read_image:
+  support_image:            # read_image 允许读取的图片格式（Literal，取值见 models/plugin_config.py 的 Image）
+    - "png"                 # 可选：apng avif bmp cr2 dwg gif heic ico jpeg jpg
+    - "jpeg"                #       jpx jxr png psd tif webp xcf
+    - "jpg"
+    - "gif"
+    - "webp"

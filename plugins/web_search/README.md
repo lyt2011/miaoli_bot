@@ -20,7 +20,7 @@ env_key: "SEARCH_API_KEY"
 
 ## 密钥
 
-**密钥不写在 `config.yaml` 里。** 子插件的 `config.yaml` 随仓库提交（`.gitignore` 有 `!plugins/*/config.yaml` 例外），写进去就会泄露，所以走环境变量：
+**密钥不写在 `config.yaml` 里。** 子插件的 `config.yaml` 已随根配置一起 `gitignore`（各部署环境的取值不同，不入库，模板见 `config.example.yaml`），写进去既会泄露、也无法跨环境复用，所以走环境变量：
 
 ```bash
 export SEARCH_API_KEY="sk-..."

@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.17.2
+- **版本**：0.18.0
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -105,17 +105,18 @@ miaoli_bot/
 ├── plugins/                       # 内置子插件（随仓库提交，加载目录由 sub_plugin.load_from 指定）
 │   ├── account_injector/          #   账号注入节点（nodes/ + plugin.toml）
 │   ├── base_nodes/                #   图节点（nodes/ + plugin.toml）
-│   ├── base_system_tools/         #   系统工具（tools/ + models/ + consts/ + config.yaml 默认值 + README）
-│   ├── base_topology/             #   默认跳转（nodes/ 一个事件一个文件 + config.yaml 默认值）
-│   ├── context_compactor/         #   上下文压缩（nodes/ + utils/ + models/ + consts/ + data/ 提示词 + config.yaml 默认值 + README）
-│   ├── meme_extension/            #   meme 工具（tools/ + core/ + models/ + consts/ + config.yaml 默认值 + README）
-│   ├── orphan_tool_fixer/         #   孤儿工具返回修复（nodes/ + utils/ + config.yaml 默认值）
-│   ├── pending_tool_fixer/        #   悬空工具调用修复（nodes/ + utils/ + models/ + consts/ + config.yaml 默认值）
-│   ├── qq_adapter/                #   QQ 平台适配：两级解析器 + handle_event（parsers/ + chains/ + api/ + nodes/ + models/ + consts/ + config.yaml + README）
+│   ├── base_system_tools/         #   系统工具（tools/ + models/ + consts/ + config.example.yaml + README）
+│   ├── base_topology/             #   默认跳转（nodes/ 一个事件一个文件 + config.example.yaml）
+│   ├── context_compactor/         #   上下文压缩（nodes/ + utils/ + models/ + consts/ + data/ 提示词 + config.example.yaml + README）
+│   ├── mcp_adapter_demo/          #   MCP 适配演示（实验性）：接入外部 MCP server 并把其工具注入工具表（models/transports + nodes/ + config.example.yaml + README）
+│   ├── meme_ops/                  #   meme 工具（tools/ + core/ + models/ + consts/ + config.example.yaml + README）
+│   ├── orphan_tool_fixer/         #   孤儿工具返回修复（nodes/ + utils/ + config.example.yaml）
+│   ├── pending_tool_fixer/        #   悬空工具调用修复（nodes/ + utils/ + models/ + consts/ + config.example.yaml）
+│   ├── qq_adapter/                #   QQ 平台适配：两级解析器 + event_adapter（parsers/ + chains/ + api/ + nodes/ + models/ + consts/ + config.example.yaml + README）
 │   ├── qq_platform_tools/         #   QQ 平台工具（tools/ + README）
-│   ├── tool_attachment_fixer/     #   工具附件修复（nodes/ + utils/ + models/ + consts/ + config.yaml 默认值 + README）
-│   ├── tool_permission_manager/   #   工具权限控制（nodes/ + models/ + consts/ + config.yaml 权限表 + README）
-│   └── web_search/                #   联网搜索（tools/ + models/ + consts/ + config.yaml 默认值 + README）
+│   ├── tool_attachment_fixer/     #   工具附件修复（nodes/ + utils/ + models/ + consts/ + config.example.yaml + README）
+│   ├── tool_permission_manager/   #   工具权限控制（nodes/ + models/ + consts/ + config.example.yaml 权限表 + README）
+│   └── web_search/                #   联网搜索（tools/ + models/ + consts/ + config.example.yaml + README）
 ├── protocols/                     # 抽象协议
 │   └── abc/                       #   编译期抽象：PluginProtocol / ChainProtocol / StoreProtocol / BaseCheckpointerSaverAdapter
 ├── stores/                        # 全局共享存储（SHARE_STORE）
@@ -140,7 +141,7 @@ miaoli_bot/
 
 ## 内置子插件
 
-主包只保留图管线与加载框架，业务能力由子插件提供。以下十四个内置子插件位于本仓库的 `plugins/` 目录，`plugin.toml` 与子插件自带的 `config.yaml` 默认值都随仓库提交（根目录的 `config.yaml` 仍 gitignore，不进版本控制）：
+主包只保留图管线与加载框架，业务能力由子插件提供。以下十四个内置子插件位于本仓库的 `plugins/` 目录，`plugin.toml` 与配置模板 `config.example.yaml` 随仓库提交；各部署环境的真实 `config.yaml` 一律 gitignore（含根目录），部署时从模板复制一份再改：
 
 | 子插件 | 提供 |
 |---|---|
@@ -149,18 +150,19 @@ miaoli_bot/
 | `base_system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml` 与 `README.md`）。`read_image` 按 `support_image` 名单过滤格式 —— 这道过滤是**为了限制读取**（不做的话读什么都会被 b64 成图片塞进上下文，导致 400），**不是**给模型过滤不同类型的图片 |
 | `base_topology` | 默认跳转（edgeless 拓扑的顺序来源）：**一个事件一个节点文件**，8 个节点各返回一条 `Goto`，把旧 `wire()` 的静态边与 `tools_condition` 条件边在插件层复原；`on_after_request` 按 `is_tool_calling(messages)` 分流工具循环与收尾。注册在最低优先级 `MINIMUM`，可被任何子插件抢跑 |
 | `context_compactor` | 上下文压缩：`compact` 在 `on_before_request`（`priority=0`）读模型真实 `context_window` / `max_tokens` 判阈值，超窗时把历史压成一条 `<compaction>` 摘要并用 `Overwrite` 整体替换；保留条数 / 提示词 / 计数方式全部配置化（`base` 粗估或 `tiktoken` 精确），自带 `data/compact_prompt.md` 与 `README.md` |
-| `meme_extension` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除（自带 `config.yaml`）；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
+| `mcp_adapter_demo` | **实验性** MCP 适配演示：`recall_mcp_tools` 在 `on_before_request`（`priority=MEDIUM`）用 `MultiServerMCPClient` 拉取外部 MCP server 的工具，**按名去重**后合并进 `runtime.context["tools"]`；必须排在 `pick_tools`（`priority=1`）之前，否则 MCP 工具会绕过权限过滤。支持 `stdio` / `streamable_http` 两种传输。自带 `README.md`。**未完成**：`reusable` 字段只声明未消费（仍每请求重建客户端）、只做去重不做下架 |
+| `meme_ops` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
 | `orphan_tool_fixer` | 坏历史修复：`fix_orphan_tool_message` 在 `on_before_request`（`priority=2`）删掉找不到发起 `tool_calls` 的 `ToolMessage`（只产出定向删除增量） |
 | `pending_tool_fixer` | 坏历史修复：`fix_pending_tool_call` 在 `on_before_request`（`priority=3`）给悬空的 `tool_calls` 补一条「工具未执行」的合成 `ToolMessage`（返回 `Overwrite` 整表替换） |
 | `qq_adapter` | QQ 平台适配（**纯 adapter，只解析不发送**）：`handle_event` 在 `on_agent_start`（`priority=HIGH`）把 ncatbot 事件字典解析成 `event_data`，回填 `state["event"]` 并把 JSON 追加进 `messages`；两级解析链（`parsers/`）完全吃字典、不 import ncatbot 任何类。发送由 `main.py` 负责。自带 `config.yaml` 与 `README.md` |
 | `qq_platform_tools` | QQ 平台工具：发消息 / 发文件 / 下载文件 / 查消息 ID / 撤回消息 / 戳一戳（`send_poke`，`group_id` 有值为群内戳、无值为私聊戳）。自带 `README.md` |
 | `tool_attachment_fixer` | 工具附件修复：`fix_tool_attachment` 在 `on_tool_calling`（`priority=-2`）把非字符串的 `ToolMessage.content` 挪进紧跟其后的一条 `HumanMessage`（原 `ToolMessage` 正文换成 `replace_text`），让不接受 `tool` 消息带多模态块的模型不再 `400`；只对 `models` 里声明的模型生效（留空 = 全部），无改动时返回 `None`。自带 `README.md` |
-| `tool_permission_manager` | 工具权限控制：按自带 `config.yaml` 的权限表（`admin` / `white_list` / `anyone`），在 `on_before_request` 把当前身份无权使用的工具从 `runtime.context["tools"]` 摘掉；未声明的工具默认拒绝并打 warning。自带 `README.md` |
+| `tool_permission_manager` | 工具权限控制：按 `config.yaml` 的权限表（`admin` / `white_list` / `anyone` / `passerby` / `nobody` 五种），在 `on_before_request`（`priority=1`）把当前身份无权使用的工具从 `runtime.context["tools"]` 摘掉；未声明的工具默认拒绝并打 warning（`debug: false` 可关日志，不影响判定）。自带 `README.md` |
 | `web_search` | 联网搜索：`lang_search` 调 langsearch.com 的 `POST /v1/web-search`，原始响应整体交给模型。**API key 走环境变量**（`env_key`，默认 `SEARCH_API_KEY`），不写进 `config.yaml`。`provider` 字段留了多后端位置，目前只适配 `langsearch`。自带 `README.md` |
 
 > `orphan_tool_fixer` 与 `pending_tool_fixer` 成对：前者治「有返回没请求」，后者治「有请求没返回」。两者互不依赖、各自独立判断，谁先跑都不影响结果（`accumulate_data` 保证不同形态的增量可以任意顺序折叠）；触发场景是上一轮工具执行中途异常／并发冲突导致消息形状坏掉，此后每轮请求模型都会 `400 insufficient tool messages following tool_calls`。
 
-子插件约定：目录下放 `plugin.toml`（`enter_class` / `enter_file`）与可选 `config.yaml`；入口类继承 `PluginProtocol`，在 `on_load` 里用 `Registry` 注册工具 / 解析器 / 图节点，在 `on_close` 里释放资源。
+子插件约定：目录下放 `plugin.toml`（`enter_class` / `enter_file`）与入库的配置模板 `config.example.yaml`（真实 `config.yaml` 不入库）；入口类继承 `PluginProtocol`，在 `on_load` 里用 `Registry` 注册工具 / 解析器 / 图节点，在 `on_close` 里释放资源。
 
 ## 安装与使用
 
@@ -180,6 +182,8 @@ miaoli_bot/
    - `filetype`（`>=1.2.0`）
    - `pillow`（`>=12.3.0`）
    - `tiktoken`（`>=0.14.0`）
+   - `langchain-mcp-adapters`（`>=0.3.2`）：`mcp_adapter_demo` 的 `MultiServerMCPClient`（`langchain_mcp_adapters.client`）
+   - `mcp`（`>=1.24.0`）：MCP 协议 SDK，由上面那个包带入，此处显式声明
 3. 插件配置：`cp config.example.yaml config.yaml` 后填真实 `api_key`（`config.yaml` 含密钥、已 gitignore）。插件目录的 `config.yaml` 为默认值，全局 `config.yaml` 的 `plugin.plugin_configs.miaoli_bot` 同键覆盖；`on_load` 第一步即 `PluginConfig.model_validate(self.config)`，必填项缺失 / 路径不存在 / 类型不符都会抛 `ValidationError`，本插件加载失败并在日志留下 traceback（机器人其余部分不受影响）。
 
 配置键名与 `models.PluginConfig` 的字段一一对应：
@@ -218,7 +222,7 @@ cd <插件父目录>          # plugins/
 | `langchain-core`（`>=1.6.5`） | `@tool` 工具定义、`BaseMessage` / `BaseChatModel` 等基础类型（主包与子插件都用） |
 | `langgraph-checkpoint-sqlite`（`>=3.1.1`） | `AsyncSqliteSaver`（`checkpointer.database: sqlite`），带 `aiosqlite` / `sqlite-vec` |
 | `langgraph-checkpoint-postgres`（`>=3.1.2`） | `AsyncPostgresSaver`（`checkpointer.database: postgresql`），带 `psycopg` / `psycopg-pool` |
-| `aiosqlite`（`>=0.22.1`） | `SQLiteAdapter` 与 `meme_extension.MemeSqlite` 共用的异步 sqlite 驱动（连接分别由 `close()` / `__aexit__` 关） |
+| `aiosqlite`（`>=0.22.1`） | `SQLiteAdapter` 与 `meme_ops.MemeSqlite` 共用的异步 sqlite 驱动（连接分别由 `close()` / `__aexit__` 关） |
 | `aiofiles`（`>=24.1.0`） | `base_system_tools` 的 `write` / `replace` 工具异步写盘（`aiofiles.open` + `async with`） |
 | `aiohttp`（`>=3.13.4`） | `web_search` 的联网搜索请求（`ClientSession.post`）；它也是 `ncatbot5` 的传递依赖，此处显式声明 |
 | `psycopg`（`>=3.3.6`）/ `psycopg-pool`（`>=3.3.3`） | `PostgresqlAdapter` 直接 import 的驱动与连接池（`AsyncConnectionPool`） |
@@ -227,11 +231,15 @@ cd <插件父目录>          # plugins/
 | `filetype`（`>=1.2.0`） | `base_system_tools` 的图片类型嗅探（`read_image`） |
 | `pillow`（`>=12.3.0`） | `context_compactor` 的图片宽高解析（`image_to_tokens`，据此估算图片 token） |
 | `tiktoken`（`>=0.14.0`） | `context_compactor` 的精确 token 计数（`calculate.mode: tiktoken`） |
+| `langchain-mcp-adapters`（`>=0.3.2`） | `mcp_adapter_demo` 的 `MultiServerMCPClient`（拉取 / 调用外部 MCP server 的工具） |
+| `mcp`（`>=1.24.0`） | MCP 协议 SDK（由 `langchain-mcp-adapters` 带入，此处显式声明以免上游依赖树变动时导入期 `ModuleNotFoundError`） |
 
 > 注：以上依赖由 `manifest.toml` 的 `pip_dependencies` 声明。
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.18.0 — **子插件配置模板化 + 权限表精简 + 两处插件改名**：① **配置外置** —— 11 个子插件新增入库的 `config.example.yaml`，真实 `config.yaml` 一律 gitignore（`.gitignore` 去掉 `!plugins/*/config.yaml` 例外），部署时从模板复制，避免每次同步服务器都要改配置；② **权限表默认收紧** —— `tool_permission_manager` 的 `enable` 默认值 `false → true`、新增 `debug` 字段（默认 `true`，仅控制未配置工具的 warning 是否打印），并**修复一处权限绕过**（`debug=false` 时 `pick_tools` 的 `and` 短路让未配置权限的工具落到 `is_allowed(None, …)` 抛 `AttributeError`，被 `_dispatch` 的 `except Exception` 吞掉 → `runtime.context["tools"]` 保持全量、`bash` / `write` / `replace` / `read_file` 对路人可见）；③ **权限类型扩到五种** —— 新增 `nobody`（谁都不可用）与 `passerby`（仅非管理员）；④ **插件改名（破坏性）** —— `mcp_extension` → `mcp_adapter_demo`（`MCPExtension` → `MCPAdapterDemo`）、`meme_extension` → `meme_ops`（`MemeExtension` → `MemeOps`），`plugin.toml` 的 `enter_class` 与 `SHARE_STORE` 命名空间键同步更新；⑤ **日志解耦** —— `graph_pipeline` / `pick_tools` 不再依赖 `ncatbot.utils.get_log`，改用标准库 `logging.getLogger`（不再耦合 ncatbot 的日志封装）。**验证**：`ruff --select F,E9` 全仓 0 错误、23 个 YAML 语法全过、11 个 `config.example.yaml` 与 11 个真实 `config.yaml` 均过 pydantic 校验、插件加载 **14/14**、真实图端到端（真 OmniQQ-MCP over SSH，74 工具）跑通。**未验证**：NcatBot 运行时下的端到端对话仍未跑。
 
 v0.17.1 — **提示词资产更新：新增 `prompt_v1.5.md`，显著压住「说几个字就输出一大串文本」的倾向**；`main.py` 发送逻辑加 `content_part.strip()` 兜底。v1.5 相对 v1.4：① 开头加「像在手机上发消息」的基调；② 新增 `# 我怎么聊天` 段（把「可以简短」改成默认性的「懒得打一大段」+ 三条场景规则）；③ 「习惯」里 `无论什么时候都简短` → `按对方这句话的需要来`；④ 恢复 v1.3 被删的「口癖/表情/嘲讽在严肃时可少用一点」；⑤ 结尾加「一次只说一件事」。**实测**（`deepseek-flash`，4 组输入 × 3 遍均值，字/段）：`你好` 90/70/**18**、代码题 281/212/**113**、情绪 70/46/**30**、被夸 80/61/**53**（v1.3 / v1.4 / v1.5）；「你好」v1.5 直接回 `干嘛～有事吗喵？`。**踩坑**：`` `\n\n` `` 反引号会被模型偶发照抄成字面量；「空两行」中文歧义（人读 `\n\n\n`、模型读 `\n\n`）→ 加 `.strip()` 兜底。**未验证**：NcatBot 运行时下的端到端对话仍未跑。
 

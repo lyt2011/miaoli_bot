@@ -1,4 +1,0 @@
-split:
-  base_typing_speed: 0.01
-  typing_speed_offset: 0.05
-  split_separator: "\n\n"

@@ -1,0 +1,35 @@
+# mcp_adapter_demo 配置模板
+#
+# 用法：
+#   cp plugins/mcp_adapter_demo/config.example.yaml plugins/mcp_adapter_demo/config.yaml
+#
+# config.yaml 已加入 .gitignore，不会被提交。本文件是入库的模板。
+# 键名与 models/plugin_config.py 的 PluginConfig 一一对应。
+#
+# ⚠️ MCP 工具默认被 tool_permission_manager 隐藏（未配置权限 = 拒绝）。
+#    要真正可用，还得在 plugins/tool_permission_manager/config.yaml 里给工具名配权限。
+
+enable: true
+tool_prefix: true             # 给 MCP 工具名加 "服务器名_" 前缀，避免与本地工具重名互相顶掉
+
+# MCP 服务器列表（name 不能重复，重复会在加载期报错）
+mcps:
+
+  # 拉起子进程（这里用 ssh 当 command，等价于 MCP over SSH）
+  - name: "example_stdio"
+    transport:
+      transport: "stdio"
+      command: "/path/to/executable"
+      args: ["--some-flag"]
+      cwd: null               # 工作目录（可选）
+      env: {}                 # 附加环境变量（可选）
+
+  # 连 HTTP 端点
+  # - name: "example_http"
+  #   transport:
+  #     transport: "streamable_http"
+  #     url: "http://127.0.0.1:3000/mcp"
+  #     headers: {}           # 扩展请求头（可选）
+  #     timeout: 30.0         # 调用超时（秒）
+  #
+  # 两种 transport 都可选填 reusable（默认 false，本插件字段、不是 MCP 连接参数，详见 README）

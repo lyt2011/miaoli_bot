@@ -1,0 +1,8 @@
+# orphan_tool_fixer 配置模板
+#
+# 用法：
+#   cp plugins/orphan_tool_fixer/config.example.yaml plugins/orphan_tool_fixer/config.yaml
+#
+# config.yaml 已加入 .gitignore，不会被提交。本文件是入库的模板。
+
+enable: true                  # 是否启用该插件

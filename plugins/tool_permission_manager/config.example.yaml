@@ -1,0 +1,33 @@
+# tool_permission_manager 配置模板
+#
+# 用法：
+#   cp plugins/tool_permission_manager/config.example.yaml plugins/tool_permission_manager/config.yaml
+#
+# config.yaml 已加入 .gitignore，不会被提交。本文件是入库的模板。
+# 键名与 models/plugin_config.py 的 PluginConfig 一一对应。
+#
+# 未在 permissions 里声明的工具会被默认拒绝（pick_tools 把它从 runtime.context["tools"]
+# 摘掉，模型看不见、执行器也拿不到）。所以每新增一个工具，都要记得在这里补条目。
+
+enable: true
+
+debug: true                   # 对未配置的工具打 warning；生产环境建议关掉
+
+permissions:
+
+  # permission 有五种取值：
+  #   "admin"      仅根配置 account.admin_id 指定的管理员
+  #   "white_list" 该条目 white_list 名单里的 QQ 号
+  #   "anyone"     任何调用者
+  #   "nobody"     谁都不可用（等于禁用该工具，但条目留在表里）
+  #   "passerby"   非管理员（user_id != admin_id）
+
+  - tool_name: "bash"
+    permission: "admin"
+
+  - tool_name: "read_file"
+    permission: "white_list"
+    white_list: ["10001", "10002"]
+
+  - tool_name: "read_image"
+    permission: "anyone"

@@ -45,7 +45,7 @@ def get_sub_plugin_root(sub_plugin_name: str) -> str:
 	plugin_config = SHARE_STORE.recall(PLUGIN_CONFIG)
 	
 	if not plugin_config.sub_plugin.is_enable or not plugin_config.sub_plugin.load_from:
-		raise RuntimeError(f"插件未启用")
+		raise RuntimeError("插件未启用")
 	
 	return os.path.join(plugin_config.sub_plugin.load_from, sub_plugin_name)
 

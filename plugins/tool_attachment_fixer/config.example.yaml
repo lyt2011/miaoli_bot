@@ -1,0 +1,16 @@
+# tool_attachment_fixer 配置模板
+#
+# 用法：
+#   cp plugins/tool_attachment_fixer/config.example.yaml plugins/tool_attachment_fixer/config.yaml
+#
+# config.yaml 已加入 .gitignore，不会被提交。本文件是入库的模板。
+
+enable: true                  # 是否启用该插件
+
+# 需要修复的模型（匹配 build_client 拿到的模型名，可写多个别名）
+models:
+  - "deepseek/deepseek-flash"
+  - "deepseek-flash"
+
+# 附件搬进上下文后，原来那条 ToolMessage 的 content 换成这段占位文本
+replace_text: "该工具产生的附件已被添加进入上下文中。"

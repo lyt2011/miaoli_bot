@@ -36,8 +36,8 @@ def _buffer_to_string(buffer: List[bytes], encoding: str) -> str:
 
 class ToolSchema(BaseModel):
 	cmd		: str	= Field(..., description="需要执行的终端指令")
-	encoding: str	= Field(default="utf-8", description=f"缓冲区编码")
-	timeout	: float	= Field(default=60.0, gt=0, description=f"超时时间(秒)")
+	encoding: str	= Field(default="utf-8", description="缓冲区编码")
+	timeout	: float	= Field(default=60.0, gt=0, description="超时时间(秒)")
 
 
 @tool(args_schema=ToolSchema)

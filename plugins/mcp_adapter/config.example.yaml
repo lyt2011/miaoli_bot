@@ -1,7 +1,7 @@
-# mcp_adapter_demo 配置模板
+# mcp_adapter 配置模板
 #
 # 用法：
-#   cp plugins/mcp_adapter_demo/config.example.yaml plugins/mcp_adapter_demo/config.yaml
+#   cp plugins/mcp_adapter/config.example.yaml plugins/mcp_adapter/config.yaml
 #
 # config.yaml 已加入 .gitignore，不会被提交。本文件是入库的模板。
 # 键名与 models/plugin_config.py 的 PluginConfig 一一对应。
@@ -17,6 +17,7 @@ mcps:
 
   # 拉起子进程（这里用 ssh 当 command，等价于 MCP over SSH）
   - name: "example_stdio"
+    reusable: false           # 工具列表是否稳定；true = 首次拉取后进缓存，不再重建客户端
     transport:
       transport: "stdio"
       command: "/path/to/executable"
@@ -26,10 +27,12 @@ mcps:
 
   # 连 HTTP 端点
   # - name: "example_http"
+  #   reusable: true
   #   transport:
   #     transport: "streamable_http"
   #     url: "http://127.0.0.1:3000/mcp"
   #     headers: {}           # 扩展请求头（可选）
   #     timeout: 30.0         # 调用超时（秒）
   #
-  # 两种 transport 都可选填 reusable（默认 false，本插件字段、不是 MCP 连接参数，详见 README）
+  # reusable 属于 server 而非 transport：它回答「工具列表会不会变」，与传输方式无关。
+  # 详见 README「MCPServer」一节。

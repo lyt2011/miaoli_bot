@@ -47,7 +47,7 @@ MCP 适配演示子插件：接入 [MCP（Model Context Protocol）](https://mod
 `config.yaml` 已随根配置一起 `gitignore`（不入库），从模板复制一份再改：
 
 ```bash
-cp plugins/mcp_adapter_demo/config.example.yaml plugins/mcp_adapter_demo/config.yaml
+cp plugins/mcp_adapter/config.example.yaml plugins/mcp_adapter/config.yaml
 ```
 
 ```yaml
@@ -77,27 +77,31 @@ mcps:
 
 `mcps` 为空时插件照常加载，只是不会带来任何工具。
 
-### transport
-
-`transport` 字段是**判别字段**，两种取值对应两种传输。
-两种传输**共用**一个基类字段：
+### MCPServer
 
 | 键 | 类型 | 默认 | 说明 |
 |---|---|---|---|
+| `name` | `str` | 必填 | 服务器名字，也用作工具名前缀与连接字典的键 |
 | `reusable` | `bool` | `false` | 是否可复用。**本插件的配置字段，不是 MCP 连接参数** |
+| `transport` | `StdioTransport \| StreamableHttpTransport` | 必填 | 传输配置，见下节 |
 
-> `reusable` 在 `BaseTransport` 上用 `Field(exclude=True)` 声明，因此**不会出现在 `model_dump()` 里**。
-> 这一点很重要：`recall_mcp_tools` 直接把 `transport.model_dump()` 当作 MCP 连接字典，
-> 如果带上 `reusable`，它会被当成未知参数传给 `create_session`，直接报
-> `TypeError: _create_stdio_session() got an unexpected keyword argument`。
-> 标在字段上而不是写在调用点，是因为嵌套 `model_dump()`（如 `MCPServer.model_dump()`）也自动干净。
+> **`reusable` 为什么在 `MCPServer` 而不是 `transport` 里**：
+> 它回答的是「这个 server 的 tools 列表会不会变」，与传输方式正交 ——
+> 稳定工具列表的 stdio server 和 http server 都适合开，动态注册工具的都不适合。
+> 传输方式只影响复用的**收益大小**（stdio 省子进程启动 + 握手，http 省一次 `list_tools` 往返），
+> 不影响**要不要缓存**。
 >
-> 代价：`exclude=True` 无法用 `include=` 强行拉回，序列化时永远看不到它；
-> 但它仍然可读可写、仍参与校验、仍出现在 JSON schema 里，调试时直接访问属性即可。
+> 参数构造只用到 `name` 和 `transport.model_dump()`，因此 `reusable` 不需要
+> `Field(exclude=True)` 也不会污染 MCP 连接字典。
 
-> ⚠️ **该字段目前只声明、尚未接线**：`recall_mcp_tools` 并未读取 `reusable`，
-> 仍然是「每个请求重建一次 `MultiServerMCPClient`」。
-> 留着它是为了后续把 `reusable=True` 的 server 改成进程级长连（见文末「已知取舍」）。
+**行为**：`reusable: true` 的 server 在**第一次** `get_tools()` 后从客户端列表移除、
+工具进缓存，后续只读缓存；`reusable: false` 的 server 每轮都重新 `list_tools()`。
+
+> 代价：`reusable: true` 的 server 如果中途更新了工具，需要重启 ncatbot 才能看到。
+
+### transport
+
+`transport` 字段是**判别字段**，两种取值对应两种传输。
 
 **`stdio`** —— 拉起一个子进程
 
@@ -130,9 +134,9 @@ mcps:
 ## 目录结构
 
 ```
-mcp_adapter_demo/
+mcp_adapter/
 ├── plugin.toml                     # 入口声明
-├── main.py                         # 入口类 MCPAdapterDemo
+├── main.py                         # 入口类 MCPAdapter
 ├── README.md
 ├── config.example.yaml             # 配置模板（config.yaml 已 gitignore，不入库）
 ├── __init__.py
@@ -157,9 +161,9 @@ mcp_adapter_demo/
 
 ## 已知取舍
 
-- **每次请求都会重建 `MultiServerMCPClient`。** 对 `streamable_http` 只是一次建连，代价可接受；
+- **`reusable: false` 的 server 每次请求都会重新 `list_tools()`。** 对 `streamable_http` 只是一次建连，代价可接受；
   对 `stdio` 则意味着**每个请求都会重新拉起一次子进程**。如果接的是启动开销大的 stdio server，
-  需要改成进程级复用（在 `on_load` 建客户端、`on_close` 关）。
+  把它的 `reusable` 设为 `true` 即可（工具进缓存、客户端从列表移除，不再重建）。
 - **工具名冲突**：MCP 工具按 `name` **覆盖**进工具表（`raw_tools.update(mcp_tools)`），同名时 MCP 工具顶掉原有条目、不会重复出现。
   开 `tool_prefix` 可以规避「本地工具被 MCP 工具顶掉」这种意外覆盖。
 - 本插件**不参与事件接收**：事件仍由 `qq_adapter` 经 ncatbot 提供，本插件只扩展**工具**这一侧。

@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.18.2
+- **版本**：0.19.0
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -108,7 +108,7 @@ miaoli_bot/
 │   ├── base_system_tools/         #   系统工具（tools/ + models/ + consts/ + config.example.yaml + README）
 │   ├── base_topology/             #   默认跳转（nodes/ 一个事件一个文件 + config.example.yaml）
 │   ├── context_compactor/         #   上下文压缩（nodes/ + utils/ + models/ + consts/ + data/ 提示词 + config.example.yaml + README）
-│   ├── mcp_adapter_demo/          #   MCP 适配演示（实验性）：接入外部 MCP server 并把其工具注入工具表（models/transports + nodes/ + config.example.yaml + README）
+│   ├── mcp_adapter/               #   MCP 适配：接入外部 MCP server 并把其工具注入工具表（models/transports + nodes/ + config.example.yaml + README）
 │   ├── meme_ops/                  #   meme 工具（tools/ + core/ + models/ + consts/ + config.example.yaml + README）
 │   ├── orphan_tool_fixer/         #   孤儿工具返回修复（nodes/ + utils/ + config.example.yaml）
 │   ├── pending_tool_fixer/        #   悬空工具调用修复（nodes/ + utils/ + models/ + consts/ + config.example.yaml）
@@ -150,7 +150,7 @@ miaoli_bot/
 | `base_system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml` 与 `README.md`）。`read_image` 按 `support_image` 名单过滤格式 —— 这道过滤是**为了限制读取**（不做的话读什么都会被 b64 成图片塞进上下文，导致 400），**不是**给模型过滤不同类型的图片 |
 | `base_topology` | 默认跳转（edgeless 拓扑的顺序来源）：**一个事件一个节点文件**，8 个节点各返回一条 `Goto`，把旧 `wire()` 的静态边与 `tools_condition` 条件边在插件层复原；`on_after_request` 按 `is_tool_calling(messages)` 分流工具循环与收尾。注册在最低优先级 `MINIMUM`，可被任何子插件抢跑 |
 | `context_compactor` | 上下文压缩：`compact` 在 `on_before_request`（`priority=0`）读模型真实 `context_window` / `max_tokens` 判阈值，超窗时把历史压成一条 `<compaction>` 摘要并用 `Overwrite` 整体替换；保留条数 / 提示词 / 计数方式全部配置化（`base` 粗估或 `tiktoken` 精确），自带 `data/compact_prompt.md` 与 `README.md` |
-| `mcp_adapter_demo` | **实验性** MCP 适配演示：`recall_mcp_tools` 在 `on_before_request`（`priority=MEDIUM`）用 `MultiServerMCPClient` 拉取外部 MCP server 的工具，**按名去重**后合并进 `runtime.context["tools"]`；必须排在 `pick_tools`（`priority=1`）之前，否则 MCP 工具会绕过权限过滤。支持 `stdio` / `streamable_http` 两种传输。自带 `README.md`。**未完成**：`reusable` 字段只声明未消费（仍每请求重建客户端）、只做去重不做下架 |
+| `mcp_adapter` | MCP 适配：`recall_mcp_tools` 在 `on_before_request`（`priority=MEDIUM`）用 `MultiServerMCPClient` 拉取外部 MCP server 的工具，**按名去重**后合并进 `runtime.context["tools"]`；必须排在 `pick_tools`（`priority=1`）之前，否则 MCP 工具会绕过权限过滤。支持 `stdio` / `streamable_http` 两种传输，每个 server 可选 `reusable`（工具列表稳定则首次拉取后进缓存，由 `MCPClientRegistry` 管理）。自带 `README.md`。**未完成**：只做去重不做下架 |
 | `meme_ops` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
 | `orphan_tool_fixer` | 坏历史修复：`fix_orphan_tool_message` 在 `on_before_request`（`priority=2`）删掉找不到发起 `tool_calls` 的 `ToolMessage`（只产出定向删除增量） |
 | `pending_tool_fixer` | 坏历史修复：`fix_pending_tool_call` 在 `on_before_request`（`priority=3`）给悬空的 `tool_calls` 补一条「工具未执行」的合成 `ToolMessage`（返回 `Overwrite` 整表替换） |
@@ -182,7 +182,7 @@ miaoli_bot/
    - `filetype`（`>=1.2.0`）
    - `pillow`（`>=12.3.0`）
    - `tiktoken`（`>=0.14.0`）
-   - `langchain-mcp-adapters`（`>=0.3.2`）：`mcp_adapter_demo` 的 `MultiServerMCPClient`（`langchain_mcp_adapters.client`）
+   - `langchain-mcp-adapters`（`>=0.3.2`）：`mcp_adapter` 的 `MultiServerMCPClient`（`langchain_mcp_adapters.client`）
    - `mcp`（`>=1.24.0`）：MCP 协议 SDK，由上面那个包带入，此处显式声明
 3. 插件配置：`cp config.example.yaml config.yaml` 后填真实 `api_key`（`config.yaml` 含密钥、已 gitignore）。插件目录的 `config.yaml` 为默认值，全局 `config.yaml` 的 `plugin.plugin_configs.miaoli_bot` 同键覆盖；`on_load` 第一步即 `PluginConfig.model_validate(self.config)`，必填项缺失 / 路径不存在 / 类型不符都会抛 `ValidationError`，本插件加载失败并在日志留下 traceback（机器人其余部分不受影响）。
 
@@ -231,13 +231,15 @@ cd <插件父目录>          # plugins/
 | `filetype`（`>=1.2.0`） | `base_system_tools` 的图片类型嗅探（`read_image`） |
 | `pillow`（`>=12.3.0`） | `context_compactor` 的图片宽高解析（`image_to_tokens`，据此估算图片 token） |
 | `tiktoken`（`>=0.14.0`） | `context_compactor` 的精确 token 计数（`calculate.mode: tiktoken`） |
-| `langchain-mcp-adapters`（`>=0.3.2`） | `mcp_adapter_demo` 的 `MultiServerMCPClient`（拉取 / 调用外部 MCP server 的工具） |
+| `langchain-mcp-adapters`（`>=0.3.2`） | `mcp_adapter` 的 `MultiServerMCPClient`（拉取 / 调用外部 MCP server 的工具） |
 | `mcp`（`>=1.24.0`） | MCP 协议 SDK（由 `langchain-mcp-adapters` 带入，此处显式声明以免上游依赖树变动时导入期 `ModuleNotFoundError`） |
 
 > 注：以上依赖由 `manifest.toml` 的 `pip_dependencies` 声明。
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.19.0 — **`mcp_adapter_demo` 转正为 `mcp_adapter`**，并把 `reusable` 从 transport 层搬到 server 层。**改名（破坏性）**：目录 `plugins/mcp_adapter_demo/` → `plugins/mcp_adapter/`，入口类 `MCPAdapterDemo` → `MCPAdapter`；`core/MCPAdapter` → `core/MCPClientRegistry`（文件同步改名 `mcp_client_registry.py`）—— 原名与入口类撞车，且实际职责是「管理 client 列表 + 缓存工具」，`MCPClientRegistry` 才贴合语义；`SHARE_STORE` 常量 `MCP_ADAPTER` → `MCP_CLIENT_REGISTRY`，三个键的命名空间一并从 `mcp_adapter_demo` 改为 `mcp_adapter`。**`reusable` 上提**：它回答的是「这个 server 的 tools 列表会不会变」，与传输方式正交 —— 稳定工具列表的 stdio / http server 都适合开，动态注册工具的都不适合；传输方式只影响复用的**收益大小**，不影响**要不要缓存**。搬到 `MCPServer` 后参数构造只用 `name` + `transport.model_dump()`，因此不再需要 `Field(exclude=True)`，字段可正常序列化。**补齐**：`core/` / `protocols/` / `models/runtimes/` 三个目录原先没有 `__init__.py`、无法作为包导入，已补并导出 `MCPClientRegistry` / `ToolObtainanle` / `MCPClient`；全部导入导出按项目规范补齐。**修复 7 处运行时错误**：`main.py` 的 `register(...)` → `register_client(...)`（方法不存在）、`resuable=` → `reusable=`（拼写）、`MCPAdadpter()` → `MCPClientRegistry()`；`core/mcp_client_registry.py` 的 `append(client)` 存裸 client 但去重按 `client_.client` 读（元素类型不一致，首次注册即 `AttributeError`）、`self.client.remove(...)` → `self.clients.remove(...)`、循环变量改名后 `if client.reusable` 残留两处（`NameError`）；`on_close` 漏 drop `MCP_CLIENT_REGISTRY`（`SHARE_STORE` 资源泄露检查会报）。**文档**：`config.example.yaml` 的 `prompt_file` 指向 `prompt_v1.6.md`；`tool_permission_manager/config.yaml` 的分组注释同步改名。**提示词**：新增 `prompt_v1.6.md`，相对 v1.5 两处调整 —— ① 称呼由「杂鱼」改为「雑魚」；② 换行符说明的措辞由「别人也能看得更舒服」改为「才不是为了让别人看得更舒服的」。**验证**（服务器 Python 3.12.14，真实 MCP，两个 server：`omniqq` 不复用 74 工具 + 自建 FastMCP `probe` 复用 2 工具）：三次 `get_tools()` 调用计数 `non_reusable` 1→2→3、`reusable` 1→1→1，`clients` 恒 1、缓存恒 2；工具总数恒 76 且名称唯一；`probe_add(3,4)=7`、`probe_echo('hello')=echo:hello`；`on_close` 后 `SHARE_STORE.is_empty()==True`；`plugin.toml` 的 `enter_class` 与实际类名一致、`MCPAdapterDemo` 无残留；19 个 `.py` 全部 `py_compile` 通过、无未定义名字、无未使用导入、全 tab 缩进、import 块对齐。**未验证**：NcatBot 运行时下的端到端对话仍未跑。
 
 v0.18.2 — **修复 `tool_attachment_fixer` 的 flush 时机缺陷**（[issue #1](https://github.com/lyt2011/miaoli_bot/issues/1)）。`pending` 原本在「遇到任何非目标消息」时倒出，而「目标」的判定包含「content 必须是 list」，于是同批工具里只要有一个返回 `str`，就会被误判成边界消息、把附件 `HumanMessage` 提前插进 `ToolMessage` 序列中间，打断「`AI(tool_calls)` 之后 `ToolMessage` 连续」这一不变式 → `400 insufficient tool messages following tool_calls message`。**修法**：循环改为 `if / elif / else` 三路分流 —— 非 `ToolMessage` 才是真边界（此时才 flush）、`str` 的 `ToolMessage` 原样追加且不 flush、其余才改写 content 并把原始块攒进 `pending`；改写前先 `raw_content = list(message.content)` 存下原始块再覆盖，避免搬进 `HumanMessage` 的是占位符本身。**附带清理**：`utils/guards.py` 删掉四个冗余守卫（`is_target_message` / `is_tool_message` / `is_block_content` / 两个从未被调用的 `is_*_result`），只保留 `is_target_model`；`output_checker` 的 `ToolMessage` 分支文案由「AI工具调用未被处理」改为「ToolMessage 不合理地出现在了 message[-1]」（原文案把结构异常表述成了工具调用未被处理）。**验证**：1~3 个工具的 `list`/`str` 全排列 14 组，结构全部合法、原始内容全部完整（修复前 5 组非法）；真实 API 对照确认坏结构确实 `400`、修复后不再产生；真实 `StateGraph` + `InMemorySaver` 确认坏结构此前确实落盘。**未修**：纯文本块 `[{"type": "text", …}]` 仍会被当作附件搬走（结构合法、内容不丢，但占位符措辞与实际不符、角色由 `tool` 变 `user`），留待后续版本。**未验证**：NcatBot 运行时下的端到端对话仍未跑。
 

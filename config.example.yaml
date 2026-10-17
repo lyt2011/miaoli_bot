@@ -10,7 +10,7 @@
 # 配置键名与 models/config/plugin.py 的 PluginConfig 字段一一对应。
 # 插件加载时（on_load）会做一次校验：必填缺失 / 路径不存在 / 类型不符都会抛 ValidationError。
 
-prompt_file: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/data/prompts/prompt_v1.5.md"
+prompt_file: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/data/prompts/prompt_v1.6.md"
 provider: "deepseek"                          # 使用的供应商（providers 的键名）
 model: "deepseek-flash"                       # 使用的模型（该供应商 models 的键名）
 

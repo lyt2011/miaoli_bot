@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.18.1
+- **版本**：0.18.2
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -238,6 +238,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.18.2 — **修复 `tool_attachment_fixer` 的 flush 时机缺陷**（[issue #1](https://github.com/lyt2011/miaoli_bot/issues/1)）。`pending` 原本在「遇到任何非目标消息」时倒出，而「目标」的判定包含「content 必须是 list」，于是同批工具里只要有一个返回 `str`，就会被误判成边界消息、把附件 `HumanMessage` 提前插进 `ToolMessage` 序列中间，打断「`AI(tool_calls)` 之后 `ToolMessage` 连续」这一不变式 → `400 insufficient tool messages following tool_calls message`。**修法**：循环改为 `if / elif / else` 三路分流 —— 非 `ToolMessage` 才是真边界（此时才 flush）、`str` 的 `ToolMessage` 原样追加且不 flush、其余才改写 content 并把原始块攒进 `pending`；改写前先 `raw_content = list(message.content)` 存下原始块再覆盖，避免搬进 `HumanMessage` 的是占位符本身。**附带清理**：`utils/guards.py` 删掉四个冗余守卫（`is_target_message` / `is_tool_message` / `is_block_content` / 两个从未被调用的 `is_*_result`），只保留 `is_target_model`；`output_checker` 的 `ToolMessage` 分支文案由「AI工具调用未被处理」改为「ToolMessage 不合理地出现在了 message[-1]」（原文案把结构异常表述成了工具调用未被处理）。**验证**：1~3 个工具的 `list`/`str` 全排列 14 组，结构全部合法、原始内容全部完整（修复前 5 组非法）；真实 API 对照确认坏结构确实 `400`、修复后不再产生；真实 `StateGraph` + `InMemorySaver` 确认坏结构此前确实落盘。**未修**：纯文本块 `[{"type": "text", …}]` 仍会被当作附件搬走（结构合法、内容不丢，但占位符措辞与实际不符、角色由 `tool` 变 `user`），留待后续版本。**未验证**：NcatBot 运行时下的端到端对话仍未跑。
 
 v0.18.1 — **文档版：记录 `tool_attachment_fixer` 的两个缺陷，无代码改动**。0.18.0 部署后某个私聊会话在「一次调用多个工具」时每轮 `400`（`insufficient tool messages following tool_calls message`），定位为本插件附件搬移逻辑产出非法消息结构：① **`utils/guards.py:26-28` 判定过宽** —— `return isinstance(content, list)` 把 MCP 工具返回的纯文本块列表 `[{"type": "text", …}]` 也当成附件，真实结果被换成占位符；② **`nodes/fix_attachment.py:35-44` flush 时机错** —— 遇到任何非 target 消息就倒出 `pending`，同批工具只有部分被改写时把 `HumanMessage` 插到 `ToolMessage` 序列中间，打断「`AI(tool_calls)` 之后 `ToolMessage` 连续」这一不变式。后果分两种：**硬崩**（`400`，坏结构落进 `checkpoint_blobs` 后不会自愈、该会话从此每轮必崩）或**静默失效**（`200` 但模型当附件不存在）。**处置**：服务器两个坏会话按 `thread_id` 删三表 + `VACUUM FULL`，`tool_attachment_fixer` 改 `enable: false`、`mcp_adapter_demo` 改 `enable: true`；插件 `README.md` 新增「⚠️ 已知问题（待修复）」，四条修复方向与实测数据记入 CHANGELOG 的 Note / Future。**实测**（判定插件价值）：`deepseek-flash` 对 `tool` content 的 `str` / `[text]` / `[text, text]` / `[image_url]` / `[text, image_url]` 五种形态**全部 `200`**，唯一 `400` 的形态就是 `AI(tool_calls) → TM, Human, TM`；另有一类模型对同样的坏结构返回 `200`，却对 `tool` 消息里的图片回答「我看不到」—— 插件对它仍有价值，故修复方向是修好而非删掉。**验证**：版本号三处一致、关闭后 `on_tool_calling` 只剩 `invoke_tools(0)`、同批工具混合返回 `list`（MCP）与 `str`（本地）端到端跑通且落库 3 条 `ToolMessage` 连续无改写。**未验证**：NcatBot 运行时下的端到端对话仍未跑。
 

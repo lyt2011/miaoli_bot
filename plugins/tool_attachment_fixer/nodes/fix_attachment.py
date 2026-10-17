@@ -4,10 +4,10 @@ from miaoli_bot.stores	import SHARE_STORE
 from typing						import Any, Dict, Optional
 from langgraph.runtime			import Runtime
 from langgraph.types			import Overwrite
-from langchain_core.messages	import HumanMessage
+from langchain_core.messages	import HumanMessage, ToolMessage
 
 from ..consts	import PLUGIN_CONFIG
-from ..utils	import is_target_message, is_target_model
+from ..utils	import is_target_model
 
 
 async def fix_tool_attachment(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Optional[Dict[str, Any]]:
@@ -18,7 +18,6 @@ async def fix_tool_attachment(state: GraphState, runtime: Runtime[GraphRuntimeCo
 	
 	provider	= state.get("provider", "null")
 	model		= state.get("model", "null")
-	messages	= state.get("messages", [])
 	
 	# 未命中不继续
 	if not is_target_model(provider=provider, model=model):
@@ -29,35 +28,34 @@ async def fix_tool_attachment(state: GraphState, runtime: Runtime[GraphRuntimeCo
 	pending		= []
 	is_changed	= False
 	
-	for message in messages:
+	for message in state.get("messages", []):
 		
-		# 判断是否为修复目标 (ToolMessage)
-		if not is_target_message(message):
+		# 非 ToolMessage 时 flush
+		if not isinstance(message, ToolMessage):
 			
-			# 把结果倒出来 (因为此时 message 不是 ToolMessage)
 			if pending:
 				replaced.extend(pending)
 				pending.clear()
 			
-			# 普通信息直接添加回去
 			replaced.append(message)
-			continue
 		
-		tc_id			= message.tool_call_id
-		tool_output		= list(message.content)
-		message.content	= plugin_cfg.replace_text
+		# 字符串类型的 ToolMessage 直接跳过
+		elif isinstance(message.content, str):
+			replaced.append(message)
 		
-		# 改变工具输出后将 ToolMessage 添加回去
-		replaced.append(message)
-		# 修复的附件添加到 pending 由上面的 not is_target_message 分支消费
-		pending.append(HumanMessage(tool_output, id=f"image-{tc_id}"))
-		
-		# 改变 is_changed 标志位
-		if not is_changed:
-			is_changed = True
+		# 非字符串 ToolMessage 作为处理目标
+		else:
+			
+			raw_content		= list(message.content)
+			message.content	= plugin_cfg.replace_text
+			
+			replaced.append(message)
+			pending.append(HumanMessage(raw_content, id=f"image-{message.tool_call_id}"))
+			
+			if not is_changed:
+				is_changed = True
 	
 	# 兜底
-	# 最后一条信息是 ToolMessage 的话 pending 会残留元素
 	if pending:
 		replaced.extend(pending)
 	

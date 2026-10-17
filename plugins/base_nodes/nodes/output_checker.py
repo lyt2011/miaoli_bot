@@ -20,7 +20,7 @@ async def output_checker(state: GraphState, runtime: Runtime[GraphRuntimeContext
 		return
 	
 	elif isinstance(latest_msg, ToolMessage):
-		return Abort(reason="AI工具调用未被处理")
+		return Abort(reason="ToolMessage 不合理地出现在了 message[-1]")
 	
 	elif isinstance(latest_msg, HumanMessage):
 		return Abort(reason="AI未产生输出")

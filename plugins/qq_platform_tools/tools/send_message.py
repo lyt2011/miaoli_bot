@@ -1,6 +1,5 @@
+from miaoli_bot.api		import get_ncatbot_api
 from miaoli_bot.utils	import easier_send
-from miaoli_bot.stores	import SHARE_STORE
-from miaoli_bot.consts	import NCATBOT_API
 
 from ncatbot.types			import MessageArray
 from typing					import Optional, Dict, Any
@@ -35,7 +34,7 @@ async def send_message_to_qq(
 	false: chat_id 作为用户QQ号，将信息以私聊的方式发送到 chat_id 对应的用户
 	"""
 
-	ncatbot_api		= SHARE_STORE.recall(NCATBOT_API)
+	ncatbot_api		= get_ncatbot_api()
 	message_array	= MessageArray()
 
 	if reply_message_id:

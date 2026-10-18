@@ -1,3 +1,4 @@
+from miaoli_bot.api			import store_recall
 from pydantic				import BaseModel, Field
 from typing					import List, Dict, Any
 from langchain_core.tools	import tool
@@ -5,7 +6,6 @@ from pathlib				import Path
 from base64					import b64encode
 from hashlib				import md5
 
-from miaoli_bot.stores	import SHARE_STORE
 
 from ..consts	import PLUGIN_CONFIG
 from ..core		import MemeSqlite
@@ -22,7 +22,7 @@ async def archive_meme(meme_path: str, description: str, tags: List[str]) -> Dic
 	
 	"""归档表情包"""
 	
-	plugin_config = SHARE_STORE.recall(PLUGIN_CONFIG)
+	plugin_config = store_recall(PLUGIN_CONFIG)
 	
 	if not plugin_config.is_enable:
 		return {"status": False, "message": "meme被禁用"}

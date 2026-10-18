@@ -1,5 +1,4 @@
-from miaoli_bot.stores	import SHARE_STORE
-from miaoli_bot.consts	import NCATBOT_API
+from miaoli_bot.api	import get_ncatbot_api
 
 from pydantic				import BaseModel, Field
 from typing					import Optional, Dict, Any
@@ -19,7 +18,7 @@ async def send_poke(user_id: str, group_id: Optional[str]) -> Dict[str, Any]:
 	group_id 不存在值时 -> 在私聊戳 user_id
 	"""
 	
-	ncatbot_api	= SHARE_STORE.recall(NCATBOT_API)
+	ncatbot_api	= get_ncatbot_api()
 	
 	try:
 		

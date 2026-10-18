@@ -1,8 +1,6 @@
-from typing		import List, Set
+from typing	import List, Set
 
 from langchain_core.messages	import AIMessage, BaseMessage
-
-from miaoli_bot.utils	import get_tool_calls
 
 
 def declared_tool_call_ids(messages: List[BaseMessage]) -> Set[str]:
@@ -16,7 +14,7 @@ def declared_tool_call_ids(messages: List[BaseMessage]) -> Set[str]:
 		if not isinstance(message, AIMessage):
 			continue
 		
-		for tool_call in get_tool_calls(message):
+		for tool_call in (message.tool_calls or []):
 			declared.add(tool_call["id"])
 	
 	return declared

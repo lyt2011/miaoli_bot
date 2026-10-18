@@ -1,8 +1,8 @@
+from miaoli_bot.api			import store_recall
 from pydantic				import BaseModel, Field
 from typing					import Dict, Any
 from langchain_core.tools	import tool
 
-from miaoli_bot.stores	import SHARE_STORE
 
 from ..consts	import PLUGIN_CONFIG
 from ..core		import MemeSqlite
@@ -22,7 +22,7 @@ async def remove_meme_by_hash(hash: str) -> Dict[str, Any]:
 	删除后无法通过 send_meme_to_qq 发送
 	"""
 	
-	plugin_config	= SHARE_STORE.recall(PLUGIN_CONFIG)
+	plugin_config	= store_recall(PLUGIN_CONFIG)
 	
 	if not plugin_config.is_enable:
 		return {"status": False, "message": "meme被禁用"}

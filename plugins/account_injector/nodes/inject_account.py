@@ -1,4 +1,5 @@
-from miaoli_bot			import GraphRuntimeContext, GraphState, SHARE_STORE
+from miaoli_bot.api		import store_recall
+from miaoli_bot.models	import GraphRuntimeContext, GraphState
 from miaoli_bot.consts	import PLUGIN_CONFIG
 from langgraph.runtime	import Runtime
 from typing				import Dict, Any
@@ -8,7 +9,7 @@ async def inject_account(state: GraphState, runtime: Runtime[GraphRuntimeContext
 
 	"""给系统提示词注入账号信息"""
 
-	cfg		= SHARE_STORE.recall(PLUGIN_CONFIG)
+	cfg		= store_recall(PLUGIN_CONFIG)
 	account	= cfg.account
 
 	account_info = "\n".join([

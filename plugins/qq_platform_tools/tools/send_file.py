@@ -1,14 +1,13 @@
 from ncatbot.types	import MessageArray, File
 
+from miaoli_bot.api		import get_ncatbot_api
 from miaoli_bot.utils	import easier_send
-from miaoli_bot.stores	import SHARE_STORE
-from miaoli_bot.consts	import NCATBOT_API
 
 from pydantic				import BaseModel, Field
 from typing					import Union, Dict, Any
 from langchain_core.tools	import tool
 
-import os
+import os	
 
 
 def get_size_MB(path: str) -> Union[int, float]:
@@ -33,7 +32,7 @@ async def send_file_to_qq(path: str, chat_id: str, to_group: bool) -> Dict[str, 
 	false: chat_id 作为用户QQ号，将信息以私聊的方式发送到 chat_id 对应的用户
 	"""
 
-	ncatbot_api = SHARE_STORE.recall(NCATBOT_API)
+	ncatbot_api = get_ncatbot_api()
 
 	size_MB = get_size_MB(path)
 	if size_MB >= 20:

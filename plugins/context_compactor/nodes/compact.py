@@ -1,6 +1,5 @@
-from miaoli_bot			import GraphRuntimeContext, GraphState
-from miaoli_bot.stores	import SHARE_STORE
-from miaoli_bot.consts	import PLUGIN_CONFIG as ROOT_PLUGIN_CONFIG
+from miaoli_bot.api		import get_model_info, store_recall
+from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
 from typing						import Any, Dict, Optional
 from langgraph.runtime			import Runtime
@@ -10,15 +9,14 @@ from langchain_core.messages	import HumanMessage, SystemMessage
 from ..consts	import PLUGIN_CONFIG
 from ..utils	import base_calculate, keep_recent_messages, tiktoken_calculate
 
-import tiktoken
+import tiktoken	
 
 
 async def compact(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Optional[Dict[str, Any]]:
 	
 	"""上下文压缩节点"""
 	
-	r_plugin_config	= SHARE_STORE.recall(ROOT_PLUGIN_CONFIG)
-	s_plugin_config	= SHARE_STORE.recall(PLUGIN_CONFIG)
+	s_plugin_config	= store_recall(PLUGIN_CONFIG)
 	
 	messages	= state["messages"]
 	
@@ -32,11 +30,10 @@ async def compact(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> O
 	
 	else: raise RuntimeError(f"未知的模式: {s_plugin_config.calculate.mode}")
 	
-	provider_config	= r_plugin_config.providers[state["provider"]]
-	model_config	= provider_config.models[state["model"]]
+	model_info		= get_model_info()
 	
 	# 保证有压缩余量
-	if (usage_tokens + model_config.max_tokens) < model_config.context_window:
+	if (usage_tokens + model_info["max_tokens"]) < model_info["context_window"]:
 		return None
 	
 	# 构建压缩请求上下文并根据实际需求插入系统提示词

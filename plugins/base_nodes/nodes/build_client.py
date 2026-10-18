@@ -1,4 +1,5 @@
-from miaoli_bot			import GraphRuntimeContext, GraphState, SHARE_STORE
+from miaoli_bot.api		import store_recall
+from miaoli_bot.models	import GraphRuntimeContext, GraphState
 from miaoli_bot.consts	import PLUGIN_CONFIG
 from typing				import Dict, Any
 
@@ -10,7 +11,7 @@ async def build_client(state: GraphState, runtime: Runtime[GraphRuntimeContext])
 	
 	"""通过配置构建 client 实例"""
 	
-	root_config	= SHARE_STORE.recall(PLUGIN_CONFIG)
+	root_config	= store_recall(PLUGIN_CONFIG)
 	
 	provider_name	= state["provider"]
 	model_name		= state["model"]

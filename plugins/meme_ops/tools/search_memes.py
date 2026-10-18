@@ -1,5 +1,5 @@
-from miaoli_bot.stores	import SHARE_STORE
 
+from miaoli_bot.api			import store_recall
 from langchain_core.tools	import tool
 from pydantic				import BaseModel, Field
 from typing					import List, Dict, Any
@@ -22,7 +22,7 @@ async def search_memes_by_tags(tags: List[str]) -> Dict[str, Any]:
 	只带其中一个标签的表情包不会出现在结果里
 	"""
 	
-	plugin_config	= SHARE_STORE.recall(PLUGIN_CONFIG)
+	plugin_config	= store_recall(PLUGIN_CONFIG)
 	
 	if not plugin_config.is_enable:
 		return {"status": False, "message": "meme被禁用"}

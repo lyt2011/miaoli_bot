@@ -1,3 +1,4 @@
+from miaoli_bot.api			import store_recall
 from langchain_core.tools	import tool
 from pydantic				import BaseModel, Field
 from typing					import Dict, Any, List
@@ -6,12 +7,11 @@ from asyncio.streams		import StreamReader
 from asyncio.subprocess		import Process
 from contextlib				import suppress
 
-from miaoli_bot			import SHARE_STORE
 
 from ..consts	import PLUGIN_CONFIG
 
-import asyncio
-import codecs
+import asyncio	
+import codecs	
 
 
 async def _read_stream(stream: StreamReader, buffer: List[bytes]) -> None:
@@ -49,7 +49,7 @@ async def bash(
 	
 	"""执行终端指令"""
 	
-	bash_config = SHARE_STORE.recall(PLUGIN_CONFIG).bash
+	bash_config = store_recall(PLUGIN_CONFIG).bash
 	
 	try:
 		

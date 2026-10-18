@@ -1,6 +1,5 @@
-from miaoli_bot			import GraphRuntimeContext, GraphState
-from miaoli_bot.stores	import SHARE_STORE
-from miaoli_bot.utils	import get_tool_calls
+from miaoli_bot.api		import store_recall
+from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
 from typing						import Any, Dict, Optional
 from langgraph.runtime			import Runtime
@@ -15,7 +14,7 @@ async def fix_pending_tool_call(state: GraphState, runtime: Runtime[GraphRuntime
 	
 	"""修复悬空的工具调用"""
 	
-	plugin_cfg	= SHARE_STORE.recall(PLUGIN_CONFIG)
+	plugin_cfg	= store_recall(PLUGIN_CONFIG)
 	
 	# 没有数据就不修复
 	if "messages" not in state:
@@ -36,7 +35,7 @@ async def fix_pending_tool_call(state: GraphState, runtime: Runtime[GraphRuntime
 		if not isinstance(message, AIMessage):
 			continue
 		
-		for tool_call in get_tool_calls(message):
+		for tool_call in (message.tool_calls or []):
 			
 			if tool_call["id"] in answered:
 				continue

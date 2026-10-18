@@ -6,9 +6,8 @@ from typing					import Dict, Any
 from ..consts	import PLUGIN_CONFIG
 from ..core		import MemeSqlite
 
+from miaoli_bot.api		import get_ncatbot_api, store_recall
 from miaoli_bot.utils	import easier_send
-from miaoli_bot.stores	import SHARE_STORE
-from miaoli_bot.consts	import NCATBOT_API
 
 
 class ToolSchema(BaseModel):
@@ -32,8 +31,8 @@ async def send_meme_to_qq(
 	false: chat_id 作为用户QQ号，将信息以私聊的方式发送到 chat_id 对应的用户
 	"""
 	
-	ncatbot_api		= SHARE_STORE.recall(NCATBOT_API)
-	plugin_config	= SHARE_STORE.recall(PLUGIN_CONFIG)
+	ncatbot_api		= get_ncatbot_api()
+	plugin_config	= store_recall(PLUGIN_CONFIG)
 	
 	if not plugin_config.is_enable:
 		return {"status": False, "message": "meme被禁用"}

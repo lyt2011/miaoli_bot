@@ -1,5 +1,4 @@
-from miaoli_bot.stores	import SHARE_STORE
-from miaoli_bot.consts	import NCATBOT_API
+from miaoli_bot.api	import get_ncatbot_api
 
 from pydantic				import BaseModel, Field
 from typing					import Dict, Any
@@ -19,7 +18,7 @@ async def download_qq_file(url: str) -> Dict[str, Any]:
 	url 为非 QQ 平台文件时将会发生未定义情况
 	"""
 
-	ncatbot_api = SHARE_STORE.recall(NCATBOT_API)
+	ncatbot_api = get_ncatbot_api()
 	
 	try:
 		dl_result = await ncatbot_api.qq.file.download_file(url=url)

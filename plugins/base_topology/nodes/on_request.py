@@ -1,4 +1,4 @@
-from miaoli_bot			import GraphRuntimeContext, GraphState
+from miaoli_bot.models	import GraphRuntimeContext, GraphState
 from miaoli_bot.core	import Goto
 from miaoli_bot.consts	import ON_AFTER_REQUEST
 

@@ -1,6 +1,5 @@
-from miaoli_bot			import GraphRuntimeContext, GraphState
-from miaoli_bot.stores	import SHARE_STORE
-from miaoli_bot.consts	import PLUGIN_CONFIG as ROOT_PLUGIN_CONFIG
+from miaoli_bot.api		import get_admin_id, store_recall
+from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
 from typing					import List
 from langgraph.runtime		import Runtime
@@ -9,7 +8,7 @@ from langchain_core.tools	import BaseTool
 from ..consts				import PLUGIN_CONFIG
 from ..models.permission	import Permission
 
-import logging
+import logging	
 
 
 LOGGER = logging.getLogger("ToolPermissionManager")
@@ -39,8 +38,8 @@ async def pick_tools(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -
 	
 	"""通过 config.yaml 的权限控制摘除工具"""
 	
-	plugin_config	= SHARE_STORE.recall(PLUGIN_CONFIG)
-	admin_id		= str(SHARE_STORE.recall(ROOT_PLUGIN_CONFIG).account.admin_id)	# 管理员身份取自 miaoli_bot 根配置
+	plugin_config	= store_recall(PLUGIN_CONFIG)
+	admin_id		= str(get_admin_id())	# 管理员身份取自 miaoli_bot 根配置
 	user_id			= str(state["event"]["sender"]["user_id"])
 	
 	permissions		= {p.tool_name: p for p in plugin_config.permissions}

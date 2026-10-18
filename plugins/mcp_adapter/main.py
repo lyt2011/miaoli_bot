@@ -1,5 +1,5 @@
+from miaoli_bot.api			import store_drop, store_set
 from miaoli_bot.protocols	import PluginProtocol
-from miaoli_bot.stores		import SHARE_STORE
 from miaoli_bot.consts		import MEDIUM
 
 from langchain_mcp_adapters.client	import MultiServerMCPClient
@@ -24,9 +24,9 @@ class MCPAdapter(PluginProtocol):
 		
 		registry = MCPClientRegistry()
 		
-		SHARE_STORE.set(PLUGIN_CONFIG, config)
-		SHARE_STORE.set(RAW_CONFIG, self.config)
-		SHARE_STORE.set(MCP_CLIENT_REGISTRY, registry)
+		store_set(PLUGIN_CONFIG, config)
+		store_set(RAW_CONFIG, self.config)
+		store_set(MCP_CLIENT_REGISTRY, registry)
 		
 		# 不启用直接跳过节点/工具注册
 		if not config.enable:
@@ -44,6 +44,6 @@ class MCPAdapter(PluginProtocol):
 	
 	async def on_close(self) -> None:
 		
-		SHARE_STORE.drop(PLUGIN_CONFIG)
-		SHARE_STORE.drop(RAW_CONFIG)
-		SHARE_STORE.drop(MCP_CLIENT_REGISTRY)
+		store_drop(PLUGIN_CONFIG)
+		store_drop(RAW_CONFIG)
+		store_drop(MCP_CLIENT_REGISTRY)

@@ -1,5 +1,4 @@
-from miaoli_bot.stores	import SHARE_STORE
-from miaoli_bot.consts	import NCATBOT_API
+from miaoli_bot.api	import get_ncatbot_api
 
 from pydantic				import BaseModel, Field
 from typing					import Dict, Any
@@ -18,7 +17,7 @@ async def query_qq_message_id(message_id: str) -> Dict[str, Any]:
 	查询的结果将转为 json 字符串，并作为工具调用结果返回
 	"""
 
-	ncatbot_api = SHARE_STORE.recall(NCATBOT_API)
+	ncatbot_api = get_ncatbot_api()
 	
 	try:
 		msg_data = await ncatbot_api.qq.query.get_msg(message_id)

@@ -1,5 +1,5 @@
-from miaoli_bot.stores	import SHARE_STORE
 
+from miaoli_bot.api			import store_recall
 from langchain_core.tools	import tool
 from typing					import Dict, Any
 
@@ -12,7 +12,7 @@ async def list_memes() -> Dict[str, Any]:
 	
 	"""列出所有已归档的表情包"""
 	
-	plugin_config	= SHARE_STORE.recall(PLUGIN_CONFIG)
+	plugin_config	= store_recall(PLUGIN_CONFIG)
 	
 	if not plugin_config.is_enable:
 		return {"status": False, "message": "meme被禁用"}

@@ -1,13 +1,13 @@
-from miaoli_bot.stores			import SHARE_STORE
 
-from ..consts					import PLUGIN_CONFIG
+from miaoli_bot.api	import store_recall
+from ..consts		import PLUGIN_CONFIG
 
 
 def is_target_model(provider: str, model: str) -> bool:
 	
 	"""适配 <provider>/<model>与<model>"""
 	
-	plugin_config	= SHARE_STORE.recall(PLUGIN_CONFIG)
+	plugin_config	= store_recall(PLUGIN_CONFIG)
 	
 	if not plugin_config.models:
 		return True

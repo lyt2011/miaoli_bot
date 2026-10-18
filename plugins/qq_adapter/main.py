@@ -1,5 +1,5 @@
+from miaoli_bot.api			import store_drop, store_set
 from miaoli_bot.protocols	import PluginProtocol
-from miaoli_bot.stores		import SHARE_STORE
 from miaoli_bot.consts		import HIGH
 
 from .consts	import PLUGIN_CONFIG, RAW_CONFIG, EVENT_PARSER, SEGMENT_PARSER, REGISTRY
@@ -31,12 +31,12 @@ class QQAdapterPlugin(PluginProtocol):
 		event_chain		= EventParseChain()
 		bot_registry	= Registry()
 		
-		SHARE_STORE.set(PLUGIN_CONFIG, config)
-		SHARE_STORE.set(RAW_CONFIG, self.config)
+		store_set(PLUGIN_CONFIG, config)
+		store_set(RAW_CONFIG, self.config)
 		
-		SHARE_STORE.set(SEGMENT_PARSER, segment_chain)
-		SHARE_STORE.set(EVENT_PARSER, event_chain)
-		SHARE_STORE.set(REGISTRY, bot_registry)
+		store_set(SEGMENT_PARSER, segment_chain)
+		store_set(EVENT_PARSER, event_chain)
+		store_set(REGISTRY, bot_registry)
 		
 		segment_chain.register_parser(ReplySegmentParser())
 		segment_chain.register_parser(FileSegmentParser())
@@ -51,9 +51,9 @@ class QQAdapterPlugin(PluginProtocol):
 	
 	async def on_close(self) -> None:
 		
-		SHARE_STORE.drop(PLUGIN_CONFIG)
-		SHARE_STORE.drop(RAW_CONFIG)
+		store_drop(PLUGIN_CONFIG)
+		store_drop(RAW_CONFIG)
 		
-		SHARE_STORE.drop(SEGMENT_PARSER)
-		SHARE_STORE.drop(EVENT_PARSER)
-		SHARE_STORE.drop(REGISTRY)
+		store_drop(SEGMENT_PARSER)
+		store_drop(EVENT_PARSER)
+		store_drop(REGISTRY)

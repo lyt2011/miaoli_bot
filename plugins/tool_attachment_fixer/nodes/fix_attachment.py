@@ -1,5 +1,5 @@
-from miaoli_bot			import GraphRuntimeContext, GraphState
-from miaoli_bot.stores	import SHARE_STORE
+from miaoli_bot.api		import store_recall
+from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
 from typing						import Any, Dict, Optional
 from langgraph.runtime			import Runtime
@@ -14,7 +14,7 @@ async def fix_tool_attachment(state: GraphState, runtime: Runtime[GraphRuntimeCo
 	
 	"""修复附件在工具结果中导致400的问题"""
 	
-	plugin_cfg	= SHARE_STORE.recall(PLUGIN_CONFIG)
+	plugin_cfg	= store_recall(PLUGIN_CONFIG)
 	
 	provider	= state.get("provider", "null")
 	model		= state.get("model", "null")

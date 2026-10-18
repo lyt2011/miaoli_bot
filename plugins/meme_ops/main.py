@@ -1,5 +1,5 @@
+from miaoli_bot.api			import store_drop, store_set
 from miaoli_bot.protocols	import PluginProtocol
-from miaoli_bot				import SHARE_STORE
 
 from .models	import PluginConfig
 from .consts	import PLUGIN_CONFIG, RAW_CONFIG
@@ -16,8 +16,8 @@ class MemeOps(PluginProtocol):
 	
 	async def on_load(self) -> None:
 		
-		SHARE_STORE.set(RAW_CONFIG, self.config)
-		SHARE_STORE.set(PLUGIN_CONFIG, PluginConfig.model_validate(self.config))
+		store_set(RAW_CONFIG, self.config)
+		store_set(PLUGIN_CONFIG, PluginConfig.model_validate(self.config))
 		
 		self.registry.register_tool(archive_meme)
 		self.registry.register_tool(send_meme_to_qq)
@@ -27,5 +27,5 @@ class MemeOps(PluginProtocol):
 
 	async def on_close(self) -> None:
 		
-		SHARE_STORE.drop(RAW_CONFIG)
-		SHARE_STORE.drop(PLUGIN_CONFIG)
+		store_drop(RAW_CONFIG)
+		store_drop(PLUGIN_CONFIG)

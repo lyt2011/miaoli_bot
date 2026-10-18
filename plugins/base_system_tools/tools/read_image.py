@@ -1,14 +1,14 @@
+from miaoli_bot.api			import store_recall
 from langchain_core.tools	import tool
 from pydantic				import BaseModel, Field
 from typing					import List, Dict, Any, Union
 from pathlib				import Path
 from base64					import b64encode
 
-from miaoli_bot			import SHARE_STORE
 
 from ..consts	import PLUGIN_CONFIG
 
-import filetype
+import filetype	
 
 
 class ToolSchema(BaseModel):
@@ -20,7 +20,7 @@ async def read_image(path: str) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
 	
 	"""读取一张图片"""
 	
-	read_image_config = SHARE_STORE.recall(PLUGIN_CONFIG).read_image
+	read_image_config = store_recall(PLUGIN_CONFIG).read_image
 	
 	try:
 		

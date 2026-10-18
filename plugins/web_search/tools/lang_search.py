@@ -1,8 +1,8 @@
+from miaoli_bot.api			import store_recall
 from langchain_core.tools	import tool
 from pydantic				import BaseModel, Field
 from typing					import Any, Dict, List, Literal
 
-from miaoli_bot.stores	import SHARE_STORE
 
 from ..consts	import PLUGIN_CONFIG, CLIENT_SESSION
 
@@ -35,8 +35,8 @@ async def lang_search(
 	"""
 	
 	# 从全局容器拿配置
-	plugin_config	= SHARE_STORE.recall(PLUGIN_CONFIG)
-	client_session	= SHARE_STORE.recall(CLIENT_SESSION)
+	plugin_config	= store_recall(PLUGIN_CONFIG)
+	client_session	= store_recall(CLIENT_SESSION)
 	
 	# 更简短的命名
 	base_url	= plugin_config.base_url

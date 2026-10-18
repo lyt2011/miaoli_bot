@@ -1,5 +1,5 @@
-from miaoli_bot.stores	import SHARE_STORE
-from ..consts			import SEGMENT_PARSER
+from miaoli_bot.api	import store_recall
+from ..consts		import SEGMENT_PARSER
 
 from typing	import Any, Dict, List
 
@@ -8,7 +8,7 @@ async def parse_segments(segments: List[Any]) -> List[Dict[str, Any]]:
 	
 	"""切割解析消息段"""
 	
-	segment_parser	= SHARE_STORE.recall(SEGMENT_PARSER)
+	segment_parser	= store_recall(SEGMENT_PARSER)
 	output_segments	= []
 	
 	for seg in segments:

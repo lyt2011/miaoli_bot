@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.19.0
+- **版本**：0.19.1
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -238,6 +238,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.19.1 — **修复提示词里的人设自相矛盾**。性格段写「张口就喜欢叫对方『雑魚』」，习惯段又写「我喜欢直接称呼对方的名字喵」，同一个模型读到两条互斥的行为准则，实际表现取决于上下文里哪条权重更高，不稳定。**修法**：给性格段补上限定 —— 「虽然我也可以直接称呼对方名字，但叫对方『雑魚』更能体现出「嘲讽」的意思」，让两条规则不再互斥：**默认称呼名字**（习惯），**想嘲讽时改用「雑魚」**（性格）；顺带删掉原句末尾一个多余的「喵」，避免同句出现两个语气词。**本版只有提示词改动，无代码变更**，部署时只需覆盖 `data/prompts/prompt_v1.6.md` 一个文件并重启 ncatbot。提示词文件名仍是 `prompt_v1.6.md`（原地修改，未另建 v1.7），因为这是对同一版人设设定的修正而非新版本。**校验**：`git diff` 确认只涉及第 28 行 1 行；全文检索「称呼」相关表述，第 28 行与第 65 行已无互斥；版本号四处同步 0.19.1。**未验证**：实际对话中的称呼表现需观察（提示词改动的效果只能靠运行观察，无法静态验证）。
 
 v0.19.0 — **`mcp_adapter_demo` 转正为 `mcp_adapter`**，并把 `reusable` 从 transport 层搬到 server 层。**改名（破坏性）**：目录 `plugins/mcp_adapter_demo/` → `plugins/mcp_adapter/`，入口类 `MCPAdapterDemo` → `MCPAdapter`；`core/MCPAdapter` → `core/MCPClientRegistry`（文件同步改名 `mcp_client_registry.py`）—— 原名与入口类撞车，且实际职责是「管理 client 列表 + 缓存工具」，`MCPClientRegistry` 才贴合语义；`SHARE_STORE` 常量 `MCP_ADAPTER` → `MCP_CLIENT_REGISTRY`，三个键的命名空间一并从 `mcp_adapter_demo` 改为 `mcp_adapter`。**`reusable` 上提**：它回答的是「这个 server 的 tools 列表会不会变」，与传输方式正交 —— 稳定工具列表的 stdio / http server 都适合开，动态注册工具的都不适合；传输方式只影响复用的**收益大小**，不影响**要不要缓存**。搬到 `MCPServer` 后参数构造只用 `name` + `transport.model_dump()`，因此不再需要 `Field(exclude=True)`，字段可正常序列化。**补齐**：`core/` / `protocols/` / `models/runtimes/` 三个目录原先没有 `__init__.py`、无法作为包导入，已补并导出 `MCPClientRegistry` / `ToolObtainanle` / `MCPClient`；全部导入导出按项目规范补齐。**修复 7 处运行时错误**：`main.py` 的 `register(...)` → `register_client(...)`（方法不存在）、`resuable=` → `reusable=`（拼写）、`MCPAdadpter()` → `MCPClientRegistry()`；`core/mcp_client_registry.py` 的 `append(client)` 存裸 client 但去重按 `client_.client` 读（元素类型不一致，首次注册即 `AttributeError`）、`self.client.remove(...)` → `self.clients.remove(...)`、循环变量改名后 `if client.reusable` 残留两处（`NameError`）；`on_close` 漏 drop `MCP_CLIENT_REGISTRY`（`SHARE_STORE` 资源泄露检查会报）。**文档**：`config.example.yaml` 的 `prompt_file` 指向 `prompt_v1.6.md`；`tool_permission_manager/config.yaml` 的分组注释同步改名。**提示词**：新增 `prompt_v1.6.md`，相对 v1.5 两处调整 —— ① 称呼由「杂鱼」改为「雑魚」；② 换行符说明的措辞由「别人也能看得更舒服」改为「才不是为了让别人看得更舒服的」。**验证**（服务器 Python 3.12.14，真实 MCP，两个 server：`omniqq` 不复用 74 工具 + 自建 FastMCP `probe` 复用 2 工具）：三次 `get_tools()` 调用计数 `non_reusable` 1→2→3、`reusable` 1→1→1，`clients` 恒 1、缓存恒 2；工具总数恒 76 且名称唯一；`probe_add(3,4)=7`、`probe_echo('hello')=echo:hello`；`on_close` 后 `SHARE_STORE.is_empty()==True`；`plugin.toml` 的 `enter_class` 与实际类名一致、`MCPAdapterDemo` 无残留；19 个 `.py` 全部 `py_compile` 通过、无未定义名字、无未使用导入、全 tab 缩进、import 块对齐。**未验证**：NcatBot 运行时下的端到端对话仍未跑。
 

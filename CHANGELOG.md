@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.19.1](CHANGELOG/v0.19.1.md) — 2026-10-18 — 修复提示词里「叫对方雑魚」与「直接称呼名字」的人设冲突
 - [v0.19.0](CHANGELOG/v0.19.0.md) — 2026-10-18 — mcp_adapter_demo 转正为 mcp_adapter，reusable 上提到 server 层，提示词更新到 v1.6（破坏性）
 - [v0.18.2](CHANGELOG/v0.18.2.md) — 2026-10-17 — 修复 tool_attachment_fixer 的 flush 时机缺陷（issue #1），清理冗余守卫
 - [v0.18.1](CHANGELOG/v0.18.1.md) — 2026-10-17 — 文档版：记录 tool_attachment_fixer 的两个缺陷，本版无代码改动

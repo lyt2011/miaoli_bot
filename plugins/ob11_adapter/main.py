@@ -19,9 +19,9 @@ from .parsers	import (
 )
 
 
-class QQAdapterPlugin(PluginProtocol):
+class OB11AdapterPlugin(PluginProtocol):
 	
-	"""ncatbot qq 平台适配插件"""
+	"""ncatbot OB11 事件适配插件"""
 	
 	async def on_load(self) -> None:
 		

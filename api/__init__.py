@@ -12,10 +12,12 @@ from .store_ops	import (
 	store_drop,
 	store_update,
 	store_set,
+	store_contains,
 )
 
 from .sugar	import (
 	get_model_info,
+	get_provider_info,
 	get_prompt,
 )
 
@@ -39,12 +41,14 @@ __all__ = [
 	"store_drop",
 	"store_update",
 	"store_set",
+	"store_contains",
 
 	# platform_ops
 	"get_ncatbot_api",
 
 	# sugar
 	"get_model_info",
+	"get_provider_info",
 	"get_prompt",
 
 	# utils

@@ -1,5 +1,5 @@
 from .runtime	import DispatchResult
-from .config	import SplitConfig, PluginConfig
+from .config	import PluginConfig
 
 
 __all__ = [
@@ -7,7 +7,6 @@ __all__ = [
 	"DispatchResult",
 
 	# config
-	"SplitConfig",
 	"PluginConfig",
 
 ]

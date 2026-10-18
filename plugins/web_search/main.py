@@ -1,11 +1,17 @@
 from miaoli_bot.api			import store_drop, store_recall, store_set
 from miaoli_bot.protocols	import PluginProtocol
 
-import aiohttp	
+import aiohttp
 
 from .consts	import PLUGIN_CONFIG, RAW_CONFIG, CLIENT_SESSION
 from .models	import PluginConfig
-from .tools		import lang_search
+from .tools		import deepseek_search, lang_search
+
+
+TOOL_MAPPING = {
+	"langsearch": lang_search,
+	"deepseek": deepseek_search,
+}
 
 
 class WebSearch(PluginProtocol):
@@ -25,8 +31,7 @@ class WebSearch(PluginProtocol):
 			return None
 		
 		# 根据实际需求注册工具
-		if config.provider == "langsearch":
-			self.registry.register_tool(lang_search)
+		self.registry.register_tool(TOOL_MAPPING[config.adapter])
 	
 	async def on_close(self) -> None:
 		

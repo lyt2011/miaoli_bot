@@ -1,29 +1,23 @@
-from miaoli_bot.api		import store_recall
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
-from miaoli_bot.consts	import PLUGIN_CONFIG
-from typing				import Dict, Any
 
 from langgraph.runtime	import Runtime
 from langchain_openai	import ChatOpenAI
 
 
-async def build_client(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Dict[str, Any]:
+async def build_client(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> None:
 	
 	"""通过配置构建 client 实例"""
 	
-	root_config	= store_recall(PLUGIN_CONFIG)
+	base_url	= state["base_url"]
+	api_key		= state["api_key"]
+	model		= state["model"]
+	max_tokens	= state["max_tokens"]
 	
-	provider_name	= state["provider"]
-	model_name		= state["model"]
-	
-	provider	= root_config.providers[provider_name]
-	model		= provider.models[model_name]
-	
-	runtime.context["client"]	= ChatOpenAI(
-		model		= model_name,
-		base_url	= provider.base_url,
-		api_key		= provider.api_key,
-		max_tokens	= model.max_tokens,
+	client	= ChatOpenAI(
+		model		= model,
+		base_url	= base_url,
+		api_key		= api_key,
+		max_tokens	= max_tokens,
 	)
 	
-	return {}
+	runtime.context["client"] = client

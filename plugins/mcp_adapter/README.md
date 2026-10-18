@@ -166,4 +166,4 @@ mcp_adapter/
   把它的 `reusable` 设为 `true` 即可（工具进缓存、客户端从列表移除，不再重建）。
 - **工具名冲突**：MCP 工具按 `name` **覆盖**进工具表（`raw_tools.update(mcp_tools)`），同名时 MCP 工具顶掉原有条目、不会重复出现。
   开 `tool_prefix` 可以规避「本地工具被 MCP 工具顶掉」这种意外覆盖。
-- 本插件**不参与事件接收**：事件仍由 `qq_adapter` 经 ncatbot 提供，本插件只扩展**工具**这一侧。
+- 本插件**不参与事件接收**：事件仍由 `ob11_adapter` 经 ncatbot 提供，本插件只扩展**工具**这一侧。

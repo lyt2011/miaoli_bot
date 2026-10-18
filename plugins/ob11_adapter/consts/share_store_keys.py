@@ -1,0 +1,5 @@
+PLUGIN_CONFIG	= "miaoli_bot/subplugin/ob11_adapter.models.plugin_config"
+RAW_CONFIG		= "miaoli_bot/subplugin/ob11_adapter.plugin_config"
+EVENT_PARSER	= "miaoli_bot/subplugin/ob11_adapter.event_parser"
+SEGMENT_PARSER	= "miaoli_bot/subplugin/ob11_adapter.segment_parser"
+REGISTRY		= "miaoli_bot/subplugin/ob11_adapter.registry"

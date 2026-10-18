@@ -136,7 +136,7 @@ class MiaoLiBot(NcatBotPlugin):
 			try:
 				
 				final_state = await graph_pipeline.ainvoke(
-					{"provider": plugin_cfg.provider, "model": plugin_cfg.model, "event": event._data.model_dump()},
+					{"event": event._data.model_dump()},
 					thread_id	= session_id,
 					context		= {"client": None, "tools": tool_registry.tools}
 				)

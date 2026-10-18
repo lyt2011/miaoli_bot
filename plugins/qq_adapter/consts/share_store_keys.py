@@ -1,5 +1,0 @@
-PLUGIN_CONFIG	= "miaoli_bot/subplugin/qq_adapter.models.plugin_config"
-RAW_CONFIG		= "miaoli_bot/subplugin/qq_adapter.plugin_config"
-EVENT_PARSER	= "miaoli_bot/subplugin/qq_adapter.event_parser"
-SEGMENT_PARSER	= "miaoli_bot/subplugin/qq_adapter.segment_parser"
-REGISTRY		= "miaoli_bot/subplugin/qq_adapter.registry"

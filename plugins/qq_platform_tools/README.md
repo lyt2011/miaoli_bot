@@ -32,9 +32,9 @@ qq_platform_tools/
 
 本插件**不读任何配置**（`self.config` 恒为 `{}`），因此没有 `config.yaml`。
 
-## 与 `qq_adapter` 的分工
+## 与 `ob11_adapter` 的分工
 
-- `qq_adapter` 管**进**：把 ncatbot 事件解析成图能吃的字典。
+- `ob11_adapter` 管**进**：把 ncatbot 事件解析成图能吃的字典。
 - 本插件管**出**：把消息 / 文件发回 QQ。
 
 两者都只依赖 core，互不依赖。

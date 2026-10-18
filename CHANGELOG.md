@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.21.0](CHANGELOG/v0.21.0.md) — 2026-10-19 — qq_adapter 更名 ob11_adapter、根配置改回 List[Provider] + List[LLM]、新增 miaoli_bot_adapter 子插件（破坏性）
 - [v0.20.0](CHANGELOG/v0.20.0.md) — 2026-10-18 — 新增 api 门面层，子插件不再直接操作 SHARE_STORE（破坏性）
 - [v0.19.1](CHANGELOG/v0.19.1.md) — 2026-10-18 — 修复提示词里「叫对方雑魚」与「直接称呼名字」的人设冲突
 - [v0.19.0](CHANGELOG/v0.19.0.md) — 2026-10-18 — mcp_adapter_demo 转正为 mcp_adapter，reusable 上提到 server 层，提示词更新到 v1.6（破坏性）

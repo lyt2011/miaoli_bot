@@ -1,0 +1,8 @@
+# miaoli_bot_adapter 配置模板
+#
+# 用法：
+#   cp plugins/miaoli_bot_adapter/config.example.yaml plugins/miaoli_bot_adapter/config.yaml
+#
+# config.yaml 已加入 .gitignore，不会被提交。本文件是入库的模板。
+
+enable: true                  # 是否启用该插件

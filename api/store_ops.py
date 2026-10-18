@@ -46,3 +46,7 @@ def store_set(key: str, value: Any) -> None:
 		raise KeyError(f"容器中已有 {key} 不可覆盖")
 	
 	SHARE_STORE.set(key, value)
+
+def store_contains(key: str) -> bool:
+	"""判断 key 是否已经存在"""
+	return SHARE_STORE.contains(key)

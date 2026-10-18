@@ -19,7 +19,7 @@ class ToolSchema(BaseModel):
 	timeout			: float		= Field(default=30.0, description="搜索超时")
 
 
-@tool(args_schema=ToolSchema)
+@tool("web_search", args_schema=ToolSchema)
 async def lang_search(
 	query			: str,
 	count			: int,
@@ -39,7 +39,7 @@ async def lang_search(
 	client_session	= store_recall(CLIENT_SESSION)
 	
 	# 更简短的命名
-	base_url	= plugin_config.base_url
+	api_url		= plugin_config.api_url
 	api_key		= plugin_config.api_key
 	
 	# 构建请求头与请求体
@@ -55,14 +55,14 @@ async def lang_search(
 	
 	# 尝试联网搜索
 	try:
-		async with client_session.post(url=base_url, headers=headers, json=payload, timeout=timeout) as response:
+		async with client_session.post(url=api_url, headers=headers, json=payload, timeout=timeout) as response:
 			
 			if response.status != 200:
-				raise RuntimeError(f"服务器状态码: {response.status}")
+				raise RuntimeError(f"错误的响应码: {response.status}")
 			
 			query_result = await response.json()
 	
 	except Exception as e:
-		return {"status": False, "message": f"联网搜索出错: {type(e).__name__}: {e}"}
+		return {"message": f"联网搜索出错: {type(e).__name__}: {e}"}
 	
-	return {"status": True, "message": query_result}
+	return {"results": query_result}

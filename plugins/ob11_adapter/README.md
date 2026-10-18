@@ -1,4 +1,4 @@
-QQ 平台适配 —— 把 ncatbot 的 QQ 事件**解析**成平台无关的字典，供图消费。
+OB11 事件适配 —— 把 ncatbot 的 OB11 事件**解析**成平台无关的字典，供图消费。
 
 ## 定位：纯 adapter
 
@@ -8,15 +8,15 @@ QQ 平台适配 —— 把 ncatbot 的 QQ 事件**解析**成平台无关的字�
 ## 目录结构
 
 ```
-qq_adapter/
+ob11_adapter/
 ├── plugin.toml
-├── main.py             # 入口类 QQAdapterPlugin，on_load 显式逐个注册
+├── main.py             # 入口类 OB11AdapterPlugin，on_load 显式逐个注册
 ├── config.example.yaml  # 配置模板（config.yaml 已 gitignore，不入库）
 ├── api/                # Registry：本插件自己的解析器注册器（register_segment_parser / register_event_parser）
 ├── chains/             # 解析链：ChainProtocol / BaseParserChain / EventParseChain / SegmentParseChain
 ├── consts/             # SHARE_STORE 键（PLUGIN_CONFIG / RAW_CONFIG / EVENT_PARSER / SEGMENT_PARSER / REGISTRY）
-├── models/             # DispatchResult / PluginConfig / SplitConfig
-├── nodes/              # handle_event
+├── models/             # DispatchResult / PluginConfig
+├── nodes/              # event_adapter
 ├── parsers/            # 两级解析器
 │   ├── parser.py       #   Parser 协议（@runtime_checkable，鸭子类型）
 │   ├── event_parsers/  #   群 / 私聊事件解析器
@@ -24,7 +24,7 @@ qq_adapter/
 └── utils/              # parse_segments
 ```
 
-## `handle_event` 节点
+## `event_adapter` 节点
 
 挂在 `on_agent_start`（`priority=HIGH`），从 `state["event"]`（core 传进来的 `event._data.model_dump()`）出发：
 

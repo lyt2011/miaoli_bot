@@ -1,6 +1,5 @@
-from miaoli_bot.api		import store_recall
+from miaoli_bot.api		import get_admin_id, get_bot_id, get_admin_nickname, get_bot_nickname, get_prompt
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
-from miaoli_bot.consts	import PLUGIN_CONFIG
 from langgraph.runtime	import Runtime
 from typing				import Dict, Any
 
@@ -9,14 +8,11 @@ async def inject_account(state: GraphState, runtime: Runtime[GraphRuntimeContext
 
 	"""给系统提示词注入账号信息"""
 
-	cfg		= store_recall(PLUGIN_CONFIG)
-	account	= cfg.account
-
 	account_info = "\n".join([
-		f"<administrator_QQ_number>{account.admin_id}</administrator_QQ_number>",
-		f"<administrator_nickname>{account.admin_nickname}</administrator_nickname>",
-		f"<bot_QQ_number>{account.bot_id}</bot_QQ_number>",
-		f"<bot_nickname>{account.bot_nickname}</bot_nickname>",
+		f"<administrator_QQ_number>{get_admin_id()}</administrator_QQ_number>",
+		f"<administrator_nickname>{get_admin_nickname()}</administrator_nickname>",
+		f"<bot_QQ_number>{get_bot_id()}</bot_QQ_number>",
+		f"<bot_nickname>{get_bot_nickname()}</bot_nickname>",
 	])
 
-	return { "system_prompt": "\n\n".join([account_info, cfg.prompt]) }
+	return { "system_prompt": "\n\n".join([account_info, get_prompt()]) }

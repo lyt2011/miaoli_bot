@@ -1,8 +1,10 @@
 from miaoli_bot.api			import store_drop, store_set
 from miaoli_bot.protocols	import PluginProtocol
+from miaoli_bot.consts		import NORMAL
 
 from .models	import PluginConfig
 from .consts	import PLUGIN_CONFIG, RAW_CONFIG
+from .nodes		import inject_helper
 from .tools		import (
 	list_memes,
 	archive_meme,
@@ -24,6 +26,8 @@ class MemeOps(PluginProtocol):
 		self.registry.register_tool(list_memes)
 		self.registry.register_tool(remove_meme_by_hash)
 		self.registry.register_tool(search_memes_by_tags)
+		
+		self.registry.on_agent_start(inject_helper, priority=NORMAL)
 
 	async def on_close(self) -> None:
 		

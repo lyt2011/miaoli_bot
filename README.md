@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.22.2
+- **版本**：0.22.3
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -118,7 +118,7 @@ miaoli_bot/
 │   ├── base_topology/             #   默认跳转（nodes/ 一个事件一个文件 + config.example.yaml）
 │   ├── context_compactor/         #   上下文压缩（should_compact 守卫 + compact 压缩；nodes/ + utils/ + models/ + consts/ + data/ 提示词 + config.example.yaml + README）
 │   ├── mcp_adapter/               #   MCP 适配：接入外部 MCP server 并把其工具注入工具表（models/transports + nodes/ + config.example.yaml + README）
-│   ├── meme_ops/                  #   meme 工具（tools/ + core/ + models/ + consts/ + config.example.yaml + README）
+│   ├── meme_ops/                  #   meme 工具 + 使用提示注入（tools/ + nodes/ + core/ + models/ + consts/ + config.example.yaml + README）
 │   ├── miaoli_bot_adapter/        #   内部数据适配：根配置 → state 与 prompt（inject_model_info / inject_soul；nodes/ + models/ + consts/ + config.example.yaml + README）
 │   ├── ob11_adapter/              #   OB11 事件适配：两级解析器 + event_adapter（parsers/ + chains/ + api/ + nodes/ + models/ + consts/ + config.example.yaml + README）
 │   ├── orphan_tool_fixer/         #   孤儿工具返回修复（nodes/ + utils/ + config.example.yaml）
@@ -162,7 +162,7 @@ miaoli_bot/
 | `base_topology` | 默认跳转（edgeless 拓扑的顺序来源）：**一个事件一个节点文件**，11 个节点各返回一条 `Goto`，把旧 `wire()` 的静态边与 `tools_condition` 条件边在插件层复原；`on_after_request` 按 `is_tool_calling(messages)` 分流工具循环与收尾；压缩三段也在这里兜底（`on_before_compact` 默认不压缩 → `ON_BEFORE_REQUEST`，`on_after_compact` 跳回 `ON_TURN_START`）。注册在最低优先级 `MINIMUM`，可被任何子插件抢跑 |
 | `context_compactor` | 上下文压缩，拆成**守卫 + 压缩**两个节点：`should_compact` 挂 `on_before_compact`（`priority=NORMAL`）读模型真实 `context_window` / `max_tokens` 判阈值，返回 `Goto(ON_COMPACT)` 或 `Goto(ON_BEFORE_REQUEST)`；`compact` 挂 `on_compact`，把历史压成一条 `<compaction>` 摘要并用 `Overwrite` 整体替换。保留条数 / 提示词 / 计数方式全部配置化（`base` 粗估或 `tiktoken` 精确），自带 `data/compact_prompt.md` 与 `README.md` |
 | `mcp_adapter` | MCP 适配：`recall_mcp_tools` 在 `on_before_request`（`priority=MEDIUM`）用 `MultiServerMCPClient` 拉取外部 MCP server 的工具，**按名去重**后合并进 `runtime.context["tools"]`；必须排在 `pick_tools`（`priority=1`）之前，否则 MCP 工具会绕过权限过滤。支持 `stdio` / `streamable_http` 两种传输，每个 server 可选 `reusable`（工具列表稳定则首次拉取后进缓存，由 `MCPClientRegistry` 管理）。自带 `README.md`。**未完成**：只做去重不做下架 |
-| `meme_ops` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
+| `meme_ops` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除；`inject_helper` 在 `on_agent_start`（`priority=NORMAL`）把一段硬编码的使用提示写进 `prompt` 的 `meme_helper` 段，引导模型先 `list_memes` 再按情景 `send_meme_to_qq`；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
 | `miaoli_bot_adapter` | 内部数据适配：两个节点都挂在 `on_turn_start`（`priority=NORMAL+1`）：`inject_model_info` 调 `miaoli_bot.api` 的 `get_provider_info` / `get_model_info` 把 `base_url` / `api_key` / `model` / `max_tokens` 写进 state，供 `build_client` 直接消费；`inject_soul` 把根配置 `prompt_file` 的人设全文写进 `prompt` 的 `soul` 段，供 `prompt_builder` 拼装。图节点因此不必知道根配置的 `providers` 是列表还是字典。必须排在 `build_client`（`NORMAL`）之前。自带 `README.md` |
 | `orphan_tool_fixer` | 坏历史修复：`fix_orphan_tool_message` 在 `on_before_request`（`priority=2`）删掉找不到发起 `tool_calls` 的 `ToolMessage`（只产出定向删除增量） |
 | `pending_tool_fixer` | 坏历史修复：`fix_pending_tool_call` 在 `on_before_request`（`priority=3`）给悬空的 `tool_calls` 补一条「工具未执行」的合成 `ToolMessage`（返回 `Overwrite` 整表替换） |
@@ -265,6 +265,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.22.3 — **`meme_ops` 注入表情包使用提示**。工具在工具表里不等于模型会用 —— `send_meme_to_qq` 需要一个 `hash`，模型手里没有，得先 `list_memes` 才知道库有什么，这一步是额外的工具循环，不提示的话模型不会为了一个表情包主动多跑一轮。实测 6 条情绪化输入（累、满分、被骂、晚安、大笑、难过），基线 0 条发图、连 `list_memes` 都不调。新增 `nodes/inject_helper.py`：`inject_helper` 挂在 `on_agent_start`（`priority=NORMAL`），把硬编码的 `MEME_HELPER` 常量写进 `prompt` 的 `meme_helper` 段，由 `prompt_builder` 在 `on_before_request` 拼装时带上。同样 6 条输入加提示后 6/6 发图，选中表情包全部与情景契合（累 → 摆烂、满分 → 竖拇指、被骂 → 生气炸毛、晚安 → 抱被子、笑 → 捶地、难过 → 摸头）。关键在于**先查表**：只给「你可以发表情包」的授权没有效果（此前测过 0/4），模型需要明确知道库里有货、且被要求先看。
 
 v0.22.2 — **修复人设提示词从未进入上下文**。`inject_account` 在 0.21.0 的产出是「账号信息块 + 人设全文」拼成的整串，0.22.0 改成写 `prompt` 的 `account_info` 段时只保留了账号信息那一半 —— `get_prompt()` 从此零调用方，根配置 `prompt_file` 指向的 `data/prompts/prompt_v1.7.md` 那 88 行人设一个字都没进 `SystemMessage`，模型只收到 `<account_info>` 一个段。**修法**：新增 `miaoli_bot_adapter` 的 `inject_soul` 节点（`on_turn_start`，`priority=NORMAL + 1`）调 `get_prompt()` 读人设全文写进 `prompt` 的 `soul` 段，由 `prompt_builder` 在 `on_before_request` 拼装时带上。人设的归属同时从 `account_injector`（账号信息）移到 `miaoli_bot_adapter`（根配置适配）—— 人设是根配置里的数据，与账号信息无关。`inject_soul` 与 `inject_model_info` 同事件同优先级，两者互不依赖。
 

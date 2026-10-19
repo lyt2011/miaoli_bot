@@ -1,5 +1,5 @@
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
-from miaoli_bot.core	import Goto
+from miaoli_pipeline.actions	import Goto
 from miaoli_bot.consts	import ON_AGENT_END
 
 from langgraph.runtime	import Runtime

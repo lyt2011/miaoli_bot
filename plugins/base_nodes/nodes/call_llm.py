@@ -2,7 +2,6 @@ from miaoli_bot.models	import GraphRuntimeContext, GraphState
 from typing				import Dict, Any
 
 from langgraph.runtime			import Runtime
-from langchain_core.messages	import SystemMessage
 
 
 
@@ -12,9 +11,9 @@ async def call_llm(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> 
 	请求模型并追加回复
 	压缩后的摘要已由 context_compactor 写进 messages，这里无需再拼
 	"""
-
+	
+	messages	= state["messages"]
 	client		= runtime.context["client"].bind_tools(runtime.context["tools"])
-	message		= [SystemMessage(state["system_prompt"]), *state["messages"]]
-	AI_message	= await client.ainvoke(message)
+	assistant	= await client.ainvoke(messages)
 
-	return {"messages": [AI_message]}
+	return {"messages": [assistant]}

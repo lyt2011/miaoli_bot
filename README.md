@@ -2,20 +2,21 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.21.0
+- **版本**：0.22.0
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
-- **阶段**：插件化拆分完成，当前处于**优化态** —— 主包只剩图管线、checkpointer 适配层与子插件加载框架，业务由子插件提供，后续以补齐错误处理与体验优化为主
-- 🔌 **默认跳转**：edgeless 拓扑下「下一个事件是谁」由处理器主动声明，`base_topology` 子插件提供默认顺序（**一个事件一个节点文件**，每个只返回一条 `Goto`），并承担 `ON_AFTER_REQUEST` 的分支判断（末条有 `tool_calls` → 工具循环，否则 → 收尾）。它注册在**最低优先级** `MINIMUM`，任何子插件挂在任何更高档位都能抢在它之前改道或叫停
+- **阶段**：插件化拆分完成，当前处于**优化态** —— 主包只剩 checkpointer 适配层、注册门面与子插件加载框架（图管线本身已迁到独立包 `miaoli_pipeline`），业务由子插件提供，后续以补齐错误处理与体验优化为主
+- 🔌 **默认跳转**：edgeless 拓扑下「下一个事件是谁」由处理器主动声明，`base_topology` 子插件提供默认顺序（**一个事件一个节点文件**，每个只返回一条 `Goto`），并承担 `ON_AFTER_REQUEST` 的分支判断（末条有 `tool_calls` → 工具循环，否则 → 收尾），以及压缩三段的默认路径（`ON_BEFORE_COMPACT` 默认不压缩直接去 `ON_BEFORE_REQUEST`，`ON_AFTER_COMPACT` 跳回 `ON_TURN_START`）。它注册在**最低优先级** `MINIMUM`，任何子插件挂在任何更高档位都能抢在它之前改道或叫停
 
 ## 功能特性
 
-- 🧩 **自建图管线（edgeless 拓扑）**：`core.GraphPipeline`（泛型 `GraphPipeline[StateT, ContextT, InputT, OutputT]`，四个 TypeVar 取自 `langgraph.typing`）把「事件 → 处理器」的编排抽成独立类 —— 8 个图事件常量集中在 `consts/graph_events.py`，节点用 `register(event, node, priority=0)` **显式**挂载（同一事件可挂多个，按 `priority` 降序执行，`priority` 大者先跑；档位常量是 `consts/node_priorities.py` 的九档等比阶梯 `MAXIMUM`(9999) … `NORMAL`(0) … `MINIMUM`(-9999)）。`wire()` **不定义任何事件顺序**，只挂 8 个事件节点 + 一条入口边（`START → ON_AGENT_START`）；「下一个事件是谁」由处理器**主动返回跳转指令**决定：`return {...}` 累积增量并继续本事件剩余处理器、`Continue(updates=…)` 停止本事件剩余处理器、`Goto(goto=…, updates=…)` 跳到指定事件、`Abort(reason=…, updates=…)` 中止整轮图。**谁挂在哪个事件上、谁跳向哪里，都由子插件注册时声明**。
+- 🧩 **事件管线（edgeless 拓扑，已独立成包）**：`GraphPipeline` 由独立依赖 [`miaoli_pipeline`](https://github.com/lyt2011/miaoli_pipeline) 提供（泛型 `GraphPipeline[StateT, ContextT, InputT, OutputT]`，四个 TypeVar 取自 `langgraph.typing`），本仓库只保留事件名与注册门面 —— 11 个图事件常量集中在 `consts/graph_events.py`，节点用 `register(event, node, priority=0)` **显式**挂载（同一事件可挂多个，按 `priority` 降序执行，`priority` 大者先跑；档位常量是 `consts/node_priorities.py` 的九档等比阶梯 `MAXIMUM`(9999) … `NORMAL`(0) … `MINIMUM`(-9999)）。`wire()` **不定义任何事件顺序**，只挂事件节点 + 一条入口边（`START → ON_AGENT_START`）；「下一个事件是谁」由处理器**主动返回跳转指令**决定：`return {...}` 累积增量并继续本事件剩余处理器、`Continue(updates=…)` 停止本事件剩余处理器、`Goto(goto=…, updates=…)` 跳到指定事件、`Abort(reason=…, updates=…)` 中止整轮图。**谁挂在哪个事件上、谁跳向哪里，都由子插件注册时声明**。
 - 🔌 **子插件系统**：`core.PluginLoader` 扫描 `sub_plugin.load_from` 下带 `plugin.toml` 的子目录，把每个子目录注册成 Python 包后实例化入口类并调 `on_load()`；子插件通过 `core.Registry` 注册工具 / 解析器 / 图节点；卸载时 `on_close()` 并把整包从 `sys.modules` 抹掉，改完代码重载立即生效。
 - 🧠 **LLM 接入**：`main.py` 只把 `event` 写进 state；`miaoli_bot_adapter` 子插件的 `inject_model_info` 节点（`ON_TURN_START`，`priority=NORMAL+1`）从根配置取出 `base_url` / `api_key` / `model` / `max_tokens` 四个值写进 state，随后 `build_client` 节点（`priority=NORMAL`）用这四个值建 `ChatOpenAI` 写进 `runtime.context["client"]`（**刻意不在建实例时绑工具** —— 工具表按身份每请求变化）；`call_llm` 节点用 `runtime.context["tools"]`（来自 `ToolRegistry`）`bind_tools` 后请求模型；工具循环由 `base_topology` 的 `on_after_request` 节点分流 —— 末条消息有 `tool_calls` 就跳 `ON_TOOL_CALLING` 执行工具、再回到 `ON_TURN_START` 重走一轮；没有就跳 `ON_TURN_END` 收尾。
-- 🗜️ **上下文压缩**：`context_compactor` 子插件的 `compact` 节点（`ON_BEFORE_REQUEST`，`priority=NORMAL`）读模型真实 `context_window` / `max_tokens` 判阈值（为输出预留空间），超窗时把历史压成一条 `<compaction>` 摘要并用 `Overwrite` 整体替换；保留条数 / 提示词 / 计数方式（`base` 粗估或 `tiktoken` 精确）全部配置化，提示词落在 `data/compact_prompt.md`。
-- 📜 **状态与运行时分离**：`models.GraphState`（会话状态：`messages` 用 `add_messages` **进 checkpoint**；`event` / `system_prompt` / `model` / `base_url` / `api_key` / `max_tokens` / `final_answer` 七键用 `Annotated[T, UntrackedValue]` —— 单次 `ainvoke` 内可见、**不落盘**）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖：`client` / `tools`）分离 —— `context` 不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`（放 state 会因 msgpack 无法序列化而当场崩）。
+- 🗜️ **上下文压缩（三段事件）**：压缩不再是藏在 `on_before_request` 里的一个 `if`，而是图上三个有名字的事件 —— `ON_BEFORE_COMPACT` 挂**守卫** `should_compact`（`context_compactor` 子插件，`priority=NORMAL`）算 token 判阈值，需要压就 `Goto(ON_COMPACT)`、不需要就 `Goto(ON_BEFORE_REQUEST)`；`ON_COMPACT` 挂**压缩** `compact`，把历史压成一条 `<compaction>` 摘要并用 `Overwrite` 整体替换；`ON_AFTER_COMPACT` 的默认跳转**回到 `ON_TURN_START`**，于是压缩完重新走一轮（这一轮守卫必然通过）。阈值按模型真实 `context_window` / `max_tokens` 算（为输出预留空间），保留条数 / 提示词 / 计数方式（`base` 粗估或 `tiktoken` 精确）全部配置化，提示词落在 `data/compact_prompt.md`。
+- 📝 **提示词分段拼装**：`prompt` 不是一整个字符串，而是 `Dict[str, str]` —— 各子插件写各自的段（`{"identity": …}` / `{"style": …}`），写入 `None` 表示删除该段。`prompt_builder` 子插件的 `build_prompt` 节点（`ON_BEFORE_REQUEST`，`priority=NORMAL+1`）把全部段拼成 `<key>value</key>` 形式，用 `Overwrite` 放到 `messages[0]`；内容与现有首条 `SystemMessage` 完全相同时返回 `None`，不白写一次 `Overwrite`。
+- 📜 **状态与运行时分离**：`models.GraphState`（会话状态：`messages` 用 `add_messages`、`prompt` 用 `SectionPatch`，两者**进 checkpoint**；`event` / `model` / `base_url` / `api_key` / `max_tokens` / `final_answer` 六键用 `Annotated[T, UntrackedValue]` —— 单次 `ainvoke` 内可见、**不落盘**）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖：`client` / `tools`）分离 —— `context` 不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`（放 state 会因 msgpack 无法序列化而当场崩）。
 - 🎛️ **配置模型化（分层 + 更名）**：`PluginConfig` 含 `providers`（`List[Provider]`，每项用 `name` 字段标识 —— `Provider` 有 `name` / `base_url` / `api_key` / `protocol` / `models`，而 `models` 是 `List[LLM]`、`LLM` 有 `name` / `context_window` / `max_tokens` / `support_visions`）、`provider` / `model`（两个名字，由 `model_validator` 校验确实存在于 `providers` 里）、`account`（`bot_id` / `admin_id` / `bot_nickname` / `admin_nickname`，四项全必填）、`split`、`typing`、`checkpointer`、`sub_plugin` 与 `prompt_file` / `prompt`。
 - 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolNode` 执行，返回值统一是 `{"status": bool, ...}` 字典；主包不再内置任何工具，平台 / 系统 / meme / 联网搜索工具全部由内置子插件注册；`tool_permission_manager` 子插件可在此基础上按身份做工具级权限控制（`on_before_request` 摘 `runtime.context["tools"]`，未声明即拒绝）。
 - 🔍 **联网搜索**：`web_search` 子插件注册一个 `web_search` 工具（**工具名与后端无关**），`adapter` 选后端 —— `langsearch` 调 langsearch.com 的 `POST /v1/web-search`，`deepseek` 调 DeepSeek 的 `POST /v1/tools/search`，原始响应整体交给模型。`adapter` 只影响工具的入参 schema 与返回数据形状，不影响工具名。实测**英文检索质量明显优于中文**（技术 / 包名类相关率约 65% vs 30%），工具 docstring 已要求模型优先用英文搜。
@@ -41,17 +42,23 @@ main.py  MiaoLiBot(NcatBotPlugin)      ← config.yaml → models.PluginConfig�
         │   ① event._data.model_dump() + concatenate_id → session_id（thread_id）
         │   ② 群聊还要 @ 到 bot_id，否则跳过
         ▼
-core/GraphPipeline.ainvoke({"provider", "model", "event"}, thread_id=session_id, context=…)
+miaoli_pipeline.GraphPipeline.ainvoke({"event"}, thread_id=session_id, context=…)
         │
         │  START
         ▼
    ON_AGENT_START ── event_adapter（ob11_adapter：解析 event → event_data，回填 state["event"]，JSON 追加进 messages）
-        │            inject_account（账号信息块 + 人设 → system_prompt 键）
+        │            inject_account（账号信息块 → prompt 的 account_info 段）
         ▼
    ON_TURN_START ── inject_model_info（miaoli_bot_adapter：根配置 → state 的 base_url / api_key / model / max_tokens）
         │            build_client（用 state 里那四个值建 ChatOpenAI → context["client"]）
         ▼
-   ON_BEFORE_REQUEST ── pick_tools（按身份裁 tools）→ compact（超窗压缩）
+   ON_BEFORE_COMPACT ── should_compact（算 token 判阈值）
+        │                ├─ 不需要压缩 ──────────────────────┐
+        │                └─ 需要压缩 → ON_COMPACT ── compact（压成 <compaction> 摘要，
+        │                                              Overwrite 替换 messages）
+        │                               └─▶ ON_AFTER_COMPACT ── 跳回 ON_TURN_START
+        ▼◀──────────────────────────────────────────────────┘
+   ON_BEFORE_REQUEST ── build_prompt（prompt 各段 → SystemMessage 放 messages[0]）→ pick_tools（按身份裁 tools）
         ▼
    ON_REQUEST ── call_llm ──▶ bind_tools(tools) → ChatOpenAI
         │                                              │
@@ -87,40 +94,36 @@ miaoli_bot/
 │   ├── store_ops.py               #   store_recall / store_drop / store_update / store_set / store_contains
 │   └── sugar.py                   #   get_model_info / get_provider_info / get_prompt（从根配置派生）
 ├── consts/                        # 常量集中定义
-│   ├── graph_events.py            #   8 个图事件名（ON_AGENT_START / ON_TURN_START / …）
+│   ├── graph_events.py            #   11 个图事件名（ON_AGENT_START / ON_TURN_START / ON_BEFORE_COMPACT / ON_COMPACT / ON_AFTER_COMPACT / …）
 │   ├── node_priorities.py         #   九档优先级阶梯（MAXIMUM 9999 … NORMAL 0 … MINIMUM -9999）
 │   ├── id_prefix.py               #   会话键前缀（group- / private-）
 │   └── share_store_keys.py        #   SHARE_STORE 键名（含 TOOL_REGISTRY）
-├── core/                          # 图管线与子插件加载
-│   ├── graph/                     #   图管线
-│   │   ├── graph_pipeline.py      #     GraphPipeline：register / wire（edgeless）/ compile / ainvoke / _dispatch，与模块级 merge_data / accumulate_data
-│   │   └── actions/               #     BaseAction + Continue / Goto / Abort（处理器主动返回的跳转指令）
+├── core/                          # 子插件加载与注册门面（图管线本身已迁到 miaoli_pipeline）
 │   ├── plugin_loader.py           #   PluginLoader：扫 plugin.toml → 注册成包 → 加载 / 卸载子插件
-│   ├── registry.py                #   Registry：子插件的注册门面（工具 / 解析器 / 图节点），含全局单例 registry
+│   ├── registry.py                #   Registry：子插件的注册门面（工具 / 图节点），含全局单例 registry
 │   └── tool_registry.py           #   ToolRegistry：按名字存工具（register / remove / tools）
 ├── data/prompts/                  # 提示词资产（prompt_v1.0.md ~ prompt_v1.7.md）
-├── errors/                        # 异常定义
+├── errors/                        # 异常定义（AgentAborted 已迁到 miaoli_pipeline.errors）
 │   ├── base_bot_error.py          #   BaseBotError 基类
-│   ├── agent_aborted.py           #   AgentAborted（继承 GraphBubbleUp，从节点中止本轮图运行）
 │   ├── pipeline_stop_dispatch.py  #   PipelineStopDispatch（已无消费方，待清理）
 │   └── session_manager_closing_error.py # SessionManagerClosingError
 ├── models/                        # 数据模型
 │   ├── config/                    #   PluginConfig / Provider / LLM / Account / SplitConfig / TypingConfig / SubPluginConfig / CheckPointerConfig
-│   ├── graph_state.py             #   GraphState（进 checkpoint 的只有 messages；其余 7 键用 UntrackedValue 不落盘）
-│   ├── graph_runtime_context.py   #   GraphRuntimeContext（不进 checkpoint：client / tools）
-│   └── runtime/                   #   Handler（图处理器登记单元）
+│   ├── graph_state.py             #   GraphState（进 checkpoint 的是 messages 与 prompt；其余 6 键用 UntrackedValue 不落盘）
+│   └── graph_runtime_context.py   #   GraphRuntimeContext（不进 checkpoint：client / tools）
 ├── plugins/                       # 内置子插件（随仓库提交，加载目录由 sub_plugin.load_from 指定）
 │   ├── account_injector/          #   账号注入节点（nodes/ + plugin.toml）
 │   ├── base_nodes/                #   图节点（nodes/ + plugin.toml）
 │   ├── base_system_tools/         #   系统工具（tools/ + models/ + consts/ + config.example.yaml + README）
 │   ├── base_topology/             #   默认跳转（nodes/ 一个事件一个文件 + config.example.yaml）
-│   ├── context_compactor/         #   上下文压缩（nodes/ + utils/ + models/ + consts/ + data/ 提示词 + config.example.yaml + README）
+│   ├── context_compactor/         #   上下文压缩（should_compact 守卫 + compact 压缩；nodes/ + utils/ + models/ + consts/ + data/ 提示词 + config.example.yaml + README）
 │   ├── mcp_adapter/               #   MCP 适配：接入外部 MCP server 并把其工具注入工具表（models/transports + nodes/ + config.example.yaml + README）
 │   ├── meme_ops/                  #   meme 工具（tools/ + core/ + models/ + consts/ + config.example.yaml + README）
 │   ├── miaoli_bot_adapter/        #   内部数据适配：根配置 → state（nodes/ + models/ + consts/ + config.example.yaml + README）
 │   ├── ob11_adapter/              #   OB11 事件适配：两级解析器 + event_adapter（parsers/ + chains/ + api/ + nodes/ + models/ + consts/ + config.example.yaml + README）
 │   ├── orphan_tool_fixer/         #   孤儿工具返回修复（nodes/ + utils/ + config.example.yaml）
 │   ├── pending_tool_fixer/        #   悬空工具调用修复（nodes/ + utils/ + models/ + consts/ + config.example.yaml）
+│   ├── prompt_builder/            #   提示词拼装：把 prompt 各段拼成 SystemMessage 放到 messages[0]（nodes/ + README）
 │   ├── qq_platform_tools/         #   QQ 平台工具（tools/ + README）
 │   ├── tool_attachment_fixer/     #   工具附件修复（nodes/ + utils/ + models/ + consts/ + config.example.yaml + README）
 │   ├── tool_permission_manager/   #   工具权限控制（nodes/ + models/ + consts/ + config.example.yaml 权限表 + README）
@@ -140,8 +143,8 @@ miaoli_bot/
 2. `on_message` 先算 `is_group` / `chat_id` / `session_id`，再把 `event._data.model_dump()` 当作 `input["event"]` 传进图；解析在图内由 `ob11_adapter` 子插件的 `event_adapter` 完成（走 `EventParseChain` / `SegmentParseChain`）。
 3. `session_id = concatenate_id(target_id, is_group=is_group)`（群 → `group-<group_id>`，私聊 → `private-<user_id>`），作为 LangGraph 的 `thread_id` —— 同一会话共享同一个 checkpointer（由 `checkpointer.database` 选中的 memory / sqlite / postgresql 实现）里的 checkpoint，跨轮记忆不串台。
 4. `graph_pipeline.ainvoke({"event": event._data.model_dump()}, thread_id=session_id, context={"client": None, "tools": tool_registry.tools})` —— 入参只带 `event`，模型相关的四个值在图内由 `inject_model_info` 从根配置取。
-5. `ON_AGENT_START` 的 `event_adapter`（`ob11_adapter` 子插件，`priority=HIGH`）把 `state["event"]`（事件字典）交给解析链 → `event_data`，回填 `state["event"]`（供 `pick_tools` 读 `sender.user_id`），再序列化成 JSON 包成 `HumanMessage` **追加**进 `messages`；同事件的 `inject_account`（`account_injector` 子插件）把账号信息块 + 人设写进 `system_prompt` 键（**`UntrackedValue` 通道：单次 `ainvoke` 内可见、不写入 checkpoint**）；`ON_TURN_START` 先跑 `inject_model_info`（`miaoli_bot_adapter` 子插件，`priority=NORMAL+1`）把根配置里的 `base_url` / `api_key` / `model` / `max_tokens` 写进 state（同样是 `UntrackedValue`、不落盘），再由 `build_client`（`priority=NORMAL`）用这四个值建 `ChatOpenAI` 写进 `runtime.context["client"]` —— 优先级保证 `inject_model_info` 一定先跑。
-6. 同一批次里（`ON_BEFORE_REQUEST`，按 priority 降序）：`pick_tools`（`priority=1`）按 `config.yaml` 权限表与 `event.sender.user_id` 摘掉无权使用的工具（未声明的工具默认拒绝并打 warning）、`compact`（`priority=0`，`context_compactor` 子插件）读模型真实 `context_window` / `max_tokens` 判阈值，超窗时把历史压成一条 `<compaction>` 摘要并返回 `{"messages": Overwrite([摘要, *保留窗口])}` 整体替换历史（`Overwrite` 是 langgraph 官方的「绕过 reducer 直接写入」包装，`accumulate_data` 折叠多个处理器的产出时保留它、`merge_data` 构建视图时消费它，因此「整体替换」与其它处理器的「追加 / 定向删除」可以任意顺序组合）；随后 `ON_REQUEST` 先跑 `pending_tool_fixer`（`priority=2`）给悬空的 `tool_calls` 补上合成返回、`orphan_tool_fixer`（`priority=2`）删掉找不到发起者的 `ToolMessage`（两者只在上一轮异常中断留下坏形状时才有产出，历史本就合法时直接返回 `None`、不写任何增量），再由 `call_llm` 以 `[SystemMessage(state["system_prompt"]), *state["messages"]]` 请求模型，返回的 `AIMessage` 追加进 `messages`。
+5. `ON_AGENT_START` 的 `event_adapter`（`ob11_adapter` 子插件，`priority=HIGH`）把 `state["event"]`（事件字典）交给解析链 → `event_data`，回填 `state["event"]`（供 `pick_tools` 读 `sender.user_id`），再序列化成 JSON 包成 `HumanMessage` **追加**进 `messages`；同事件的 `inject_account`（`account_injector` 子插件）把账号信息块写进 `prompt` 的 `account_info` 段（**`SectionPatch` 通道：按 key 打补丁，各插件写各自的段、互不覆盖**）；`ON_TURN_START` 先跑 `inject_model_info`（`miaoli_bot_adapter` 子插件，`priority=NORMAL+1`）把根配置里的 `base_url` / `api_key` / `model` / `max_tokens` 写进 state（同样是 `UntrackedValue`、不落盘），再由 `build_client`（`priority=NORMAL`）用这四个值建 `ChatOpenAI` 写进 `runtime.context["client"]` —— 优先级保证 `inject_model_info` 一定先跑。
+6. `ON_TURN_START` 之后进入**压缩三段**：`ON_BEFORE_COMPACT` 的守卫 `should_compact`（`context_compactor` 子插件，`priority=NORMAL`）算 token 判阈值 —— 不需要压缩就 `Goto(ON_BEFORE_REQUEST)` 直接往下走；需要压缩就 `Goto(ON_COMPACT)`，`compact` 节点把历史压成一条 `<compaction>` 摘要并返回 `{"messages": Overwrite([摘要, *保留窗口])}` 整体替换历史（`Overwrite` 是 langgraph 官方的「绕过 reducer 直接写入」包装，`merge_into_updates` 折叠多个处理器的产出时保留它、`merge_into_state` 构建视图时消费它，因此「整体替换」与其它处理器的「追加 / 定向删除」可以任意顺序组合），再由 `ON_AFTER_COMPACT` 的默认跳转**回到 `ON_TURN_START`** 重走一轮 —— 这一轮守卫必然通过，于是继续往下。`ON_BEFORE_REQUEST` 批次（按 priority 降序）先跑 `build_prompt`（`priority=NORMAL+1`，`prompt_builder` 子插件）把 `prompt` 的各段拼成 `<key>value</key>` 并用 `Overwrite` 放到 `messages[0]`，再跑 `pick_tools`（`priority=1`）按 `config.yaml` 权限表与 `event.sender.user_id` 摘掉无权使用的工具（未声明的工具默认拒绝并打 warning）、随后 `ON_REQUEST` 先跑 `pending_tool_fixer`（`priority=2`）给悬空的 `tool_calls` 补上合成返回、`orphan_tool_fixer`（`priority=2`）删掉找不到发起者的 `ToolMessage`（两者只在上一轮异常中断留下坏形状时才有产出，历史本就合法时直接返回 `None`、不写任何增量），最后由 `call_llm` 直接把 `state["messages"]`（首条已是 `build_prompt` 放好的 `SystemMessage`）交给模型，返回的 `AIMessage` 追加进 `messages`。
 7. `ON_AFTER_REQUEST` 由 `base_topology` 的 `on_after_request` 节点分流（它注册在最低优先级 `MINIMUM`，因此任何插件都能抢在它之前改道）：末条消息带 `tool_calls` → 跳 `ON_TOOL_CALLING`，由 `invoke_tools` 用 `ToolNode` 执行工具、`ToolMessage` 追加进 `messages`，若工具结果是**非字符串**内容（多模态块列表），由 `tool_attachment_fixer` 子插件把它整体挪成一条 `HumanMessage`（原 `ToolMessage` 正文换成 `replace_text`，只对 `models` 里声明的模型生效），然后跳回 `ON_TURN_START` 重走一轮（重跑 `build_client` / `pick_tools` / `call_llm`）；无 `tool_calls` → 跳 `ON_TURN_END`，再经 `on_turn_end` 跳 `ON_AGENT_END`，最后 `on_agent_end` 返回 `Goto(END)` 收尾（`END` 被 langgraph 过滤，于是没有下一跳）。
 8. `ON_AGENT_END` 的 `latest_to_answer` 取 `messages[-1]`，是 `AIMessage` 就把 `content` 写进 `final_answer`（否则回退成携带 `thread_id` 的提示文案）。
 9. `on_message` 拿 `final_state` 的 `final_answer`（用 `.get()` 兜底 —— 该键是 `UntrackedValue`，本轮没走到 `on_agent_end` 时不存在），按根配置 `split`（`enable` / `delimiter`）切块并跳过空块；若 `typing.enable`，每块按 `len(块) * uniform(base_speed ± speed_offset)` sleep；首块用 `event.reply`，其余用 `utils.easier_send` 发回 QQ。
@@ -149,21 +152,22 @@ miaoli_bot/
 
 ## 内置子插件
 
-主包只保留图管线与加载框架，业务能力由子插件提供。以下十五个内置子插件位于本仓库的 `plugins/` 目录，`plugin.toml` 与配置模板 `config.example.yaml` 随仓库提交；各部署环境的真实 `config.yaml` 一律 gitignore（含根目录），部署时从模板复制一份再改：
+主包只保留 checkpointer 适配层、`core.Registry` 注册门面与子插件加载框架（图管线在独立包 `miaoli_pipeline` 里），业务能力由子插件提供。以下十六个内置子插件位于本仓库的 `plugins/` 目录，`plugin.toml` 与配置模板 `config.example.yaml` 随仓库提交；各部署环境的真实 `config.yaml` 一律 gitignore（含根目录），部署时从模板复制一份再改：
 
 | 子插件 | 提供 |
 |---|---|
-| `account_injector` | 账号注入：`inject_account` 在 `on_agent_start` 把管理员 / 机器人的 QQ 号与昵称拼进 `system_prompt` |
+| `account_injector` | 账号注入：`inject_account` 在 `on_agent_start` 把管理员 / 机器人的 QQ 号与昵称拼成 `account_info` 段写进 `prompt` |
 | `base_nodes` | 图节点：`build_client` / `call_llm` / `invoke_tools` / `latest_to_answer` / `output_checker`（`on_agent_end` 校验末条是 `AIMessage`）|
 | `base_system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml` 与 `README.md`）。`read_image` 按 `support_image` 名单过滤格式 —— 这道过滤是**为了限制读取**（不做的话读什么都会被 b64 成图片塞进上下文，导致 400），**不是**给模型过滤不同类型的图片 |
-| `base_topology` | 默认跳转（edgeless 拓扑的顺序来源）：**一个事件一个节点文件**，8 个节点各返回一条 `Goto`，把旧 `wire()` 的静态边与 `tools_condition` 条件边在插件层复原；`on_after_request` 按 `is_tool_calling(messages)` 分流工具循环与收尾。注册在最低优先级 `MINIMUM`，可被任何子插件抢跑 |
-| `context_compactor` | 上下文压缩：`compact` 在 `on_before_request`（`priority=0`）读模型真实 `context_window` / `max_tokens` 判阈值，超窗时把历史压成一条 `<compaction>` 摘要并用 `Overwrite` 整体替换；保留条数 / 提示词 / 计数方式全部配置化（`base` 粗估或 `tiktoken` 精确），自带 `data/compact_prompt.md` 与 `README.md` |
+| `base_topology` | 默认跳转（edgeless 拓扑的顺序来源）：**一个事件一个节点文件**，11 个节点各返回一条 `Goto`，把旧 `wire()` 的静态边与 `tools_condition` 条件边在插件层复原；`on_after_request` 按 `is_tool_calling(messages)` 分流工具循环与收尾；压缩三段也在这里兜底（`on_before_compact` 默认不压缩 → `ON_BEFORE_REQUEST`，`on_after_compact` 跳回 `ON_TURN_START`）。注册在最低优先级 `MINIMUM`，可被任何子插件抢跑 |
+| `context_compactor` | 上下文压缩，拆成**守卫 + 压缩**两个节点：`should_compact` 挂 `on_before_compact`（`priority=NORMAL`）读模型真实 `context_window` / `max_tokens` 判阈值，返回 `Goto(ON_COMPACT)` 或 `Goto(ON_BEFORE_REQUEST)`；`compact` 挂 `on_compact`，把历史压成一条 `<compaction>` 摘要并用 `Overwrite` 整体替换。保留条数 / 提示词 / 计数方式全部配置化（`base` 粗估或 `tiktoken` 精确），自带 `data/compact_prompt.md` 与 `README.md` |
 | `mcp_adapter` | MCP 适配：`recall_mcp_tools` 在 `on_before_request`（`priority=MEDIUM`）用 `MultiServerMCPClient` 拉取外部 MCP server 的工具，**按名去重**后合并进 `runtime.context["tools"]`；必须排在 `pick_tools`（`priority=1`）之前，否则 MCP 工具会绕过权限过滤。支持 `stdio` / `streamable_http` 两种传输，每个 server 可选 `reusable`（工具列表稳定则首次拉取后进缓存，由 `MCPClientRegistry` 管理）。自带 `README.md`。**未完成**：只做去重不做下架 |
 | `meme_ops` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
 | `miaoli_bot_adapter` | 内部数据适配：`inject_model_info` 在 `on_turn_start`（`priority=NORMAL+1`）调 `miaoli_bot.api` 的 `get_provider_info` / `get_model_info`，把 `base_url` / `api_key` / `model` / `max_tokens` 写进 state，供 `build_client` 直接消费 —— 图节点因此不必知道根配置的 `providers` 是列表还是字典。必须排在 `build_client`（`NORMAL`）之前。自带 `README.md` |
 | `orphan_tool_fixer` | 坏历史修复：`fix_orphan_tool_message` 在 `on_before_request`（`priority=2`）删掉找不到发起 `tool_calls` 的 `ToolMessage`（只产出定向删除增量） |
 | `pending_tool_fixer` | 坏历史修复：`fix_pending_tool_call` 在 `on_before_request`（`priority=3`）给悬空的 `tool_calls` 补一条「工具未执行」的合成 `ToolMessage`（返回 `Overwrite` 整表替换） |
 | `ob11_adapter` | OB11 事件适配（**纯 adapter，只解析不发送**）：`event_adapter` 在 `on_agent_start`（`priority=HIGH`）把 ncatbot 事件字典解析成 `event_data`，回填 `state["event"]` 并把 JSON 追加进 `messages`；两级解析链（`parsers/`）完全吃字典、不 import ncatbot 任何类。发送由 `main.py` 负责。自带 `config.yaml` 与 `README.md` |
+| `prompt_builder` | 提示词拼装：`build_prompt` 在 `on_before_request`（`priority=NORMAL+1`）把 `state["prompt"]` 的各段拼成 `<key>value</key>`，用 `Overwrite` 放到 `messages[0]`；内容与现有首条 `SystemMessage` 相同时返回 `None` 不写增量。自带 `README.md` |
 | `qq_platform_tools` | QQ 平台工具：发消息 / 发文件 / 下载文件 / 查消息 ID / 撤回消息 / 戳一戳（`send_poke`，`group_id` 有值为群内戳、无值为私聊戳）。自带 `README.md` |
 | `tool_attachment_fixer` | 工具附件修复：`fix_tool_attachment` 在 `on_tool_calling`（`priority=-2`）把非字符串的 `ToolMessage.content` 挪进紧跟其后的一条 `HumanMessage`（原 `ToolMessage` 正文换成 `replace_text`），让不接受 `tool` 消息带多模态块的模型不再 `400`；只对 `models` 里声明的模型生效（留空 = 全部），无改动时返回 `None`。自带 `README.md` |
 | `tool_permission_manager` | 工具权限控制：按 `config.yaml` 的权限表（`admin` / `white_list` / `anyone` / `passerby` / `nobody` 五种），在 `on_before_request`（`priority=1`）把当前身份无权使用的工具从 `runtime.context["tools"]` 摘掉；未声明的工具默认拒绝并打 warning（`debug: false` 可关日志，不影响判定）。自带 `README.md` |
@@ -234,6 +238,7 @@ cd <插件父目录>          # plugins/
 |---|---|
 | `ncatbot`（`>=5.5.8`） | QQ 机器人框架 / 事件与消息 API |
 | `langgraph`（`>=1.2.12`） | 图管线（`StateGraph` / `Command` / `Overwrite` / `ToolNode` / checkpoint） |
+| [`miaoli_pipeline`](https://github.com/lyt2011/miaoli_pipeline)（`>=1.0.1`） | 事件管线本体：`GraphPipeline`（`register` / `wire` / `compile` / `ainvoke` / 优先级编排）、`BaseNodeAction`（`Continue` / `Goto` / `Abort`）、`SectionPatch` 通道。**未发布到 PyPI**，见下方注 |
 | `langchain-openai`（`>=1.6.6`） | `ChatOpenAI`（可指向任意 OpenAI 兼容端点） |
 | `langchain-core`（`>=1.6.5`） | `@tool` 工具定义、`BaseMessage` / `BaseChatModel` 等基础类型（主包与子插件都用） |
 | `langgraph-checkpoint-sqlite`（`>=3.1.1`） | `AsyncSqliteSaver`（`checkpointer.database: sqlite`），带 `aiosqlite` / `sqlite-vec` |
@@ -250,10 +255,18 @@ cd <插件父目录>          # plugins/
 | `langchain-mcp-adapters`（`>=0.3.2`） | `mcp_adapter` 的 `MultiServerMCPClient`（拉取 / 调用外部 MCP server 的工具） |
 | `mcp`（`>=1.24.0`） | MCP 协议 SDK（由 `langchain-mcp-adapters` 带入，此处显式声明以免上游依赖树变动时导入期 `ModuleNotFoundError`） |
 
-> 注：以上依赖由 `manifest.toml` 的 `pip_dependencies` 声明。
+> 注：以上依赖由 `manifest.toml` 的 `pip_dependencies` 声明 —— 但 **`miaoli_pipeline` 不在其中**：`pip_dependencies` 只接受「包名 + PEP 440 约束」，而 `miaoli_pipeline` 目前只发布在 GitHub 上（未上 PyPI），写 git URL 会让自动安装失败。部署时手工装一次：
+>
+> ```bash
+> pip install "git+https://github.com/lyt2011/miaoli_pipeline.git"
+> ```
+>
+> 装好后 `import miaoli_pipeline` 即可用；它的唯一依赖是 `langgraph>=1.2,<2`（已在上面声明）。
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.22.0 — **图管线抽出为独立包 [`miaoli_pipeline`](https://github.com/lyt2011/miaoli_pipeline)、提示词改用 `SectionPatch` 分段通道、压缩拆成三段事件（破坏性）**。三件事连在一起：① **管线独立** —— `GraphPipeline` / `BaseNodeAction`（`Continue` / `Goto` / `Abort`）/ `Handler` / `AgentAborted` / `SectionPatch` 全部迁到独立仓库（分发名 `miaoli-pipeline`，包名 `miaoli_pipeline`，版本 `1.0.1`），本仓库只剩 `consts` 的事件名与优先级、`core.Registry` 的注册门面，`core/graph/`、`errors/agent_aborted.py`、`models/runtime/` 三个目录/文件删除。它**没有写进 `manifest.toml` 的 `pip_dependencies`** —— 那里只接受「包名 + PEP 440 约束」，而该包目前只发布在 GitHub 上（未上 PyPI），写 git URL 会让自动安装失败，故部署时手工 `pip install "git+https://github.com/lyt2011/miaoli_pipeline.git"`。② **提示词分段** —— `GraphState.prompt` 从 `Annotated[str, UntrackedValue]` 改成 **`Annotated[Dict[str, str], SectionPatch]`**（字段名 `system_prompt` → `prompt`），各子插件写各自的段、写 `None` 删段；新增 `prompt_builder` 子插件的 `build_prompt` 节点（`ON_BEFORE_REQUEST`，`priority=NORMAL+1`）把段拼成 `<key>value</key>` 并用 `Overwrite` 放到 `messages[0]`，内容未变时返回 `None` 不白写。③ **压缩三段事件** —— 新增 `ON_BEFORE_COMPACT` / `ON_COMPACT` / `ON_AFTER_COMPACT`（`GRAPH_EVENTS` 8 → 11），`on_turn_start` 的跳转目标改为 `ON_BEFORE_COMPACT`，`context_compactor` 拆成守卫 `should_compact`（`on_before_compact`，算 token 后 `Goto` 到 `ON_COMPACT` 或 `ON_BEFORE_REQUEST`）与 `compact`（`on_compact`，只负责压），`on_after_compact` **跳回 `ON_TURN_START`** 重走一轮 —— 压缩从此是图上有名有姓的三个事件，而不是藏在 `on_before_request` 里的一个 `if`。**修一个 bug**：多个节点写提示词时后者静默覆盖前者（[issue #2](https://github.com/lyt2011/miaoli_bot/issues/2)），靠 `SectionPatch` 按 key 打补丁修复。**已知风险**：`on_after_compact` 跳回 `ON_TURN_START` 会再进一次守卫，压缩后 token 仍超限时会 `guard → compact → after_compact → turn_start → guard` 循环直到 `GraphRecursionError`，目前没有「本轮已压缩过」的兜底标记。
 
 v0.21.0 — **`qq_adapter` 更名 `ob11_adapter`、根配置改回 `List[Provider]` + `List[LLM]`、新增 `miaoli_bot_adapter` 子插件（破坏性）**。三件事都围绕「名字与结构要说出真实含义」：① **更名** —— 旧名 `qq_adapter` 容易让人以为它「接入 QQ」，实际它只解析主包已经带进来的 OB11 事件字典，于是目录 / 入口类（`QQAdapterPlugin` → `OB11AdapterPlugin`）/ 5 个 `SHARE_STORE` 键命名空间一并改成 `ob11_adapter`；② **根配置改回列表** —— `providers` 从「字典 + 键当名字」改回 `List[Provider]`、`models` 改回 `List[LLM]`，名字由各自的 `name` 字段承担（这是主包很早以前的形状，中途为了解析方便改成字典是错的），`provider` / `model` 两个选择字段保留，由 `model_validator` 校验确实存在；③ **新增 `miaoli_bot_adapter`** —— 与 `ob11_adapter` 对称：后者适配**信息**（OB11 事件），前者适配**主包内部数据**（根配置），`inject_model_info` 在 `ON_TURN_START`（`priority=NORMAL+1`）调 `api` 的 `get_provider_info` / `get_model_info` 把 `base_url` / `api_key` / `model` / `max_tokens` 写进 state，`build_client` 因此不再读根配置、只消费 state —— 图节点与「`providers` 是列表还是字典」彻底解耦。**顺带**：`web_search` 插件重写（`provider` → `adapter`、`base_url` → `api_url`、密钥从环境变量改为配置直填、新增 `deepseek` 后端、两个后端共用工具名 `web_search`）；`ob11_adapter` 删掉零消费的 `SplitConfig`（实际读的是根配置的 `split` / `typing`，字段名都不同）；`api` 补 `get_provider_info` / `store_contains` 导出。**修 4 处必崩**：`models/config/provider.py` 的 `List[LlM]` 拼写（`PydanticUserError: Provider is not fully defined`）、`models/config/plugin.py` 缺 `List` / `LLM` 导入（`PluginConfig is not fully defined`）、`models/graph_state.py` 的 `add_message`（`NameError`，图构造时直接崩）、`api/sugar.py` 的 `get_provider_info` 三处错（`provider_name` 未定义、`return KeyError` 而非 `raise`、把 `list` 当字典键）、以及 `build_client` 里未定义的 `model_name`。**校验**：`compileall` 全仓 rc=0；子插件加载 **14/14**（跳过改造中的 `web_search`）；图 `wire()` + `compile()` 通过；真实 `ainvoke` 端到端跑通（`system_prompt` 2753 字符、`base_url` / `model` / `max_tokens` 由 `inject_model_info` 正确写入并被 `build_client` 消费）；两份配置模板均通过 `PluginConfig.model_validate`；`web_search` 真实调用 DeepSeek 搜索接口成功（含 404 / 超时 / 入参越界四条错误路径）；55 个模块的注解用 `get_type_hints` 强制立即求值，全部通过（等价于服务器 3.12 的求值时机）。**未验证**：NcatBot 运行时下的端到端对话仍未跑；`web_search` 的 `langsearch` 后端本次未复测（无可用密钥）。
 

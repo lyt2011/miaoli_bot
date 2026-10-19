@@ -8,8 +8,10 @@ from typing			import Optional, Dict
 
 from langgraph.checkpoint.base		import BaseCheckpointSaver
 
-from .core		import GraphPipeline, ToolRegistry, PluginLoader, registry
-from .errors	import AgentAborted
+from miaoli_pipeline.core		import GraphPipeline
+from miaoli_pipeline.errors		import AgentAborted
+
+from .core		import ToolRegistry, PluginLoader, Registry
 from .stores	import SHARE_STORE
 from .protocols	import BaseCheckpointerSaverAdapter as BCSA
 from .models	import GraphRuntimeContext, GraphState, PluginConfig
@@ -25,6 +27,7 @@ from .consts	import (
 	GRAPH_PIPELINE,
 	TOOL_REGISTRY,
 	WORKSPACE_DIR,
+	GRAPH_EVENTS,
 )
 from .adapters	import (
 	InMemoryAdapter,
@@ -57,7 +60,7 @@ class MiaoLiBot(NcatBotPlugin):
 	def _build_graph(checkpointer: BaseCheckpointSaver) -> GraphPipeline:
 		
 		graph_pipeline = GraphPipeline(GraphState, context_schema=GraphRuntimeContext)
-		graph_pipeline.wire()
+		graph_pipeline.wire(GRAPH_EVENTS)
 		graph_pipeline.compile(checkpointer=checkpointer)
 		
 		return graph_pipeline
@@ -79,13 +82,15 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.set(PLUGIN_DIR, Path(__file__).resolve().parent)
 		SHARE_STORE.set(WORKSPACE_DIR, self.workspace)
 		
-		SHARE_STORE.set(TOOL_REGISTRY, ToolRegistry())
-		SHARE_STORE.set(GRAPH_PIPELINE, self._build_graph(checkpointer=self.cpa))
+		tool_registry	= ToolRegistry()
+		graph_pipeline	= self._build_graph(checkpointer=self.cpa)
+		
+		SHARE_STORE.set(TOOL_REGISTRY, tool_registry)
+		SHARE_STORE.set(GRAPH_PIPELINE, graph_pipeline)
 		
 		self.plugin_loader = PluginLoader(
 			path		= plugin_config.sub_plugin.load_from,
-			config		= plugin_config,
-			registry	= registry,
+			registry	= Registry(pipeline=graph_pipeline, tools=tool_registry),
 		)
 		await self.plugin_loader.load_all() # NOTE: 一个插件错误会全炸完
 		

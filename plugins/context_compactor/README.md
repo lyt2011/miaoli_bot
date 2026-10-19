@@ -6,14 +6,32 @@
 
 ## 工作流程
 
-`compact` 节点挂在 `on_before_request`（`priority=NORMAL`）：
+拆成两个节点，挂在两个不同的事件上：
+
+**守卫 `should_compact`**（`on_before_compact`，`priority=NORMAL`）
 
 1. **算 token** —— 按 `calculate.mode` 选公式（见下）
-2. **判是否要压** —— `usage_tokens + max_tokens < context_window` 时不压，直接返回 `None`（不写任何增量）
-3. **压** —— 请求体是 `[SystemMessage(system_prompt), *messages, HumanMessage(prompt)]`，`system_prompt` 不存在时省略
-4. **替换** —— 返回 `Overwrite([HumanMessage("<compaction>摘要</compaction>"), *最近 N 条])`
+2. **判是否要压** —— `usage_tokens + max_tokens < context_window` 时返回 `Goto(ON_BEFORE_REQUEST)`（不压缩，直接往下走）
+3. **要压** —— 返回 `Goto(ON_COMPACT)`
+
+**压缩 `compact`**（`on_compact`，`priority=NORMAL`）
+
+4. **压** —— 请求体是 `[*messages, HumanMessage(prompt)]`
+5. **替换** —— 返回 `Overwrite([HumanMessage("<compaction>摘要</compaction>"), *最近 N 条])`
 
 摘要以 `<compaction>...</compaction>` 包裹后作为 `HumanMessage` 落在 `messages[0]`。
+
+压缩完由 `base_topology` 的 `on_after_compact` 跳回 `ON_TURN_START`，重走一轮 —— 这一轮守卫必然通过，于是继续到 `ON_BEFORE_REQUEST`。
+
+## 为什么拆成两个事件
+
+压缩原本是 `on_before_request` 里的一个 `if`：判阈值和压缩写在同一个节点里，`None` 表示「不压」。拆开之后：
+
+- **判**与**压**各是一个节点，各自能被别的插件抢跑或改道
+- 压缩成为图上**有名字的环节**，而不是某个节点内部的隐式分支
+- 提示词拼装（`prompt_builder`）可以确定地排在压缩**之后**，不必依赖优先级去猜 —— 压缩的 `Overwrite` 会整体替换 `messages`，若拼装在前，刚插进去的 `SystemMessage` 会被冲掉
+
+> ⚠️ **循环风险**：`on_after_compact` 跳回 `ON_TURN_START` 会再进一次守卫。若压缩后 token 仍超限（`keep_count` 过大、压缩无效果、`max_tokens` 配得过大），会 `guard → compact → after_compact → turn_start → guard` 无限循环直到 `GraphRecursionError`。目前没有「本轮已压缩过」的兜底标记。
 
 ## 配置
 

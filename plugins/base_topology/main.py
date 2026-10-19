@@ -5,6 +5,9 @@ from .models	import PluginConfig
 from .nodes		import (
 	on_agent_start,
 	on_turn_start,
+	on_before_compact,
+	on_compact,
+	on_after_compact,
 	on_before_request,
 	on_request,
 	on_after_request,
@@ -33,6 +36,9 @@ class BaseTopology(PluginProtocol):
 		
 		self.registry.on_agent_start(on_agent_start, priority=MINIMUM)
 		self.registry.on_turn_start(on_turn_start, priority=MINIMUM)
+		self.registry.on_before_compact(on_before_compact, priority=MINIMUM)
+		self.registry.on_compact(on_compact, priority=MINIMUM)
+		self.registry.on_after_compact(on_after_compact, priority=MINIMUM)
 		self.registry.on_before_request(on_before_request, priority=MINIMUM)
 		self.registry.on_request(on_request, priority=MINIMUM)
 		self.registry.on_after_request(on_after_request, priority=MINIMUM)

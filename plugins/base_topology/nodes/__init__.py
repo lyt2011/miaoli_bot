@@ -1,5 +1,8 @@
 from .on_agent_start		import on_agent_start
 from .on_turn_start			import on_turn_start
+from .on_before_compact		import on_before_compact
+from .on_compact			import on_compact
+from .on_after_compact		import on_after_compact
 from .on_before_request		import on_before_request
 from .on_request			import on_request
 from .on_after_request		import on_after_request
@@ -11,6 +14,9 @@ __all__ = [
 
 	"on_agent_start",
 	"on_turn_start",
+	"on_before_compact",
+	"on_compact",
+	"on_after_compact",
 	"on_before_request",
 	"on_request",
 	"on_after_request",

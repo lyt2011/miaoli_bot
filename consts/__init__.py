@@ -16,12 +16,16 @@ from .id_prefix	import (
 from .graph_events	import (
 	ON_AGENT_START,
 	ON_TURN_START,
+	ON_BEFORE_COMPACT,
+	ON_COMPACT,
+	ON_AFTER_COMPACT,
 	ON_BEFORE_REQUEST,
 	ON_AFTER_REQUEST,
 	ON_TOOL_CALLING,
 	ON_TURN_END,
 	ON_AGENT_END,
 	ON_REQUEST,
+	GRAPH_EVENTS,
 )
 
 from .node_priorities	import (
@@ -55,12 +59,16 @@ __all__ = [
 	# graph_events
 	"ON_AGENT_START",
 	"ON_TURN_START",
+	"ON_BEFORE_COMPACT",
+	"ON_COMPACT",
+	"ON_AFTER_COMPACT",
 	"ON_BEFORE_REQUEST",
 	"ON_AFTER_REQUEST",
 	"ON_TOOL_CALLING",
 	"ON_TURN_END",
 	"ON_AGENT_END",
 	"ON_REQUEST",
+	"GRAPH_EVENTS",
 	
 	# node_priorities
 	"MAXIMUM",

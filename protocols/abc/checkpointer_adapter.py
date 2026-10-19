@@ -11,6 +11,7 @@ from langgraph.checkpoint.base	import (
 	CheckpointTuple,
 )
 
+
 class BaseCheckpointerSaverAdapter(ABC, BaseCheckpointSaver):
 
 	def __init__(self, inner: BaseCheckpointSaver) -> None:

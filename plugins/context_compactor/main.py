@@ -3,7 +3,7 @@ from miaoli_bot.protocols	import PluginProtocol
 from miaoli_bot.consts		import NORMAL
 
 from .models	import PluginConfig
-from .nodes		import compact
+from .nodes		import compact, should_compact
 from .consts	import PLUGIN_CONFIG, RAW_CONFIG
 
 
@@ -22,7 +22,8 @@ class ContextCompactor(PluginProtocol):
 		if not config.enable:
 			return None
 		
-		self.registry.on_before_request(compact, priority=NORMAL)
+		self.registry.on_before_compact(should_compact, priority=NORMAL)
+		self.registry.on_compact(compact, priority=NORMAL)
 	
 	async def on_close(self) -> None:
 		

@@ -9,12 +9,15 @@ from langgraph.runtime		import Runtime
 from langgraph.typing		import StateT, ContextT
 from langchain_core.tools	import BaseTool
 
-from ..stores		import SHARE_STORE
+from miaoli_pipeline.core	import GraphPipeline
+
 from ..consts		import (
-	GRAPH_PIPELINE,
 	TOOL_REGISTRY,
 	ON_AGENT_START,
 	ON_TURN_START,
+	ON_BEFORE_COMPACT,
+	ON_COMPACT,
+	ON_AFTER_COMPACT,
 	ON_BEFORE_REQUEST,
 	ON_REQUEST,
 	ON_AFTER_REQUEST,
@@ -22,22 +25,43 @@ from ..consts		import (
 	ON_TURN_END,
 	ON_AGENT_END,
 )
-
+from ..stores		import SHARE_STORE
+from .tool_registry	import ToolRegistry
 
 Function	= Callable[[StateT, Runtime[ContextT]], Awaitable[Dict[str, Any]]]
 Node		= Function[StateT, ContextT]
 
-
 class Registry:
 	
+	"""
+	子插件注册入口
+	
+	pipeline 与 tools 都是构造注入的 —— 不依赖 SHARE_STORE，
+	这样 Registry 可以在 pipeline 建好之后立刻构造，与共享容器的生命周期解耦。
+	"""
+	
+	def __init__(self, pipeline: GraphPipeline, tools: ToolRegistry) -> None:
+		
+		self._pipeline	: GraphPipeline	= pipeline
+		self._tools		: ToolRegistry	= tools
+	
 	def register_tool(self, tool: BaseTool) -> None:
-		SHARE_STORE.recall(TOOL_REGISTRY).register(tool)
+		self._tools.register(tool)
 	
 	def on_agent_start(self, node: Node, priority: int = 0) -> None:
 		self._register_node(event=ON_AGENT_START, node=node, priority=priority)
 	
 	def on_turn_start(self, node: Node, priority: int = 0) -> None:
 		self._register_node(event=ON_TURN_START, node=node, priority=priority)
+	
+	def on_before_compact(self, node: Node, priority: int = 0) -> None:
+		self._register_node(event=ON_BEFORE_COMPACT, node=node, priority=priority)
+	
+	def on_compact(self, node: Node, priority: int = 0) -> None:
+		self._register_node(event=ON_COMPACT, node=node, priority=priority)
+	
+	def on_after_compact(self, node: Node, priority: int = 0) -> None:
+		self._register_node(event=ON_AFTER_COMPACT, node=node, priority=priority)
 	
 	def on_before_request(self, node: Node, priority: int = 0) -> None:
 		self._register_node(event=ON_BEFORE_REQUEST, node=node, priority=priority)
@@ -58,7 +82,4 @@ class Registry:
 		self._register_node(event=ON_AGENT_END, node=node, priority=priority)
 	
 	def _register_node(self, event: str, node: Node, priority: int = 0) -> None:
-		SHARE_STORE.recall(GRAPH_PIPELINE).register(event=event, node=node, priority=priority)
-
-
-registry = Registry()
+		self._pipeline.register(event=event, node=node, priority=priority)

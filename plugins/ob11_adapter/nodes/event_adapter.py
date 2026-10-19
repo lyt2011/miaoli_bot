@@ -5,7 +5,7 @@ from json						import dumps
 
 from miaoli_bot.api		import store_recall
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
-from miaoli_bot.core	import Abort
+from miaoli_pipeline.actions	import Abort
 
 from ..consts	import EVENT_PARSER
 

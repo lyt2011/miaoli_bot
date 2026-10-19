@@ -1,50 +1,39 @@
-from miaoli_bot.api		import get_model_info, store_recall
+from miaoli_bot.api		import store_recall
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
-from typing						import Any, Dict, Optional
+from typing						import Any, Dict
 from langgraph.runtime			import Runtime
 from langgraph.types			import Overwrite
-from langchain_core.messages	import HumanMessage, SystemMessage
+from langchain_core.messages	import HumanMessage
 
 from ..consts	import PLUGIN_CONFIG
-from ..utils	import base_calculate, keep_recent_messages, tiktoken_calculate
-
-import tiktoken	
+from ..utils	import keep_recent_messages
 
 
-async def compact(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Optional[Dict[str, Any]]:
+async def compact(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Dict[str, Any]:
 	
-	"""上下文压缩节点"""
+	"""上下文压缩节点 —— 由 should_compact 判定需要压缩后才进来"""
 	
-	s_plugin_config	= store_recall(PLUGIN_CONFIG)
+	plugin_cfg	= store_recall(PLUGIN_CONFIG)
 	
-	messages	= state["messages"]
+	messages = state.get("messages", [])
+	if not messages:
+		return Abort(reason="完全无内容可被压缩")
 	
-	# 根据计算模式动态选择公式/tiktoken
-	if s_plugin_config.calculate.mode == "base":
-		usage_tokens = base_calculate(messages)
+	# 构建压缩请求上下文
+	compact_ctx	= [*messages, HumanMessage(plugin_cfg.prompt)]
 	
-	elif s_plugin_config.calculate.mode == "tiktoken":
-		encoding		= tiktoken.get_encoding(s_plugin_config.calculate.encoder)
-		usage_tokens	= tiktoken_calculate(messages, encoding=encoding)
-	
-	else: raise RuntimeError(f"未知的模式: {s_plugin_config.calculate.mode}")
-	
-	model_info		= get_model_info()
-	
-	# 保证有压缩余量
-	if (usage_tokens + model_info["max_tokens"]) < model_info["context_window"]:
-		return None
-	
-	# 构建压缩请求上下文并根据实际需求插入系统提示词
-	compact_ctx	= [*messages, HumanMessage(s_plugin_config.prompt)]
-	if (sprompt := state.get("system_prompt")):
-		compact_ctx.insert(0, SystemMessage(sprompt))
-	
-	# 通过大模型压缩上下文 保留有效信
+	# 通过大模型压缩上下文
+	# 保留有效信息
+	# 生成 HumanMessage 摘要
 	ai_message	= await runtime.context["client"].ainvoke(compact_ctx)
-	kp_messages	= keep_recent_messages(messages, n=s_plugin_config.keep_count)
+	kp_messages	= keep_recent_messages(messages, n=plugin_cfg.keep_count)
 	compaction	= HumanMessage(f"<compaction>{ai_message.content}</compaction>")
 	
+	# 生成压缩后的上下文并回填系统提示词
+	compacted_ctx = [compaction, *kp_messages]
+	if isinstance(message[0], SystemMessage):
+		compacted_ctx.insert(0, message[0])
+	
 	# 覆盖messages
-	return {"messages": Overwrite([compaction, *kp_messages])}
+	return {"messages": Overwrite(compacted_ctx)}

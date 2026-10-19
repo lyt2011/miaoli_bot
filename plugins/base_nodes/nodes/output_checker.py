@@ -1,12 +1,12 @@
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
-from miaoli_bot.core	import Abort, BaseAction
+from miaoli_pipeline.actions	import Abort, BaseNodeAction
 
 from langgraph.runtime			import Runtime
 from langchain_core.messages	import AIMessage, ToolMessage, HumanMessage
 from typing						import Optional
 
 
-async def output_checker(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Optional[BaseAction]:
+async def output_checker(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Optional[BaseNodeAction]:
 	
 	"""检查输出类型是否合理"""
 	

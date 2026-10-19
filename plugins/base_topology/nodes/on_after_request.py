@@ -1,5 +1,5 @@
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
-from miaoli_bot.core	import Goto
+from miaoli_pipeline.actions	import Goto
 from miaoli_bot.consts	import ON_TOOL_CALLING, ON_TURN_END
 
 from typing						import List

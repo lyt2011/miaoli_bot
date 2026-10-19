@@ -9,7 +9,6 @@ from typing		import Any, Dict, List, Self
 
 from pydantic	import BaseModel, Field, FilePath
 
-from ..models		import PluginConfig
 from ..protocols	import PluginProtocol
 from .registry		import Registry
 
@@ -38,10 +37,9 @@ class SubPluginConfig(BaseModel):
 
 class PluginLoader:
 	
-	def __init__(self, path: Path, config: PluginConfig, registry: Registry) -> None:
+	def __init__(self, path: Path, registry: Registry) -> None:
 		
 		self.path		: Path			= Path(path)
-		self.config		: PluginConfig	= config
 		self.registry	: Registry		= registry
 		self.plugins	: SubPlugins	= {}
 	

@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.22.0
+- **版本**：0.22.1
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -265,6 +265,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.22.1 — **补齐 `should_compact` 缺失的 `Abort` 导入**。0.22.0 引入的二次压缩拦截从未生效过 —— 守卫靠「末条消息带 `compaction` 标志」判断是否已经压过一轮，命中时返回 `Abort`，但那个文件只从 `miaoli_pipeline.actions` 导入了 `Goto`，走到这条分支就是 `NameError`。异常被 `_dispatch` 的 `except Exception` 吞掉、打一条 `LOGGER.exception` 后 `continue`，于是守卫什么都没返回，`base_topology` 挂在 `MINIMUM` 的默认跳转接管、跳去 `ON_BEFORE_REQUEST` —— **表面行为正确，兜底本身从未执行**。拦截判据仍是 HACK（只看末条消息里有没有 `compaction` 字样），别的节点若在压缩后写一条含该字样的 `HumanMessage` 并跳回 `ON_TURN_START` 会被误拦；之所以够用，是因为当前只有 `compact` 会产出这种消息，且它总把摘要放在 `messages[0]`，`keep_recent_messages` 保留的尾部消息里不会出现。0.22.0 的 CHANGELOG 与项目状态段里「目前没有兜底标记」是错误描述，按「历史记录不改」保留，本版在插件 README 里更正当前态。
 
 v0.22.0 — **图管线抽出为独立包 [`miaoli_pipeline`](https://github.com/lyt2011/miaoli_pipeline)、提示词改用 `SectionPatch` 分段通道、压缩拆成三段事件（破坏性）**。三件事连在一起：① **管线独立** —— `GraphPipeline` / `BaseNodeAction`（`Continue` / `Goto` / `Abort`）/ `Handler` / `AgentAborted` / `SectionPatch` 全部迁到独立仓库（分发名 `miaoli-pipeline`，包名 `miaoli_pipeline`，版本 `1.0.1`），本仓库只剩 `consts` 的事件名与优先级、`core.Registry` 的注册门面，`core/graph/`、`errors/agent_aborted.py`、`models/runtime/` 三个目录/文件删除。它**没有写进 `manifest.toml` 的 `pip_dependencies`** —— 那里只接受「包名 + PEP 440 约束」，而该包目前只发布在 GitHub 上（未上 PyPI），写 git URL 会让自动安装失败，故部署时手工 `pip install "git+https://github.com/lyt2011/miaoli_pipeline.git"`。② **提示词分段** —— `GraphState.prompt` 从 `Annotated[str, UntrackedValue]` 改成 **`Annotated[Dict[str, str], SectionPatch]`**（字段名 `system_prompt` → `prompt`），各子插件写各自的段、写 `None` 删段；新增 `prompt_builder` 子插件的 `build_prompt` 节点（`ON_BEFORE_REQUEST`，`priority=NORMAL+1`）把段拼成 `<key>value</key>` 并用 `Overwrite` 放到 `messages[0]`，内容未变时返回 `None` 不白写。③ **压缩三段事件** —— 新增 `ON_BEFORE_COMPACT` / `ON_COMPACT` / `ON_AFTER_COMPACT`（`GRAPH_EVENTS` 8 → 11），`on_turn_start` 的跳转目标改为 `ON_BEFORE_COMPACT`，`context_compactor` 拆成守卫 `should_compact`（`on_before_compact`，算 token 后 `Goto` 到 `ON_COMPACT` 或 `ON_BEFORE_REQUEST`）与 `compact`（`on_compact`，只负责压），`on_after_compact` **跳回 `ON_TURN_START`** 重走一轮 —— 压缩从此是图上有名有姓的三个事件，而不是藏在 `on_before_request` 里的一个 `if`。**修一个 bug**：多个节点写提示词时后者静默覆盖前者（[issue #2](https://github.com/lyt2011/miaoli_bot/issues/2)），靠 `SectionPatch` 按 key 打补丁修复。**已知风险**：`on_after_compact` 跳回 `ON_TURN_START` 会再进一次守卫，压缩后 token 仍超限时会 `guard → compact → after_compact → turn_start → guard` 循环直到 `GraphRecursionError`，目前没有「本轮已压缩过」的兜底标记。
 

@@ -31,7 +31,9 @@
 - 压缩成为图上**有名字的环节**，而不是某个节点内部的隐式分支
 - 提示词拼装（`prompt_builder`）可以确定地排在压缩**之后**，不必依赖优先级去猜 —— 压缩的 `Overwrite` 会整体替换 `messages`，若拼装在前，刚插进去的 `SystemMessage` 会被冲掉
 
-> ⚠️ **循环风险**：`on_after_compact` 跳回 `ON_TURN_START` 会再进一次守卫。若压缩后 token 仍超限（`keep_count` 过大、压缩无效果、`max_tokens` 配得过大），会 `guard → compact → after_compact → turn_start → guard` 无限循环直到 `GraphRecursionError`。目前没有「本轮已压缩过」的兜底标记。
+> ⚠️ **二次压缩靠 HACK 拦截**：`on_after_compact` 跳回 `ON_TURN_START` 会再进一次守卫，守卫开头检查 `messages[-1].content` 里有没有 `compaction` 字样 —— 命中就 `Abort(reason="图尝试二次压缩上下文 被拦截")`，避免「压缩后 token 仍超限 → 无限循环到 `GraphRecursionError`」。
+>
+> 这个判据**不可靠**：别的节点若在压缩之后写一条含该字样的 `HumanMessage` 并跳回 `ON_TURN_START`，会被误拦。之所以够用，是因为当前只有 `compact` 会产出这种消息，且它总把摘要放在 `messages[0]`（`keep_recent_messages` 保留的尾部消息里不会出现）。
 
 ## 配置
 

@@ -11,7 +11,14 @@ miaoli_bot 内部数据适配 —— 把 miaoli_bot 自己的数据**适配**成
 
 `ob11_adapter` 让图节点不必依赖 ncatbot 的类，本插件让图节点不必依赖 miaoli_bot 的根配置结构。
 
-当前是骨架：只有生命周期与配置装载，尚未注册任何节点。
+## 节点
+
+| 节点 | 事件 / 优先级 | 产出 |
+| --- | --- | --- |
+| `inject_model_info` | `on_turn_start`（`NORMAL + 1`） | `base_url` / `api_key` / `model` / `max_tokens` 四个 state 键，供 `build_client` 构造 [OI] 实例 |
+| `inject_soul` | `on_turn_start`（`NORMAL + 1`） | `prompt` 的 `soul` 段，内容是根配置 `prompt_file` 指向的人设全文 |
+
+两个节点都必须排在 `build_client`（`NORMAL`）之前 —— `inject_model_info` 是它的输入，`inject_soul` 则是为了让 `prompt_builder` 在 `on_before_request` 拼装时能读到人设。
 
 ## 目录结构
 
@@ -21,7 +28,8 @@ miaoli_bot_adapter/
 ├── main.py                     # 入口类 MiaoliBotAdapter
 ├── config.example.yaml         # 配置模板（config.yaml 已 gitignore，不入库）
 ├── consts/                     # SHARE_STORE 键（PLUGIN_CONFIG / RAW_CONFIG）
-└── models/                     # PluginConfig
+├── models/                     # PluginConfig
+└── nodes/                      # inject_model_info / inject_soul
 ```
 
 ## 配置

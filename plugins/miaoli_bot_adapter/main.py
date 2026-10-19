@@ -4,7 +4,7 @@ from miaoli_bot.consts		import NORMAL
 
 from .consts	import PLUGIN_CONFIG, RAW_CONFIG
 from .models	import PluginConfig
-from .nodes		import inject_model_info
+from .nodes		import inject_model_info, inject_soul
 
 
 class MiaoliBotAdapter(PluginProtocol):
@@ -24,6 +24,7 @@ class MiaoliBotAdapter(PluginProtocol):
 		
 		# 必须先于 build_client 写入 base_url / api_key / model / max_tokens
 		self.registry.on_turn_start(inject_model_info, priority=NORMAL + 1)
+		self.registry.on_turn_start(inject_soul, priority=NORMAL + 1)
 	
 	async def on_close(self) -> None:
 		

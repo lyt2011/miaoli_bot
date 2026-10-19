@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.22.2](CHANGELOG/v0.22.2.md) — 2026-10-20 — 修复人设提示词从未进入上下文，新增 inject_soul 节点注入 soul 段
 - [v0.22.1](CHANGELOG/v0.22.1.md) — 2026-10-20 — 补齐 should_compact 缺失的 Abort 导入，二次压缩拦截此前从未生效
 - [v0.22.0](CHANGELOG/v0.22.0.md) — 2026-10-20 — 图管线抽出为独立包 miaoli_pipeline、提示词改用 SectionPatch 分段通道、压缩拆成三段事件（破坏性）
 - [v0.21.0](CHANGELOG/v0.21.0.md) — 2026-10-19 — qq_adapter 更名 ob11_adapter、根配置改回 List[Provider] + List[LLM]、新增 miaoli_bot_adapter 子插件（破坏性）

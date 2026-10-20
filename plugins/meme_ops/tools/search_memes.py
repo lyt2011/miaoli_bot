@@ -24,7 +24,7 @@ async def search_memes_by_tags(tags: List[str]) -> Dict[str, Any]:
 	
 	plugin_config	= store_recall(PLUGIN_CONFIG)
 	
-	if not plugin_config.is_enable:
+	if not plugin_config.enable:
 		return {"status": False, "message": "meme被禁用"}
 	
 	try:

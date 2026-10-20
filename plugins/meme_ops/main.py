@@ -17,9 +17,15 @@ from .tools		import (
 class MemeOps(PluginProtocol):
 	
 	async def on_load(self) -> None:
+	
+		plugin_config = PluginConfig.model_validate(self.config)
 		
 		store_set(RAW_CONFIG, self.config)
-		store_set(PLUGIN_CONFIG, PluginConfig.model_validate(self.config))
+		store_set(PLUGIN_CONFIG, plugin_config)
+		
+		# 关闭时不注册任何工具与节点
+		if not plugin_config.enable:
+			return
 		
 		self.registry.register_tool(archive_meme)
 		self.registry.register_tool(send_meme_to_qq)

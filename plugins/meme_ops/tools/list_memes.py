@@ -14,7 +14,7 @@ async def list_memes() -> Dict[str, Any]:
 	
 	plugin_config	= store_recall(PLUGIN_CONFIG)
 	
-	if not plugin_config.is_enable:
+	if not plugin_config.enable:
 		return {"status": False, "message": "meme被禁用"}
 	
 	try:

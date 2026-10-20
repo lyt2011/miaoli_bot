@@ -22,9 +22,10 @@ intent_recognition/
 │   ├── match_.py             # Match + 判别式联合 Rule
 │   └── rules/
 │       ├── __init__.py
-│       ├── kw.py             # KeywordRule
-│       ├── kws.py            # KeywordsRule
-│       └── regex.py          # RegexRule
+│       ├── any_keywords.py   # AnyKeywordsRule
+│       ├── min_keywords.py   # MinKeywordsRule
+│       ├── regex.py          # RegexRule
+│       └── single_keyword.py # SingleKeywordRule
 ├── nodes/
 │   ├── __init__.py
 │   └── recognize_intent.py   # 节点本体
@@ -43,7 +44,7 @@ matchers:
     file: "/abs/path/to/meme.md"
     encoding: "utf-8"
     rules:
-      - mode: "keyword"
+      - mode: "single_keyword"
         word: "表情包"
 ```
 
@@ -144,15 +145,20 @@ return {"prompt": {"intent_recognition": build_prompt(field_prompts)}}
 
 `matcher.name` 是段内的子标签，不是段名。
 
-## 三种 rule
+## 四种 rule
 
 | mode | 字段 | 判定 |
 | --- | --- | --- |
-| `keyword` | `word` | `word in data` |
-| `keywords` | `words`、`count`（默认 1） | 命中数量 `>= count` |
+| `single_keyword` | `word` | `word in data` |
+| `any_keywords` | `words` | 任意一个命中 |
+| `min_keywords` | `words`、`count`（默认 1） | 命中数量 `>= count` |
 | `regex` | `regex` | `re.search`，命中子串即可 |
 
-三种都实现 `BaseRule.is_hit(data) -> bool`，`mode` 是判别字段。新增一种命中方式 = 在 `models/rules/` 下加一个类、实现 `is_hit`、写一个 `Literal` 的 `mode`、加进 `models/match_.py` 的 `Union`，节点不用动。
+三个关键字 rule 的名字说的是**命中数量**，不是「命中方式」：`single_keyword` 收单个 `word`、命中即真；`any_keywords` 收 `words`、任意一个命中就算；`min_keywords` 也收 `words`，但要**至少命中 `count` 个**才算。
+
+注意 `count` 默认 1 时「至少 1 个」与「任意一个」等价，所以 `min_keywords` 不写 `count` 也能当「或」用 —— 想表达「或」就老老实实写 `any_keywords`，别依赖这个巧合。
+
+四种都实现 `BaseRule.is_hit(data) -> bool`，`mode` 是判别字段。新增一种命中方式 = 在 `models/rules/` 下加一个类、实现 `is_hit`、写一个 `Literal` 的 `mode`、加进 `models/match_.py` 的 `Union`，节点不用动。
 
 `RegexRule` 在首次调用时编译正则并缓存到 `PrivateAttr`，之后复用同一个 `Pattern`。
 

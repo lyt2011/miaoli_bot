@@ -31,13 +31,17 @@ matchers: []                    # 匹配器列表，为空等于不做事
 #     rules:
 #
 #       # 单个关键词：命中就 True
-#       - mode: "keyword"
+#       - mode: "single_keyword"
 #         word: "表情包"
 #
-#       # 多个关键词：命中数 >= count 才 True
-#       - mode: "keywords"
+#       # 多个关键词：至少命中 count 个才算 True
+#       - mode: "min_keywords"
 #         words: ["累", "困", "好烦"]
 #         count: 2              # 默认 1，即任意一个命中就算
+#
+#       # 多个关键词：任意一个命中就 True
+#       - mode: "any_keywords"
+#         words: ["怎么装", "怎么安装", "装不上"]
 #
 #       # 正则：re.search 语义，命中子串即可
 #       - mode: "regex"
@@ -46,5 +50,5 @@ matchers: []                    # 匹配器列表，为空等于不做事
 #   - name: "privacy"
 #     file: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins/intent_recognition/data/privacy.md"
 #     rules:
-#       - mode: "keyword"
+#       - mode: "single_keyword"
 #         word: "身份证"

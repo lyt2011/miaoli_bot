@@ -46,7 +46,7 @@ compact:
   recall_system_prompt: true
   encoding: "utf-8"
   prompt_file: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins/context_compactor/data/compact_prompt.md"
-  keep_count: 5
+  keep_count: 20
 
 calculate:
   mode: "base"
@@ -59,11 +59,22 @@ calculate:
 | `compact.recall_system_prompt` | 压缩后是否把原 `messages[0]` 的 `SystemMessage` 回填到首位 |
 | `compact.encoding` | 读 `compact.prompt_file` 用的编码 |
 | `compact.prompt_file` | 压缩提示词文件，**绝对路径** |
-| `compact.keep_count` | 压缩后保留多少条最近消息 |
+| `compact.keep_count` | 压缩后保留多少条最近消息（`ToolMessage` 不计数），默认 20 |
 
 ### 保留规则
 
 `keep_recent_messages` 从后往前收，只对 `HumanMessage` / `AIMessage` / `SystemMessage` 计数 —— **`ToolMessage` 不占配额**，避免把「有请求没返回」的 `tool_calls` 切开。倒序收集保证了尾部连续。
+
+保留条数决定压缩后「摘要」与「真实语料」的权重比。按真实会话统计（摘要约 3200 字符，`SystemMessage` 约 2800 字符）：
+
+| `keep_count` | AI 消息条数 | 保留字符 | 摘要 / 保留 | 压缩后总量 |
+| --- | --- | --- | --- | --- |
+| 5 | 2.6 | 1005 | 3.2x | ≈ 4100 token |
+| 10 | 5.5 | 2231 | 1.4x | ≈ 4800 token |
+| 20 | 11.4 | 4795 | 0.7x | ≈ 6300 token |
+| 30 | 17.0 | 7684 | 0.4x | ≈ 8000 token |
+
+摘要用的是第三人称客观叙述，与提示词要求的人设口吻相反。保留条数太少时，摘要的体积压过真实语料，压缩后模型的说话风格会明显漂移。默认 20 让权重反转到「真实语料为主」，代价是压缩后上下文约占 128K 窗口的 5%。
 
 ## token 计算
 

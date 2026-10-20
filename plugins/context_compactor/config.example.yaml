@@ -12,7 +12,7 @@ enable: true                  # 是否启用上下文压缩（模型默认 false
 
 compact:                      # 压缩行为
   recall_system_prompt: true  # 压缩后是否把原 messages[0] 的 SystemMessage 回填到首位
-  keep_count: 5               # 压缩后最多保留多少条消息
+  keep_count: 20              # 压缩后最多保留多少条消息（ToolMessage 不计数）
   encoding: "utf-8"           # 读取 prompt_file 用的编码
   prompt_file: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins/context_compactor/data/compact_prompt.md"
 

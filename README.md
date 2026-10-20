@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.23.0
+- **版本**：0.23.1
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -265,6 +265,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.23.1 — **移除压缩守卫，修掉其防御过度的问题**。0.23.0 把守卫判据的位置算对了，但判据本身是防御过度：只要过滤 `SystemMessage` 后的首条带 `<abstract>` 标签就 `Abort`，完全不看当前 token 用量。而摘要由 `compact` 写进 `messages` 后会长期留在头部，压缩之后的流程会再次撞上这道拦截，与「是否真的还需要再压一次」无关。判断压缩需求本来就有量化依据 —— `usage_tokens + max_tokens < context_window`，守卫想防的「二次压缩」只有在压缩后 token 仍然超限时才成立，用「摘要存在」当代理条件既不准也不必要，因此直接把守卫段删掉，压缩与否只由 token 计算决定。代价是不再有「已压缩过就拦住」的兜底，压缩后结果仍超限时会再次进入 `compact`，这条路径交给 token 计算本身兜底。顺带把 `config.example.yaml` 的 `keep_count` 默认值从 5 提到 20：压缩后摘要约 3200 字符、`SystemMessage` 约 2800 字符，`keep_count=5` 只留约 1000 字符真实语料，摘要体积是保留消息的 3.2 倍，而摘要用第三人称客观叙述、与人设口吻相反，权重压在摘要上会让压缩后的说话风格明显漂移；提到 20 后保留约 4800 字符、11 条 AI 消息，比例反转到 0.7 倍，压缩后上下文总量约 6300 token，占 128K 窗口的 5%。
 
 v0.23.0 — **`context_compactor` 配置分层 + 修复二次压缩守卫从未生效（破坏性）**。`PluginConfig` 此前把 `enable` 与压缩参数平铺在一层，读配置看不出哪些字段属于压缩行为，拆出 `CompactConfig` 收纳 `recall_system_prompt` / `keep_count` / `encoding` / `prompt_file` 与提示词懒加载，`PluginConfig` 只留 `enable` / `calculate` / `compact`。排查配置结构时挖出三个叠加的错误：① `compact` 节点的 `message[0]` 是未定义变量（应为 `messages[0]`），`NameError` 被 `_dispatch` 的 `except Exception` 吞掉，节点什么都没返回 —— 压缩请求照常发出、token 照常消耗，但 `messages` 从未被覆盖，**压缩从未成功过**；且因为 token 依然超限，`guard → compact(崩) → on_after_compact → on_turn_start → guard` 会无限循环，本地按 HEAD 逻辑复现是 `compact` 调用 **2502 次**后抛 `GraphRecursionError`。② 守卫看的是 `messages[-1]`，但摘要放在头部、`keep_recent_messages` 保留的是尾部，**这个判据从未命中过一次** —— 0.22.1 里「补齐 `Abort` 导入后拦截恢复」的结论是错的，补导入只是把 `NameError` 变成「判据不成立」。③ 标签字符串硬编码在 `compact` 与 `should_compact` 两处，改一处就静默失效，改标签为 `<abstract>` 的同时收进 `consts/tags.py`。修法：`compact` 改用 `messages[0]`，守卫先过滤掉 `SystemMessage` 再查首条（`recall_system_prompt` 让摘要位置在 `[0]` / `[1]` 间浮动，按类型过滤比猜下标可靠）。**压缩提示词同时换版**：四轮消融实验（旧版 / +工具禁令 / clop5.5 版 / gpt-6-sol 版，各 2~3 轮 × 4 窗口 × 带不带人设）后取 clop5.5 骨架 + gpt-6-sol 的三条补充（只依据输入、不要合并实体、不确定时标注），并删掉 gpt 版里那条「在长度受限时先删去寒暄」—— 模型判断不了长度是否受限，只读到「删」，仅删这一句就把实体覆盖率从 69.3% 拉到 80.7%。**线上未暴露这两个 bug**，是因为会话 token 从未触及压缩阈值，一旦触及就是死循环而非「压缩没效果」这种温和表现。
 

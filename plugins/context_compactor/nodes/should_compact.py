@@ -2,13 +2,12 @@ from miaoli_bot.api		import get_model_info, store_recall
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
 from miaoli_bot.consts	import ON_COMPACT, ON_BEFORE_REQUEST
 
-from miaoli_pipeline.actions	import Abort, Goto
+from miaoli_pipeline.actions	import Goto
 
-from typing						import Any
-from langgraph.runtime			import Runtime
-from langchain_core.messages	import HumanMessage, SystemMessage
+from typing				import Any
+from langgraph.runtime	import Runtime
 
-from ..consts	import ABSTRACT_TAG, PLUGIN_CONFIG
+from ..consts	import PLUGIN_CONFIG
 from ..utils	import base_calculate, tiktoken_calculate
 
 import tiktoken
@@ -21,11 +20,6 @@ async def should_compact(state: GraphState, runtime: Runtime[GraphRuntimeContext
 	plugin_cfg = store_recall(PLUGIN_CONFIG)
 	
 	messages = state.get("messages", [])
-	
-	# 过滤掉提示词后压缩结果必然出现在[0] nop -> no_prompt
-	nop_messages = [ctx for ctx in messages if not isinstance(ctx, SystemMessage)]
-	if nop_messages and isinstance(nop_messages[0], HumanMessage) and ABSTRACT_TAG in nop_messages[0].content:
-		return Abort(reason="图尝试二次压缩上下文 被拦截")
 	
 	# 根据计算模式动态选择公式/tiktoken
 	if plugin_cfg.calculate.mode == "base":

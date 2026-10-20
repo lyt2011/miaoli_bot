@@ -12,14 +12,9 @@ async def list_memes() -> Dict[str, Any]:
 	
 	"""列出所有已归档的表情包"""
 	
-	plugin_config	= store_recall(PLUGIN_CONFIG)
-	
-	if not plugin_config.enable:
-		return {"status": False, "message": "meme被禁用"}
-	
 	try:
 		
-		async with MemeSqlite(plugin_config.db_path) as meme_sqlite:
+		async with MemeSqlite(store_recall(PLUGIN_CONFIG).database.path) as meme_sqlite:
 			rows = await meme_sqlite.fetch_memes()
 	
 	except Exception as e:

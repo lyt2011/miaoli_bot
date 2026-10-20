@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.25.0](CHANGELOG/v0.25.0.md) — 2026-10-20 — meme_ops 配置拆成 database / help_doc 子配置，节点改名 inject_doc（破坏性）
 - [v0.24.0](CHANGELOG/v0.24.0.md) — 2026-10-20 — meme_ops 提示词外置成文件，enable 真正生效（破坏性）
 - [v0.23.1](CHANGELOG/v0.23.1.md) — 2026-10-20 — 移除压缩守卫，修掉其防御过度的问题
 - [v0.23.0](CHANGELOG/v0.23.0.md) — 2026-10-20 — context_compactor 配置分层，修复二次压缩守卫从未生效与压缩节点必抛 NameError（破坏性）

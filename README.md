@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.24.0
+- **版本**：0.25.0
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -162,7 +162,7 @@ miaoli_bot/
 | `base_topology` | 默认跳转（edgeless 拓扑的顺序来源）：**一个事件一个节点文件**，11 个节点各返回一条 `Goto`，把旧 `wire()` 的静态边与 `tools_condition` 条件边在插件层复原；`on_after_request` 按 `is_tool_calling(messages)` 分流工具循环与收尾；压缩三段也在这里兜底（`on_before_compact` 默认不压缩 → `ON_BEFORE_REQUEST`，`on_after_compact` 跳回 `ON_TURN_START`）。注册在最低优先级 `MINIMUM`，可被任何子插件抢跑 |
 | `context_compactor` | 上下文压缩，拆成**守卫 + 压缩**两个节点：`should_compact` 挂 `on_before_compact`（`priority=NORMAL`）读模型真实 `context_window` / `max_tokens` 判阈值，返回 `Goto(ON_COMPACT)` 或 `Goto(ON_BEFORE_REQUEST)`；`compact` 挂 `on_compact`，把历史压成一条 `<abstract>` 摘要并用 `Overwrite` 整体替换。保留条数 / 提示词 / 是否回填系统提示词 / 计数方式全部配置化（`base` 粗估或 `tiktoken` 精确），自带 `data/compact_prompt.md` 与 `README.md` |
 | `mcp_adapter` | MCP 适配：`recall_mcp_tools` 在 `on_before_request`（`priority=MEDIUM`）用 `MultiServerMCPClient` 拉取外部 MCP server 的工具，**按名去重**后合并进 `runtime.context["tools"]`；必须排在 `pick_tools`（`priority=1`）之前，否则 MCP 工具会绕过权限过滤。支持 `stdio` / `streamable_http` 两种传输，每个 server 可选 `reusable`（工具列表稳定则首次拉取后进缓存，由 `MCPClientRegistry` 管理）。自带 `README.md`。**未完成**：只做去重不做下架 |
-| `meme_ops` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除；`inject_helper` 在 `on_agent_start`（`priority=NORMAL`）把 `data/meme_helper.md` 的内容写进 `prompt` 的 `meme_helper` 段，引导模型先 `list_memes` 再按情景 `send_meme_to_qq`，并给出归档前的四条判据；`enable: false` 时工具与节点都不注册；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
+| `meme_ops` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除；`inject_doc` 在 `on_agent_start`（`priority=NORMAL`）把 `data/meme_helper.md` 的内容写进 `prompt` 的 `meme_helper` 段，引导模型先 `list_memes` 再按情景 `send_meme_to_qq`，并给出归档前的四条判据；`enable: false` 时工具与节点都不注册；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
 | `miaoli_bot_adapter` | 内部数据适配：两个节点都挂在 `on_turn_start`（`priority=NORMAL+1`）：`inject_model_info` 调 `miaoli_bot.api` 的 `get_provider_info` / `get_model_info` 把 `base_url` / `api_key` / `model` / `max_tokens` 写进 state，供 `build_client` 直接消费；`inject_soul` 把根配置 `prompt_file` 的人设全文写进 `prompt` 的 `soul` 段，供 `prompt_builder` 拼装。图节点因此不必知道根配置的 `providers` 是列表还是字典。必须排在 `build_client`（`NORMAL`）之前。自带 `README.md` |
 | `orphan_tool_fixer` | 坏历史修复：`fix_orphan_tool_message` 在 `on_before_request`（`priority=2`）删掉找不到发起 `tool_calls` 的 `ToolMessage`（只产出定向删除增量） |
 | `pending_tool_fixer` | 坏历史修复：`fix_pending_tool_call` 在 `on_before_request`（`priority=3`）给悬空的 `tool_calls` 补一条「工具未执行」的合成 `ToolMessage`（返回 `Overwrite` 整表替换） |
@@ -265,6 +265,8 @@ cd <插件父目录>          # plugins/
 > 注：0.7.0 及以前依赖 `pi_bridge` 与外部 pi Agent 进程，0.8.0 起已整体移除。
 
 ## 项目状态
+
+v0.25.0 — **`meme_ops` 配置拆成 `database` / `help_doc` 两个子配置（破坏性）**。`PluginConfig` 此前把启用开关、数据库路径、帮助文档路径与编码平铺在同一层，四组参数各管一摊，读配置看不出层级；现在收窄为 `enable` / `database` / `help_doc` 三个字段，`DatabaseConfig` 收 `path`（sqlite 数据库路径），`HelpDocConfig` 收 `path` + `encoding`（表情包扩展帮助文档与其编码），两个校验方法相应改读 `self.database.path` / `self.help_doc.path`，后者改名 `check_doc_path`。节点名跟着它注入的内容走 —— 它注入的是一份帮助文档，`inject_helper` 这个叫法说的是「注入一个帮手」，与「把 `help_doc.path` 的文件内容写进 `meme_helper` 段」这件事对不上，改成 `inject_doc`，文件名同步（`nodes/inject_helper.py` → `nodes/inject_doc.py`）。同时删掉 `PluginConfig.helper` 这个懒加载属性：它每次访问都读一次文件，读的又是 `helper_path` + `encoding` 两个字段，字段搬进 `HelpDocConfig` 后这个属性留在 `PluginConfig` 上就成了跨层访问，直接让 `inject_doc` 自己从 `help_doc` 子配置里读。5 个工具取数据库路径由 `.db_path` 改为 `.database.path`。**破坏性**：配置结构改为嵌套，旧扁平键会被 pydantic 静默忽略 —— `database.path` 与 `help_doc.path` 双双为 `None`，`check_db_path` 直接 `ValueError`，已有部署必须同步改 `config.yaml`。
 
 v0.24.0 — **`meme_ops` 提示词外置成文件、`enable` 真正生效（破坏性）**。`inject_helper` 原来注入的是 `nodes/inject_helper.py` 里的 `MEME_HELPER` 常量，改提示词要动代码；现在改成 `data/meme_helper.md`，由 `PluginConfig.helper` 懒加载读取，配置用 `helper_path` + `encoding` 指定。新提示词除了「先 `list_memes` 再 `send_meme_to_qq`」的回复工作流，还加了归档判据 —— 要求归档前逐条对照「是否传递情绪 / 是否涉及隐私 / 是否引起争议 / 是否含不良内容」，并明确禁止靠 image segment 的 `sub_type` 判断；实测 5 个场景 × 2 次，负例（擦边 / IP 隐私 / 普通截图）6/6 正确不归档，正例 3/4 归档，唯一失分是 `sub_type=0` 的真表情包 1/2。另一件事是 `enable` 此前根本没被消费：`is_enable` 只被 5 个工具内部读来判断「返回禁用提示还是干活」，工具本身照常注册、`inject_helper` 也照常注入，所以写 `false` 等于没关；现在 `on_load` 在写 store 之后加了一道判断，关闭时直接 `return`，工具与节点都不注册，这也让「关闭 + 不填 `helper_path`」真正成立（之前 `inject_helper` 无条件注册，`helper` 访问到 `None` 会抛 `TypeError`，虽被 `_dispatch` 吞掉但每轮打一条异常日志）。**破坏性**：配置键 `is_enable` → `enable`，旧键名不再被识别，且新增 `helper_path`（绝对路径，启用时必填）与 `encoding`，已有部署需同步改 `config.yaml`。
 

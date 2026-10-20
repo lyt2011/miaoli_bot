@@ -22,14 +22,9 @@ async def search_memes_by_tags(tags: List[str]) -> Dict[str, Any]:
 	只带其中一个标签的表情包不会出现在结果里
 	"""
 	
-	plugin_config	= store_recall(PLUGIN_CONFIG)
-	
-	if not plugin_config.enable:
-		return {"status": False, "message": "meme被禁用"}
-	
 	try:
 		
-		async with MemeSqlite(plugin_config.db_path) as meme_sqlite:
+		async with MemeSqlite(store_recall(PLUGIN_CONFIG).database.path) as meme_sqlite:
 			memes = await meme_sqlite.query_tags(tags)
 	
 	except Exception as e:

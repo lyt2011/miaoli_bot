@@ -5,33 +5,37 @@
 
 ```yaml
 enable: true
-helper_path: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins/meme_ops/data/meme_helper.md"
-encoding: "utf-8"
-db_path: "/tmp/memes.db"
+
+database:
+  path: "/tmp/memes.db"
+
+help_doc:
+  path: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins/meme_ops/data/meme_helper.md"
+  encoding: "utf-8"
 ```
 
 | 键 | 说明 |
 | --- | --- |
 | `enable` | 关闭时 `on_load` 直接返回，**工具与节点都不注册** |
-| `helper_path` | 表情包扩展帮助文档，**绝对路径**；启用时必填 |
-| `encoding` | 读 `helper_path` 用的编码 |
-| `db_path` | sqlite 数据库路径；启用时必填 |
+| `database.path` | sqlite 数据库路径；启用时必填 |
+| `help_doc.path` | 表情包扩展帮助文档，**绝对路径**；启用时必填 |
+| `help_doc.encoding` | 读 `help_doc.path` 用的编码 |
 
-`helper_path` 与 `db_path` 都是「可以关闭 + 不填，不能启用 + 不填」—— 启用时缺任一项，加载期直接 `ValueError`。
+`database.path` 与 `help_doc.path` 都是「可以关闭 + 不填，不能启用 + 不填」—— 启用时缺任一项，加载期直接 `ValueError`。
 
 ## 节点
 
 | 节点 | 事件 / 优先级 | 产出 |
 | --- | --- | --- |
-| `inject_helper` | `on_agent_start`（`NORMAL`） | `prompt` 的 `meme_helper` 段，内容取自 `helper_path` 指向的文件 |
+| `inject_doc` | `on_agent_start`（`NORMAL`） | `prompt` 的 `meme_helper` 段，内容取自 `help_doc.path` 指向的文件 |
 
-提示词落在 `data/meme_helper.md`，由 `PluginConfig.helper` 懒加载读取（每次访问读一次文件，不做缓存）。放在文件里而不是常量里，是为了改提示词不用动代码。
+提示词落在 `data/meme_helper.md`，由 `inject_doc` 在每次注入时读取（不做缓存）。放在文件里而不是常量里，是为了改提示词不用动代码。
 
 ## 为什么需要它
 
 只把工具注册进工具表是不够的。`send_meme_to_qq` 需要一个 `hash`，模型手里没有，得先 `list_memes` 才知道有什么 —— 多跑一轮工具循环。不提示的话模型不会为了一个表情包主动多跑这一轮，实测 6 条情绪化输入 0 条发图。
 
-`inject_helper` 把「先 `list_memes` 再按情景 `send_meme_to_qq`」写成明确动作后，同样 6 条输入 6 条发图，且选中的表情包都与情景契合（累 → 摆烂、满分 → 竖拇指、被骂 → 生气炸毛、晚安 → 抱被子、笑 → 捶地、难过 → 摸头）。
+`inject_doc` 把「先 `list_memes` 再按情景 `send_meme_to_qq`」写成明确动作后，同样 6 条输入 6 条发图，且选中的表情包都与情景契合（累 → 摆烂、满分 → 竖拇指、被骂 → 生气炸毛、晚安 → 抱被子、笑 → 捶地、难过 → 摸头）。
 
 关键在于**先查表**：表里没货时模型自然不会发；表里有货且被要求先看，它就会挑一个发出去。
 

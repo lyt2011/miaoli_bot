@@ -1,8 +1,8 @@
-from .inject_helper	import inject_helper
+from .inject_doc	import inject_doc
 
 
 __all__ = [
 
-	"inject_helper",
+	"inject_doc",
 
 ]

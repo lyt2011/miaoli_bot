@@ -21,19 +21,14 @@ class ToolSchema(BaseModel):
 async def archive_meme(meme_path: str, description: str, tags: List[str]) -> Dict[str, Any]:
 	
 	"""归档表情包"""
-	
-	plugin_config = store_recall(PLUGIN_CONFIG)
-	
-	if not plugin_config.enable:
-		return {"status": False, "message": "meme被禁用"}
-	
+		
 	try:
 		
 		meme_bytes	= Path(meme_path).read_bytes()
 		meme_base64	= b64encode(meme_bytes)
 		meme_hash	= md5(meme_base64).hexdigest()
 		
-		async with MemeSqlite(plugin_config.db_path) as meme_sqlite:
+		async with MemeSqlite(store_recall(PLUGIN_CONFIG).database.path) as meme_sqlite:
 			
 			if await meme_sqlite.is_hash_existing(meme_hash):
 				meme_info = await meme_sqlite.fetch_meme_from_hash(meme_hash)

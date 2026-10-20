@@ -22,14 +22,9 @@ async def remove_meme_by_hash(hash: str) -> Dict[str, Any]:
 	删除后无法通过 send_meme_to_qq 发送
 	"""
 	
-	plugin_config	= store_recall(PLUGIN_CONFIG)
-	
-	if not plugin_config.enable:
-		return {"status": False, "message": "meme被禁用"}
-	
 	try:
 		
-		async with MemeSqlite(plugin_config.db_path) as meme_sqlite:
+		async with MemeSqlite(store_recall(PLUGIN_CONFIG).database.path) as meme_sqlite:
 			
 			meme_info	= await meme_sqlite.fetch_meme_from_hash(hash)
 			meme_id		= await meme_sqlite.remove_meme(hash)

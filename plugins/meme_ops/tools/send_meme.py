@@ -30,16 +30,10 @@ async def send_meme_to_qq(
 	true: chat_id 作为群聊ID，将信息发送到 chat_id 对应的群聊
 	false: chat_id 作为用户QQ号，将信息以私聊的方式发送到 chat_id 对应的用户
 	"""
-	
-	ncatbot_api		= get_ncatbot_api()
-	plugin_config	= store_recall(PLUGIN_CONFIG)
-	
-	if not plugin_config.enable:
-		return {"status": False, "message": "meme被禁用"}
-	
+		
 	try:
 	
-		async with MemeSqlite(plugin_config.db_path) as meme_sqlite:
+		async with MemeSqlite(store_recall(PLUGIN_CONFIG).database.path) as meme_sqlite:
 			
 			if not await meme_sqlite.is_hash_existing(hash):
 				return {"status": False, "message": f"找不到 hash 为 {hash} 的表情包"}
@@ -48,7 +42,7 @@ async def send_meme_to_qq(
 			base64_data	= meme_info["base64"].decode()
 		
 		send_result = await easier_send(
-			ncatbot_api	= ncatbot_api,
+			ncatbot_api	= get_ncatbot_api(),
 			chat_id		= chat_id,
 			to_group	= to_group,
 			message		= MessageArray([Image(file=f"base64://{base64_data}", sub_type=1)]),

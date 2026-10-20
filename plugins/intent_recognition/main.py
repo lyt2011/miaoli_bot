@@ -22,8 +22,8 @@ class IntentRecognition(PluginProtocol):
 		if not config.enable:
 			return None
 		
-		# 必须早于 prompt_builder 的 NORMAL + 1，否则拼装时读不到本轮增删的段
-		self.registry.on_before_request(recognize_intent, priority=NORMAL)
+		# 必须早于 prompt_builder 的 NORMAL + 1（数值大者先跑），否则拼装时读不到本轮增删的段
+		self.registry.on_before_request(recognize_intent, priority=NORMAL + 2)
 	
 	async def on_close(self) -> None:
 		

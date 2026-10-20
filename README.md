@@ -2,7 +2,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.26.0
+- **版本**：0.26.1
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -162,7 +162,7 @@ miaoli_bot/
 | `base_system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml` 与 `README.md`）。`read_image` 按 `support_image` 名单过滤格式 —— 这道过滤是**为了限制读取**（不做的话读什么都会被 b64 成图片塞进上下文，导致 400），**不是**给模型过滤不同类型的图片 |
 | `base_topology` | 默认跳转（edgeless 拓扑的顺序来源）：**一个事件一个节点文件**，11 个节点各返回一条 `Goto`，把旧 `wire()` 的静态边与 `tools_condition` 条件边在插件层复原；`on_after_request` 按 `is_tool_calling(messages)` 分流工具循环与收尾；压缩三段也在这里兜底（`on_before_compact` 默认不压缩 → `ON_BEFORE_REQUEST`，`on_after_compact` 跳回 `ON_TURN_START`）。注册在最低优先级 `MINIMUM`，可被任何子插件抢跑 |
 | `context_compactor` | 上下文压缩，拆成**守卫 + 压缩**两个节点：`should_compact` 挂 `on_before_compact`（`priority=NORMAL`）读模型真实 `context_window` / `max_tokens` 判阈值，返回 `Goto(ON_COMPACT)` 或 `Goto(ON_BEFORE_REQUEST)`；`compact` 挂 `on_compact`，把历史压成一条 `<abstract>` 摘要并用 `Overwrite` 整体替换。保留条数 / 提示词 / 是否回填系统提示词 / 计数方式全部配置化（`base` 粗估或 `tiktoken` 精确），自带 `data/compact_prompt.md` 与 `README.md` |
-| `intent_recognition` | 意图识别：`recognize_intent` 挂 `on_before_request`（`priority=NORMAL`，必须早于 `prompt_builder` 的 `NORMAL+1`），按配置的 `matchers` 逐条匹配末条消息的正文 —— 一个 matcher 的多条 rule 是**「与」关系**（`all()`），命中就按 `encoding` 读 `file`，以 `name` 为键；全部命中项最后合成**一个** `intent_recognition` 段（`name` 只是段内子标签）。四种命中方式以 `mode` 为判别字段组成判别式联合：`single_keyword`（单关键字子串）/ `any_keywords`（任意一个命中）/ `min_keywords`（至少命中 `count` 个）/ `regex`（`re.search`）。多模态正文由 `get_content` 提取，只收带 `str` 型 `text` 键的字典块与裸字符串块，图片块 / `tool_use` 块跳过（避免 base64 data URL 进匹配文本）。单个 matcher 失败只失效自己并打 `ERROR` 日志；`enable` 默认 `false`。自带 `README.md` |
+| `intent_recognition` | 意图识别：`recognize_intent` 挂 `on_before_request`（`priority=NORMAL+2`，必须早于 `prompt_builder` 的 `NORMAL+1` —— 数值大者先跑），按配置的 `matchers` 逐条匹配末条消息的正文 —— 一个 matcher 的多条 rule 是**「与」关系**（`all()`），命中就按 `encoding` 读 `file`，以 `name` 为键；全部命中项最后合成**一个** `intent_recognition` 段（`name` 只是段内子标签）。四种命中方式以 `mode` 为判别字段组成判别式联合：`single_keyword`（单关键字子串）/ `any_keywords`（任意一个命中）/ `min_keywords`（至少命中 `count` 个）/ `regex`（`re.search`）。多模态正文由 `get_content` 提取，只收带 `str` 型 `text` 键的字典块与裸字符串块，图片块 / `tool_use` 块跳过（避免 base64 data URL 进匹配文本）。单个 matcher 失败只失效自己并打 `ERROR` 日志；`enable` 默认 `false`。自带 `README.md` |
 | `mcp_adapter` | MCP 适配：`recall_mcp_tools` 在 `on_before_request`（`priority=MEDIUM`）用 `MultiServerMCPClient` 拉取外部 MCP server 的工具，**按名去重**后合并进 `runtime.context["tools"]`；必须排在 `pick_tools`（`priority=1`）之前，否则 MCP 工具会绕过权限过滤。支持 `stdio` / `streamable_http` 两种传输，每个 server 可选 `reusable`（工具列表稳定则首次拉取后进缓存，由 `MCPClientRegistry` 管理）。自带 `README.md`。**未完成**：只做去重不做下架 |
 | `meme_ops` | meme 工具：归档 / 发送 / 列举 / 按标签搜索 / 按 hash 删除；`inject_doc` 在 `on_agent_start`（`priority=NORMAL`）把 `data/meme_helper.md` 的内容写进 `prompt` 的 `meme_helper` 段，引导模型先 `list_memes` 再按情景 `send_meme_to_qq`，并给出归档前的四条判据；`enable: false` 时工具与节点都不注册；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
 | `miaoli_bot_adapter` | 内部数据适配：两个节点都挂在 `on_turn_start`（`priority=NORMAL+1`）：`inject_model_info` 调 `miaoli_bot.api` 的 `get_provider_info` / `get_model_info` 把 `base_url` / `api_key` / `model` / `max_tokens` 写进 state，供 `build_client` 直接消费；`inject_soul` 把根配置 `prompt_file` 的人设全文写进 `prompt` 的 `soul` 段，供 `prompt_builder` 拼装。图节点因此不必知道根配置的 `providers` 是列表还是字典。必须排在 `build_client`（`NORMAL`）之前。自带 `README.md` |

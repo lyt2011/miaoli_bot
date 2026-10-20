@@ -179,10 +179,10 @@ except Exception as e:
 ## 优先级
 
 ```python
-self.registry.on_before_request(recognize_intent, priority=NORMAL)
+self.registry.on_before_request(recognize_intent, priority=NORMAL + 2)
 ```
 
-`register()` 内部是 `reverse=True` 排序，**priority 数值越大越先执行**。`prompt_builder` 的 `build_prompt` 挂的是 `NORMAL + 1`，本节点必须严格小于它，否则拼装时读不到本轮写入的段。
+`register()` 内部是 `reverse=True` 排序，**priority 数值越大越先执行**。`prompt_builder` 的 `build_prompt` 挂的是 `NORMAL + 1`，本节点必须严格**大于**它，否则段写进去时 prompt 已经拼完了。
 
 ## 没命中时
 

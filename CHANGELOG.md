@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.25.1](CHANGELOG/v0.25.1.md) — 2026-10-21 — 新增 intent_recognition 子插件，按规则匹配末条消息注入意图提示词
 - [v0.25.0](CHANGELOG/v0.25.0.md) — 2026-10-20 — meme_ops 配置拆成 database / help_doc 子配置，节点改名 inject_doc（破坏性）
 - [v0.24.0](CHANGELOG/v0.24.0.md) — 2026-10-20 — meme_ops 提示词外置成文件，enable 真正生效（破坏性）
 - [v0.23.1](CHANGELOG/v0.23.1.md) — 2026-10-20 — 移除压缩守卫，修掉其防御过度的问题

@@ -6,8 +6,9 @@ from miaoli_pipeline.actions	import Abort, Goto
 
 from typing						import Any
 from langgraph.runtime			import Runtime
+from langchain_core.messages	import HumanMessage, SystemMessage
 
-from ..consts	import PLUGIN_CONFIG
+from ..consts	import ABSTRACT_TAG, PLUGIN_CONFIG
 from ..utils	import base_calculate, tiktoken_calculate
 
 import tiktoken
@@ -19,10 +20,11 @@ async def should_compact(state: GraphState, runtime: Runtime[GraphRuntimeContext
 	
 	plugin_cfg = store_recall(PLUGIN_CONFIG)
 	
-	# HACK: 非常简单但有用的已压缩判断 靠最后一条信息的 compaction 标志
-	# (HACK的原因是不可靠 万一有别的节点写了个新的 HumanMessage 而且刚好又跑了回来就炸了)
 	messages = state.get("messages", [])
-	if messages and "compaction" in messages[-1].content:
+	
+	# 过滤掉提示词后压缩结果必然出现在[0] nop -> no_prompt
+	nop_messages = [ctx for ctx in messages if not isinstance(ctx, SystemMessage)]
+	if nop_messages and isinstance(nop_messages[0], HumanMessage) and ABSTRACT_TAG in nop_messages[0].content:
 		return Abort(reason="图尝试二次压缩上下文 被拦截")
 	
 	# 根据计算模式动态选择公式/tiktoken

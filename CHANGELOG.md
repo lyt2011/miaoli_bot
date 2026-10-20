@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.23.0](CHANGELOG/v0.23.0.md) — 2026-10-20 — context_compactor 配置分层，修复二次压缩守卫从未生效与压缩节点必抛 NameError（破坏性）
 - [v0.22.3](CHANGELOG/v0.22.3.md) — 2026-10-20 — meme_ops 新增 inject_helper 节点，注入表情包使用提示
 - [v0.22.2](CHANGELOG/v0.22.2.md) — 2026-10-20 — 修复人设提示词从未进入上下文，新增 inject_soul 节点注入 soul 段
 - [v0.22.1](CHANGELOG/v0.22.1.md) — 2026-10-20 — 补齐 should_compact 缺失的 Abort 导入，二次压缩拦截此前从未生效

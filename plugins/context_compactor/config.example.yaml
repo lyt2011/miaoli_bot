@@ -5,16 +5,16 @@
 #
 # config.yaml 已加入 .gitignore，不会被提交。本文件是入库的模板。
 #
-# ⚠️ prompt_file 是绝对路径，换部署环境（本机 /sdcard ↔ 服务器 /root）时必须改。
+# ⚠️ compact.prompt_file 是绝对路径，换部署环境（本机 /sdcard ↔ 服务器 /root）时必须改。
 #    路径不存在会抛 ValidationError，插件直接加载失败。
 
 enable: true                  # 是否启用上下文压缩（模型默认 false，要用就得显式打开）
 
-keep_count: 5                 # 压缩后最多保留多少条消息
-
-encoding: "utf-8"             # 读取 prompt_file 用的编码
-
-prompt_file: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins/context_compactor/data/compact_prompt.md"
+compact:                      # 压缩行为
+  recall_system_prompt: true  # 压缩后是否把原 messages[0] 的 SystemMessage 回填到首位
+  keep_count: 5               # 压缩后最多保留多少条消息
+  encoding: "utf-8"           # 读取 prompt_file 用的编码
+  prompt_file: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins/context_compactor/data/compact_prompt.md"
 
 calculate:                    # token 估算方式
   mode: "base"                # base = 用代码里硬编码的公式估算；tiktoken = 用外部包估算

@@ -33,7 +33,7 @@ ON_TURN_START
 
 默认路径（本插件提供）是**不压缩**：`on_before_compact` 直接跳 `ON_BEFORE_REQUEST`。装了 `context_compactor` 之后，它的守卫挂在更高优先级（`NORMAL`），先跑并返回 `Goto`，默认跳转就被短路。
 
-`on_after_compact` 跳回 `ON_TURN_START` 而不是往下走，是为了让压缩后的这一轮重新经过完整流程 —— 但这也意味着**守卫会再跑一次**。`context_compactor` 的 `should_compact` 靠「`messages[-1].content` 里有没有 `compaction` 字样」拦截二次压缩（命中就 `Abort`），否则压缩后 token 仍超限时会无限循环到 `GraphRecursionError`。
+`on_after_compact` 跳回 `ON_TURN_START` 而不是往下走，是为了让压缩后的这一轮重新经过完整流程 —— 但这也意味着**守卫会再跑一次**。`context_compactor` 的 `should_compact` 靠「滤掉 `SystemMessage` 后的首条消息里有没有 `<abstract>` 标志」拦截二次压缩（命中就 `Abort`），否则压缩后 token 仍超限时会无限循环到 `GraphRecursionError`。
 
 ## 注意事项
 

@@ -11,7 +11,8 @@ from ..consts	import PLUGIN_CONFIG
 from ..utils	import build_prompt, get_content
 
 
-LOGGER = logging.getLogger()
+LOGGER	= logging.getLogger()
+GUIDE	= "以下本轮的意图识别注入内容，不会保留；有用就读原文件持久化进上下文。"
 
 
 async def recognize_intent(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Optional[Dict[str, Any]]:
@@ -46,4 +47,6 @@ async def recognize_intent(state: GraphState, runtime: Runtime[GraphRuntimeConte
 		except Exception as e:
 			LOGGER.error(f"匹配 {matcher.name} 时出现错误: {type(e).__name__}: {e}")
 	
-	return {"prompt": {"intent_recognition": build_prompt(field_prompts)}}
+	# 拼接引导提示词
+	final_prompt = GUIDE + "\n" + build_prompt(field_prompts)
+	return {"prompt": {"intent_recognition": final_prompt}}

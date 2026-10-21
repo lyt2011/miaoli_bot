@@ -14,4 +14,4 @@ async def inject_doc(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -
 	
 	doc_config = store_recall(PLUGIN_CONFIG).help_doc
 	
-	return {"prompt": {"meme_helper": Path(doc_config.path).read_text(encoding=doc_config.encoding)}}
+	return {"prompts": {"meme_helper": Path(doc_config.path).read_text(encoding=doc_config.encoding)}}

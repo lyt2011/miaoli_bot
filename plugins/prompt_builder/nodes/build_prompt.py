@@ -9,14 +9,14 @@ from langchain_core.messages	import BaseMessage, SystemMessage
 async def build_prompt(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Dict[str, Any]:
 	
 	"""
-	通过 prompt 的键与值构建提示词字符串
+	通过 prompts 的键与值构建提示词字符串
 	并回填到 messages
 	"""
 	
 	messages	: List[BaseMessage]	= state.get("messages", [])
 	prompt_array: List[str]			= []
 	
-	for prompt_key, prompt_content in state.get("prompt", {}).items():
+	for prompt_key, prompt_content in state.get("prompts", {}).items():
 		prompt_array.append(f"<{prompt_key}>{prompt_content}</{prompt_key}>")
 	
 	# 防止 Overwrite 浪费资源 内容一样则跳过注入

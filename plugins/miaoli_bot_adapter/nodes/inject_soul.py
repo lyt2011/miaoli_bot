@@ -9,4 +9,4 @@ async def inject_soul(state: GraphState, runtime: Runtime[GraphRuntimeContext]) 
 	
 	"""注入人设提示词"""
 	
-	return {"prompt": {"soul": get_prompt()}}
+	return {"prompts": {"soul": get_prompt()}}

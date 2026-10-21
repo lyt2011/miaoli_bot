@@ -9,7 +9,7 @@ class GraphState(TypedDict):
 	
 	event	: Annotated[Dict[str, Any], UntrackedValue]
 	messages: Annotated[list, add_messages]
-	prompt	: Annotated[Dict[str, str], SectionPatch]
+	prompts	: Annotated[Dict[str, str], SectionPatch]
 	
 	model		: Annotated[str, UntrackedValue]
 	base_url	: Annotated[str, UntrackedValue]

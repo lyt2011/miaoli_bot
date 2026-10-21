@@ -4,9 +4,8 @@ from miaoli_bot.consts		import NORMAL
 
 from .models	import PluginConfig
 from .consts	import PLUGIN_CONFIG, RAW_CONFIG
-from .nodes		import inject_doc
+from .nodes		import inject_doc, inject_memes
 from .tools		import (
-	list_memes,
 	archive_meme,
 	send_meme_to_qq,
 	remove_meme_by_hash,
@@ -29,11 +28,11 @@ class MemeOps(PluginProtocol):
 		
 		self.registry.register_tool(archive_meme)
 		self.registry.register_tool(send_meme_to_qq)
-		self.registry.register_tool(list_memes)
 		self.registry.register_tool(remove_meme_by_hash)
 		self.registry.register_tool(search_memes_by_tags)
 		
 		self.registry.on_agent_start(inject_doc, priority=NORMAL)
+		self.registry.on_agent_start(inject_memes, priority=NORMAL)
 
 	async def on_close(self) -> None:
 		

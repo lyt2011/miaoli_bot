@@ -38,7 +38,6 @@ intent_recognition/
 
 ```yaml
 enable: false
-with_path: true                 # 注入时是否追加 (from <file>) 来源标记
 
 matchers:
   - name: "meme"
@@ -52,7 +51,6 @@ matchers:
 | 键 | 说明 |
 | --- | --- |
 | `enable` | 关闭时 `on_load` 直接返回，节点不注册 |
-| `with_path` | 注入时在正文末尾追加 ` (from <file>)` 来源标记，默认 `true` |
 | `matchers` | 匹配器列表，可空 |
 | `matchers[].name` | 标签名，注入后形如 `<meme>…</meme>` |
 | `matchers[].file` | 要注入的提示词文件，**绝对路径**，必须真实存在 |
@@ -65,11 +63,17 @@ matchers:
 
 ### 1. 取待匹配文本
 
-不管最后一条消息是什么类型，都交给 `get_content` 提取正文：
+先回溯出最近一条用户消息，再交给 `get_content` 提取正文：
 
 ```python
-latest_content = get_content(messages[-1])
+human_message = get_latest_human(state.get("messages", []))
+if not human_message:
+	return None
+
+human_content = get_content(human_message)
 ```
+
+不能直接用 `messages[-1]`：节点挂在 `ON_BEFORE_REQUEST`，而工具循环会从 `ON_TOOL_CALLING` 回到 `ON_TURN_START`，一个用户回合会跑多次 `ON_BEFORE_REQUEST`。到第二、三次时 `messages[-1]` 已经是工具返回值（表情包清单、`message_id` 之类），按它重算会得到「不命中」，把本轮已经注入的段覆盖成空。
 
 `get_content` 的参数类型是 `Any` —— 它只鸭子类型地读 `content`，不依赖具体消息类（也就不必为了一个类型注解去 import 消息类）：
 
@@ -107,7 +111,7 @@ else:
 一个 matcher 下的多条 rule 是**「与」关系** —— `all()`，全部命中才算这个 matcher 命中：
 
 ```python
-if all([rule.is_hit(latest_content) for rule in matcher.rules]):
+if all([rule.is_hit(human_content) for rule in matcher.rules]):
 ```
 
 注意这是个容易读反的地方：rule 之间不是「任意一条命中」，而是「一条不满足就整体不命中」。想表达「任意一条」，就把多个关键词写进同一个 `keywords` rule 的 `words` 里。
@@ -116,12 +120,11 @@ matcher 之间则是各自独立判定，多个 matcher 可以同时命中。
 
 ### 3. 读取提示词
 
-命中后按 `encoding` 读 `file`，键取 `name`；`with_path` 开启时在正文末尾追加来源标记：
+命中后按 `encoding` 读 `file`，键取 `name`，并在正文末尾追加来源标记：
 
 ```python
 prompt = Path(matcher.file).read_text(encoding=matcher.encoding)
-if plugin_cfg.with_path:
-	prompt = f"{prompt} (from {matcher.file})"
+prompt = f"{prompt} (from {matcher.file})"
 
 field_prompts[matcher.name] = prompt
 ```

@@ -11,6 +11,7 @@
 #   3. 全字段 extra="forbid" —— 键名拼错不会被静默忽略，直接 ValidationError
 
 enable: false                   # 是否启用意图识别（模型默认 false，要用就得显式打开）
+with_path: true                 # 注入时是否在正文末尾追加 (from <file>) 来源标记，默认 true
 
 matchers: []                    # 匹配器列表，为空等于不做事
 

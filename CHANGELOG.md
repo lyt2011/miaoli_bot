@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.27.1](CHANGELOG/v0.27.1.md) — 2026-10-21 — 统一补齐全仓库 .py 末尾换行，模板新增 with_path
 - [v0.27.0](CHANGELOG/v0.27.0.md) — 2026-10-21 — 意图注入段追加 (from <文件路径>) 来源标记
 - [v0.26.1](CHANGELOG/v0.26.1.md) — 2026-10-21 — 修复 recognize_intent 优先级写反，意图提示词从未进入上下文
 - [v0.26.0](CHANGELOG/v0.26.0.md) — 2026-10-21 — 新增 any_keywords / min_keywords 规则并统一四种规则的命名语义（破坏性）

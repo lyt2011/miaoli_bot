@@ -20,4 +20,4 @@ async def inject_memes(state: GraphState, runtime: Runtime[GraphRuntimeContext])
 		for (meme_id, description, hash, _) in rows
 	]
 	
-	return {"prompts": {"memes": "\n".join(memes)}}
+	return {"prompts": {"available_memes": "\n".join(memes)}}

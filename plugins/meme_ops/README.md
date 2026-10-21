@@ -28,7 +28,7 @@ help_doc:
 | 节点 | 事件 / 优先级 | 产出 |
 | --- | --- | --- |
 | `inject_doc` | `on_agent_start`（`NORMAL`） | `prompts` 的 `meme_helper` 段，内容取自 `help_doc.path` 指向的文件 |
-| `inject_memes` | `on_agent_start`（`NORMAL`） | `prompts` 的 `memes` 段，内容为所有已归档表情包的 `hash: description` 列表 |
+| `inject_memes` | `on_agent_start`（`NORMAL`） | `prompts` 的 `available_memes` 段，内容为所有已归档表情包的 `hash: description` 列表 |
 
 提示词落在 `data/meme_helper.md`，由 `inject_doc` 在每次注入时读取（不做缓存）。放在文件里而不是常量里，是为了改提示词不用动代码。
 
@@ -38,7 +38,7 @@ help_doc:
 
 早先是让模型先调 `list_memes` 拿到清单再发，`inject_doc` 把「先查表再按情景 `send_meme_to_qq`」写成明确动作后，同样 6 条输入 6 条发图，且选中的表情包都与情景契合（累 → 摆烂、满分 → 竖拇指、被骂 → 生气炸毛、晚安 → 抱被子、笑 → 捶地、难过 → 摸头）。
 
-现在清单由 `inject_memes` 直接拼进 `memes` 段常驻，不用再为「先看有什么」多跑一轮。
+现在清单由 `inject_memes` 直接拼进 `available_memes` 段常驻，不用再为「先看有什么」多跑一轮。
 
 关键在于**先查表**：表里没货时模型自然不会发；表里有货且能直接看到，它就会挑一个发出去。
 

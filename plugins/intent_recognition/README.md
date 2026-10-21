@@ -38,6 +38,7 @@ intent_recognition/
 
 ```yaml
 enable: false
+with_path: true                 # 注入时是否追加 (from <file>) 来源标记
 
 matchers:
   - name: "meme"
@@ -51,6 +52,7 @@ matchers:
 | 键 | 说明 |
 | --- | --- |
 | `enable` | 关闭时 `on_load` 直接返回，节点不注册 |
+| `with_path` | 注入时在正文末尾追加 ` (from <file>)` 来源标记，默认 `true` |
 | `matchers` | 匹配器列表，可空 |
 | `matchers[].name` | 标签名，注入后形如 `<meme>…</meme>` |
 | `matchers[].file` | 要注入的提示词文件，**绝对路径**，必须真实存在 |
@@ -114,10 +116,14 @@ matcher 之间则是各自独立判定，多个 matcher 可以同时命中。
 
 ### 3. 读取提示词
 
-命中后按 `encoding` 读 `file`，键取 `name`：
+命中后按 `encoding` 读 `file`，键取 `name`；`with_path` 开启时在正文末尾追加来源标记：
 
 ```python
-field_prompts[matcher.name] = Path(matcher.file).read_text(encoding=matcher.encoding)
+prompt = Path(matcher.file).read_text(encoding=matcher.encoding)
+if plugin_cfg.with_path:
+	prompt = f"{prompt} (from {matcher.file})"
+
+field_prompts[matcher.name] = prompt
 ```
 
 变量名 `field_prompts` 记的是「**字段 → 提示词**」这层映射：键是注入后要用的标签名，值是该标签对应的提示词正文。它累积完整个交给 `build_prompt`，本身不表示「命中了什么」。

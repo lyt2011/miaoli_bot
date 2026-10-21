@@ -32,9 +32,16 @@ async def recognize_intent(state: GraphState, runtime: Runtime[GraphRuntimeConte
 		
 		# 防止炸节点
 		try:
-		
+			
+			# 需要匹配器规则全通过才算命中
 			if all([rule.is_hit(latest_content) for rule in matcher.rules]):
-				field_prompts[matcher.name] = Path(matcher.file).read_text(encoding=matcher.encoding)
+				
+				# 读取提示词比根据实际需求注入路径
+				prompt = Path(matcher.file).read_text(encoding=matcher.encoding)
+				if plugin_cfg.with_path:
+					prompt = f"{prompt} (from {matcher.file})"
+								
+				field_prompts[matcher.name] = prompt
 		
 		except Exception as e:
 			LOGGER.error(f"匹配 {matcher.name} 时出现错误: {type(e).__name__}: {e}")

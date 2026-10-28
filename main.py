@@ -53,7 +53,7 @@ class MiaoLiBot(NcatBotPlugin):
 	def __init__(self, *args, **kwargs) -> None:
 		super().__init__(*args, **kwargs)
 		
-		self.plugin_loader	: Optional[Loader]		= None
+		self.plugin_loader	: Optional[Loader]			= None
 		self.cpa			: Optional[BCSA]			= None
 		self.session_locks	: Dict[str, asyncio.Lock]	= defaultdict(asyncio.Lock)
 	
@@ -91,7 +91,8 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.set(HANDLER_REGISTRY, HandlerRegistry())
 		
 		self.plugin_loader = Loader(plugin_config.sub_plugin.load_from)
-		self.plugin_loader.prepare_plugins() # NOTE: 缺元数据会全炸完(故意的)
+		
+		self.plugin_loader.prepare_plugins()
 		await self.plugin_loader.load_plugins()
 		
 		self.logger.info(f"{PLUGIN_NAME} 已加载")
@@ -116,6 +117,10 @@ class MiaoLiBot(NcatBotPlugin):
 				
 		if not SHARE_STORE.is_empty():
 			self.logger.warning(f"共享容器可能存在资源泄露: {list(SHARE_STORE.keys())}")
+		
+		if self.plugin_loader.erred:
+			self.logger.warning(f"有 {len(self.plugin_loader.erred)} 个子插件加载时出现错误: "
+				f"{[p.package_name for p in self.plugin_loader.erred]}")
 		
 		self.logger.info(f"{PLUGIN_NAME} 已卸载")
 	

@@ -19,6 +19,18 @@ class Loader:
 		self._erred		: set[Plugin]	= set()
 		self._loaded	: List[Plugin]	= [] # loaded 是基于 prepared 计算得出且需要顺序的 只能使用 List
 	
+	@property
+	def erred(self) -> List[Plugin]:
+		return list(self._erred)
+	
+	@property
+	def prepared(self) -> List[Plugin]:
+		return list(self._prepared)
+	
+	@property
+	def loaded(self) -> List[Plugin]:
+		return list(self._loaded)
+	
 	def mark_prepared(self, plugin: Plugin) -> None:
 		"""标注插件已准备"""
 		self._prepared.add(plugin)
@@ -64,7 +76,7 @@ class Loader:
 		加载或激活失败会立即停下并执行资源清理
 		"""
 		
-		for plugin in tp_sort(self._prepared):
+		for plugin in tp_sort(self.prepared):
 			
 			if self.is_loaded(plugin):
 				LOGGER.warning(f"{plugin.package_name} 已经被加载 跳过")
@@ -99,7 +111,7 @@ class Loader:
 		
 		"""卸载所有已准备插件 卸载失败不会移除出 loaded"""
 		
-		for plugin in self._loaded[::-1]:
+		for plugin in self.loaded[::-1]:
 			
 			# 安全停用插件
 			is_deactivate_success = await safe_deactivate_plugin(plugin)

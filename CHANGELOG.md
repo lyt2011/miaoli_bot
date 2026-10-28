@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.29.2](CHANGELOG/v0.29.2.md) — 2026-10-29 — Loader 暴露 erred/prepared/loaded 只读属性，卸载时汇总加载失败的子插件
 - [v0.29.1](CHANGELOG/v0.29.1.md) — 2026-10-29 — 修复 on_close 先清共享容器再卸子插件，17 个子插件停用全部 KeyError
 - [v0.29.0](CHANGELOG/v0.29.0.md) — 2026-10-29 — 子插件框架重写为 `core.Loader`，`plugin.toml` 改 `metadata.toml`，注册器迁入 `core/registries`，子插件 `on_close` 对称摘除（破坏性）
 - [v0.28.0](CHANGELOG/v0.28.0.md) — 2026-10-21 — 状态通道 prompt 改名 prompts，intent_recognition 修工具循环匹配错位，meme_ops 用常驻 memes 段取代 list_memes（破坏性）

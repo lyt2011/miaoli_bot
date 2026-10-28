@@ -9,7 +9,6 @@ from .tools		import (
 	archive_meme,
 	send_meme_to_qq,
 	remove_meme_by_hash,
-	search_memes_by_tags,
 )
 
 
@@ -32,7 +31,6 @@ class MemeOps(PluginProtocol):
 		tool_registry.register(archive_meme)
 		tool_registry.register(send_meme_to_qq)
 		tool_registry.register(remove_meme_by_hash)
-		tool_registry.register(search_memes_by_tags)
 		
 		handler_registry.on_agent_start(inject_doc, priority=NORMAL)
 		handler_registry.on_agent_start(inject_memes, priority=NORMAL)
@@ -45,7 +43,6 @@ class MemeOps(PluginProtocol):
 		tool_registry.remove(archive_meme.name, ignore_error=True)
 		tool_registry.remove(send_meme_to_qq.name, ignore_error=True)
 		tool_registry.remove(remove_meme_by_hash.name, ignore_error=True)
-		tool_registry.remove(search_memes_by_tags.name, ignore_error=True)
 		
 		handler_registry.remove_agent_start(inject_doc)
 		handler_registry.remove_agent_start(inject_memes)

@@ -30,11 +30,11 @@ async def archive_meme(meme_path: str, description: str, tags: List[str]) -> Dic
 		
 		async with MemeSqlite(store_recall(PLUGIN_CONFIG).database.path) as meme_sqlite:
 			
-			if await meme_sqlite.is_hash_existing(meme_hash):
-				meme_info = await meme_sqlite.fetch_meme_from_hash(meme_hash)
+			if await meme_sqlite.has_hash(meme_hash):
+				meme_info = await meme_sqlite.fetch_meme_by_hash(meme_hash)
 				return {"status": False, "message": "该表情包已被归档", "description": meme_info["description"], "hash": meme_info["hash"]}
 			
-			await meme_sqlite.insert_meme(tags=tags, base64=meme_base64, description=description, hash_=meme_hash)
+			await meme_sqlite.add_meme(tags=tags, base64=meme_base64, description=description, hash_=meme_hash)
 	
 	except Exception as e:
 		return {"status": False, "message": f"归档失败: {type(e).__name__}: {e}"}

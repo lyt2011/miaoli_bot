@@ -31,85 +31,33 @@ DELETE_MEME_BY_ID		= "DELETE FROM memes WHERE id = ?"
 DELETE_TAGS_BY_MEME_ID	= "DELETE FROM tags WHERE meme_id = ?"
 
 # read-only
-CHECK_HASH_EXISTENCE	= "SELECT EXISTS(SELECT 1 FROM memes WHERE hash = ?)"
-FETCH_ALL_MEME			= "SELECT id, description, hash, base64 FROM memes"
-FETCH_ID_BY_HASH		= "SELECT id FROM memes WHERE hash = ?"
-FETCH_MEME_ID_BY_HASH	= """
+HAS_HASH		= "SELECT EXISTS(SELECT 1 FROM memes WHERE hash = ?)"
+FETCH_ALL_MEMES	= "SELECT id, description, hash, base64 FROM memes ORDER BY id"
+FETCH_MEME_ID_BY_HASH	= "SELECT id FROM memes WHERE hash = ?"
+FETCH_MEME_BY_HASH	= """
 SELECT id, description, hash, base64
 FROM memes
 WHERE hash = ?
+"""
+FETCH_MEME_INFOS_BY_IDS	= "SELECT id, description, hash, base64 FROM memes WHERE id IN ({placeholder}) ORDER BY id"
+FETCH_TAGS_BY_MEME_IDS	= "SELECT meme_id, tag FROM tags WHERE meme_id IN ({placeholder}) ORDER BY meme_id, tag"
+FETCH_MEME_IDS_BY_TAGS	= """
+SELECT meme_id
+FROM tags
+WHERE tag IN ({placeholder})
+GROUP BY meme_id
+HAVING COUNT(*) = {count}
+ORDER BY meme_id
 """
 
 
 class MemeSqlite:
 	
+	"""表情包 sqlite 门面 一次工具调用开一次连接"""
+	
 	def __init__(self, path: str) -> None:
 		self.path	= path
 		self.conn	: aiosqlite.Connection
-	
-	async def query_tags(self, tags: List[str]) -> Dict[str, Any]:
-		
-		meme_ids	= await self._fetch_meme_ids_from_tags(tags)
-		memes		= await self._fetch_meme_infos_from_tags(meme_ids)
-		tags		= await self._fetch_tags_from_meme_ids(meme_ids)
-		
-		for meme_id in tuple(memes.keys()):
-			if meme_id in tags:
-				memes[meme_id]["tags"] = tags[meme_id]
-		
-		return memes
-	
-	async def fetch_memes(self) -> List[Tuple[str, str, str, str]]:
-		
-		cur		= await self.conn.execute(FETCH_ALL_MEME)
-		rows	= await cur.fetchall()
-		
-		return rows
-	
-	async def fetch_meme_from_hash(self, hash_: str) -> Optional[Dict[str, Any]]:
-		
-		cur		= await self.conn.execute(FETCH_MEME_ID_BY_HASH, (hash_, ))
-		rows	= await cur.fetchall()
-		
-		if rows:
-			meme_id, description, _hash, base64 = rows[0]
-			return {"id": meme_id, "description": description, "hash": _hash, "base64": base64}
-		
-	async def is_hash_existing(self, hash_: str) -> bool:
-		cur		= await self.conn.execute(CHECK_HASH_EXISTENCE, (hash_, ))
-		rows	= await cur.fetchall()
-		return bool(rows[0][0])
-	
-	async def insert_meme(self, *, tags: List[str], base64: str, description: str, hash_: str) -> None:
-		
-		# 插入新meme并插入对应tag
-		cur = await self.conn.execute(INSERT_NEW_MEME, (description, base64, hash_))
-		await self.conn.executemany(INSERT_NEW_TAG, ((tag, cur.lastrowid) for tag in set(tags)))
-		
-		await self.conn.commit()
-	
-	async def remove_meme(self, hash_: str) -> Optional[int]:
-		
-		"""
-		通过 hash 删除表情包与其 tag 引用
-		返回被删除的 meme_id 找不到时返回 None
-		"""
-		
-		cur		= await self.conn.execute(FETCH_ID_BY_HASH, (hash_, ))
-		rows	= await cur.fetchall()
-		
-		if not rows:
-			return None
-		
-		meme_id = rows[0][0]
-		
-		# 外键开启 必须先删 tag 引用再删 meme 反过来会被外键拒绝
-		await self.conn.execute(DELETE_TAGS_BY_MEME_ID, (meme_id, ))
-		await self.conn.execute(DELETE_MEME_BY_ID, (meme_id, ))
-		
-		await self.conn.commit()
-		
-		return meme_id
 	
 	async def __aenter__(self) -> Self:
 		
@@ -126,63 +74,139 @@ class MemeSqlite:
 		await self.conn.commit()
 		await self.conn.close()
 	
-	async def _fetch_meme_ids_from_tags(self, tags: List[str]) -> List[str]:
+	# ------------------------------------------------------------------ 读
+	
+	async def fetch_memes(self) -> List[Tuple[int, str, str, bytes]]:
 		
-		"""通过 tags 找 meme_id"""
+		"""取全部表情包 (id, description, hash, base64)"""
 		
-		tags		= tuple(set(tags))
+		cur		= await self.conn.execute(FETCH_ALL_MEMES)
+		rows	= await cur.fetchall()
+		
+		return rows
+	
+	async def fetch_meme_by_hash(self, hash_: str) -> Optional[Dict[str, Any]]:
+		
+		"""按 hash 取单个表情包 找不到返回 None"""
+		
+		cur		= await self.conn.execute(FETCH_MEME_BY_HASH, (hash_, ))
+		rows	= await cur.fetchall()
+		
+		if rows:
+			meme_id, description, _hash, base64 = rows[0]
+			return {"id": meme_id, "description": description, "hash": _hash, "base64": base64}
+	
+	async def fetch_tags_by_meme_ids(self, meme_ids: List[int]) -> Dict[int, List[str]]:
+		
+		"""按 meme_id 批量取标签 顺序按 (meme_id, tag) 排好"""
+		
+		meme_ids = tuple(dict.fromkeys(meme_ids))
+		
+		if not meme_ids:
+			return {}
+		
+		placeholder = ", ".join("?" * len(meme_ids))
+		command		= FETCH_TAGS_BY_MEME_IDS.format(placeholder=placeholder)
+		
+		cur		= await self.conn.execute(command, meme_ids)
+		rows	= await cur.fetchall()
+		
+		tags: Dict[int, List[str]] = {}
+		
+		for (meme_id, tag) in rows:
+			tags.setdefault(meme_id, []).append(tag)
+		
+		return tags
+	
+	async def fetch_memes_by_tags(self, tags: List[str]) -> Dict[int, Dict[str, Any]]:
+		
+		"""取同时带有全部指定标签的表情包 缺一个标签的不返回"""
+		
+		meme_ids	= await self._fetch_meme_ids_by_tags(tags)
+		memes		= await self._fetch_meme_infos_by_ids(meme_ids)
+		tags_map	= await self.fetch_tags_by_meme_ids(meme_ids)
+		
+		for meme_id in memes:
+			memes[meme_id]["tags"] = tags_map.get(meme_id, [])
+		
+		return memes
+	
+	async def has_hash(self, hash_: str) -> bool:
+		
+		"""hash 是否已归档"""
+		
+		cur		= await self.conn.execute(HAS_HASH, (hash_, ))
+		rows	= await cur.fetchall()
+		
+		return bool(rows[0][0])
+	
+	# ------------------------------------------------------------------ 写
+	
+	async def add_meme(self, *, tags: List[str], base64: bytes, description: str, hash_: str) -> None:
+		
+		"""归档一个表情包并写入它的标签"""
+		
+		cur = await self.conn.execute(INSERT_NEW_MEME, (description, base64, hash_))
+		await self.conn.executemany(INSERT_NEW_TAG, ((tag, cur.lastrowid) for tag in dict.fromkeys(tags)))
+		
+		await self.conn.commit()
+	
+	async def remove_meme(self, hash_: str) -> Optional[int]:
+		
+		"""通过 hash 删除表情包与其标签引用 找不到返回 None"""
+		
+		cur		= await self.conn.execute(FETCH_MEME_ID_BY_HASH, (hash_, ))
+		rows	= await cur.fetchall()
+		
+		if not rows:
+			return None
+		
+		meme_id = rows[0][0]
+		
+		# 外键开启 必须先删 tag 引用再删 meme 反过来会被外键拒绝
+		await self.conn.execute(DELETE_TAGS_BY_MEME_ID, (meme_id, ))
+		await self.conn.execute(DELETE_MEME_BY_ID, (meme_id, ))
+		
+		await self.conn.commit()
+		
+		return meme_id
+	
+	# ------------------------------------------------------------------ 内部查询
+	
+	async def _fetch_meme_ids_by_tags(self, tags: List[str]) -> List[int]:
+		
+		"""通过 tags 找同时命中全部标签的 meme_id (tag, meme_id) 是主键 所以 COUNT(*) 不会重复计数"""
+		
+		tags		= tuple(dict.fromkeys(tags))
 		tags_len	= len(tags)
 		
+		if not tags_len:
+			return []
+		
 		placeholder = ", ".join("?" * tags_len)
-		command		= (
-			"SELECT meme_id "
-			"FROM tags "
-			f"WHERE tag IN ({placeholder}) "
-			"GROUP BY meme_id "
-			f"HAVING COUNT(DISTINCT tag) = {tags_len}"
-		)
+		command		= FETCH_MEME_IDS_BY_TAGS.format(placeholder=placeholder, count=tags_len)
 		
 		cur		= await self.conn.execute(command, tags)
 		rows	= await cur.fetchall()
 		
 		return [row[0] for row in rows]
 	
-	async def _fetch_meme_infos_from_tags(self, meme_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+	async def _fetch_meme_infos_by_ids(self, meme_ids: List[int]) -> Dict[int, Dict[str, Any]]:
 		
-		"""内部接口 耦合没办法"""
+		"""通过 meme_id 批量取表情包本体 (含 base64)"""
 		
-		meme_ids = tuple(set(meme_ids))
+		meme_ids = tuple(dict.fromkeys(meme_ids))
+		
+		if not meme_ids:
+			return {}
 		
 		placeholder = ", ".join("?" * len(meme_ids))
-		command		= (
-			"SELECT id, description, hash, base64 "
-			"FROM memes "
-			f"WHERE id IN ({placeholder})"
-		)
+		command		= FETCH_MEME_INFOS_BY_IDS.format(placeholder=placeholder)
 		
 		cur		= await self.conn.execute(command, meme_ids)
 		rows	= await cur.fetchall()
 		
 		return {
-			meme_id: { "description": description, "hash": _hash, "base64": base64 }
+			meme_id: {"description": description, "hash": _hash, "base64": base64}
 			for (meme_id, description, _hash, base64) in rows
 		}
-	
-	async def _fetch_tags_from_meme_ids(self, meme_ids: List[str]) -> Dict[str, List[str]]:
-		
-		"""内部接口 获取 meme_id 对应的所有 tags"""
-		
-		meme_ids = tuple(set(meme_ids))
-		
-		placeholder = ", ".join("?" * len(meme_ids))
-		command		= (
-			"SELECT meme_id, GROUP_CONCAT(tag, '§') "
-			"FROM tags "
-			f"WHERE meme_id IN ({placeholder}) "
-			"GROUP BY meme_id"
-		)
-		
-		cur		= await self.conn.execute(command, meme_ids)
-		rows	= await cur.fetchall()
-		
-		return {meme_id: tags.split("§") for (meme_id, tags) in rows}

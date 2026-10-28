@@ -35,10 +35,10 @@ async def send_meme_to_qq(
 	
 		async with MemeSqlite(store_recall(PLUGIN_CONFIG).database.path) as meme_sqlite:
 			
-			if not await meme_sqlite.is_hash_existing(hash):
+			if not await meme_sqlite.has_hash(hash):
 				return {"status": False, "message": f"找不到 hash 为 {hash} 的表情包"}
 			
-			meme_info	= await meme_sqlite.fetch_meme_from_hash(hash)
+			meme_info	= await meme_sqlite.fetch_meme_by_hash(hash)
 			base64_data	= meme_info["base64"].decode()
 		
 		send_result = await easier_send(

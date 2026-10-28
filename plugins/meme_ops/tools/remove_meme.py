@@ -26,7 +26,7 @@ async def remove_meme_by_hash(hash: str) -> Dict[str, Any]:
 		
 		async with MemeSqlite(store_recall(PLUGIN_CONFIG).database.path) as meme_sqlite:
 			
-			meme_info	= await meme_sqlite.fetch_meme_from_hash(hash)
+			meme_info	= await meme_sqlite.fetch_meme_by_hash(hash)
 			meme_id		= await meme_sqlite.remove_meme(hash)
 	
 	except Exception as e:

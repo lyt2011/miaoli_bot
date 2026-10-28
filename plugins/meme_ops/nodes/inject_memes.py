@@ -11,12 +11,13 @@ from ..core		import MemeSqlite
 async def inject_memes(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Dict[str, Any]:
 	
 	"""使 meme 常驻提示词 而不是每次强制读取"""
-
+	
 	async with MemeSqlite(store_recall(PLUGIN_CONFIG).database.path) as meme_sqlite:
-		rows = await meme_sqlite.fetch_memes()
+		rows		= await meme_sqlite.fetch_memes()
+		tags_map	= await meme_sqlite.fetch_tags_by_meme_ids([row[0] for row in rows])
 	
 	memes = [
-		f"{hash}: {description}"
+		f"{hash}: {description}: {tags_map.get(meme_id, [])}"
 		for (meme_id, description, hash, _) in rows
 	]
 	

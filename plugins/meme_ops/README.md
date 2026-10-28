@@ -28,7 +28,7 @@ help_doc:
 | 节点 | 事件 / 优先级 | 产出 |
 | --- | --- | --- |
 | `inject_doc` | `on_agent_start`（`NORMAL`） | `prompts` 的 `meme_helper` 段，内容取自 `help_doc.path` 指向的文件 |
-| `inject_memes` | `on_agent_start`（`NORMAL`） | `prompts` 的 `available_memes` 段，内容为所有已归档表情包的 `hash: description` 列表 |
+| `inject_memes` | `on_agent_start`（`NORMAL`） | `prompts` 的 `available_memes` 段，内容为所有已归档表情包的 `hash: description: tags` 列表（tags 是列表字面量，如 `['猫耳', '发呆']`） |
 
 提示词落在 `data/meme_helper.md`，由 `inject_doc` 在每次注入时读取（不做缓存）。放在文件里而不是常量里，是为了改提示词不用动代码。
 

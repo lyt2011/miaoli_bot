@@ -1,4 +1,4 @@
-from miaoli_bot.api			import store_drop, store_set
+from miaoli_bot.api			import store_drop, store_set, get_handler_registry
 from miaoli_bot.protocols	import PluginProtocol
 from miaoli_bot.consts		import NORMAL
 
@@ -15,6 +15,8 @@ class IntentRecognition(PluginProtocol):
 		
 		config = PluginConfig.model_validate(self.config)
 		
+		registry = get_handler_registry()
+		
 		store_set(PLUGIN_CONFIG, config)
 		store_set(RAW_CONFIG, self.config)
 		
@@ -23,9 +25,13 @@ class IntentRecognition(PluginProtocol):
 			return None
 		
 		# 必须早于 prompt_builder 的 NORMAL + 1（数值大者先跑），否则拼装时读不到本轮增删的段
-		self.registry.on_before_request(recognize_intent, priority=NORMAL + 2)
+		registry.on_before_request(recognize_intent, priority=NORMAL + 2)
 	
 	async def on_close(self) -> None:
+		
+		registry = get_handler_registry()
+		
+		registry.remove_before_request(recognize_intent)
 		
 		store_drop(PLUGIN_CONFIG)
 		store_drop(RAW_CONFIG)

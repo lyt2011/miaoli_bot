@@ -9,7 +9,7 @@ OB11 事件适配 —— 把 ncatbot 的 OB11 事件**解析**成平台无关的
 
 ```
 ob11_adapter/
-├── plugin.toml
+├── metadata.toml
 ├── main.py             # 入口类 OB11AdapterPlugin，on_load 显式逐个注册
 ├── config.example.yaml  # 配置模板（config.yaml 已 gitignore，不入库）
 ├── api/                # Registry：本插件自己的解析器注册器（register_segment_parser / register_event_parser）

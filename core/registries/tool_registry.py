@@ -21,4 +21,4 @@ class ToolRegistry:
 		if name not in self._tools and not ignore_error:
 			raise KeyError(f"没有叫做 {name} 的工具")
 		
-		self._tools.pop(name)
+		self._tools.pop(name, None)

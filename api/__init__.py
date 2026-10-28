@@ -15,6 +15,11 @@ from .store_ops	import (
 	store_contains,
 )
 
+from .registry_ops	import (
+	get_handler_registry,
+	get_tool_registry,
+)
+
 from .sugar	import (
 	get_model_info,
 	get_provider_info,
@@ -42,6 +47,10 @@ __all__ = [
 	"store_update",
 	"store_set",
 	"store_contains",
+
+	# registry_ops
+	"get_handler_registry",
+	"get_tool_registry",
 
 	# platform_ops
 	"get_ncatbot_api",

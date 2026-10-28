@@ -1,3 +1,4 @@
+from miaoli_bot.api			import get_tool_registry
 from miaoli_bot.protocols	import PluginProtocol
 
 from .tools	import (
@@ -16,11 +17,22 @@ class QQPlatformTools(PluginProtocol):
 	
 	async def on_load(self) -> None:
 		
-		self.registry.register_tool(send_file_to_qq)
-		self.registry.register_tool(download_qq_file)
-		self.registry.register_tool(send_message_to_qq)
-		self.registry.register_tool(delete_qq_message)
-		self.registry.register_tool(query_qq_message_id)
-		self.registry.register_tool(send_poke)
+		tool_registry = get_tool_registry()
+		
+		tool_registry.register(send_file_to_qq)
+		tool_registry.register(download_qq_file)
+		tool_registry.register(send_message_to_qq)
+		tool_registry.register(delete_qq_message)
+		tool_registry.register(query_qq_message_id)
+		tool_registry.register(send_poke)
 	
-	async def on_close(self) -> None: ...
+	async def on_close(self) -> None:
+		
+		tool_registry = get_tool_registry()
+		
+		tool_registry.remove(send_file_to_qq.name, ignore_error=True)
+		tool_registry.remove(download_qq_file.name, ignore_error=True)
+		tool_registry.remove(send_message_to_qq.name, ignore_error=True)
+		tool_registry.remove(delete_qq_message.name, ignore_error=True)
+		tool_registry.remove(query_qq_message_id.name, ignore_error=True)
+		tool_registry.remove(send_poke.name, ignore_error=True)

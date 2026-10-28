@@ -1,0 +1,4 @@
+name = "meme_ops"
+entry_class = "main.MemeOps"
+description = "meme 素材库工具：归档 / 发送 / 按标签搜索 / 按 hash 删除，并向提示词注入使用说明与可用表情包清单"
+dependences = []

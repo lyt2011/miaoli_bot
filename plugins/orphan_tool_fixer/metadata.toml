@@ -1,0 +1,4 @@
+name = "orphan_tool_fixer"
+entry_class = "main.OrphanToolFixer"
+description = "修复孤儿工具返回"
+dependences = []

@@ -46,9 +46,10 @@ typing:
   base_speed: 0.06              # 每个字的打字时间（秒）
   speed_offset: 0.02            # 每字速度偏移（须 < base_speed，否则每字时间可为负）
 
-sub_plugin:                    # 子插件加载（缺失 load_from 会报 TypeError）
-  is_enable: false             # 当前未被消费（PluginLoader 无条件加载）
-  load_from: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins"   # 内置子插件所在目录（随本仓库提交）
+sub_plugin:                    # 子插件加载（load_from 是列表，缺省为空 → 不加载任何子插件）
+  enable: false                # 当前未被消费（Loader 无条件加载 load_from 下全部子目录）
+  load_from:                   # 内置子插件所在目录（可写多个，随本仓库提交）
+    - "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins"
 
 # checkpointer：checkpoint 数据库（0.8.4 起已接线，on_load 按 database 选适配器）
 #   memory     进程内内存，重启即丢（默认，不需要 connect_to）

@@ -1,3 +1,4 @@
+from miaoli_bot.api			import get_handler_registry
 from miaoli_bot.protocols	import PluginProtocol
 from miaoli_bot.consts		import MINIMUM
 
@@ -30,20 +31,36 @@ class BaseTopology(PluginProtocol):
 		
 		config = PluginConfig.model_validate(self.config)
 		
+		registry = get_handler_registry()
+		
 		# 不启用直接跳过节点注册
 		if not config.enable:
 			return None
 		
-		self.registry.on_agent_start(on_agent_start, priority=MINIMUM)
-		self.registry.on_turn_start(on_turn_start, priority=MINIMUM)
-		self.registry.on_before_compact(on_before_compact, priority=MINIMUM)
-		self.registry.on_compact(on_compact, priority=MINIMUM)
-		self.registry.on_after_compact(on_after_compact, priority=MINIMUM)
-		self.registry.on_before_request(on_before_request, priority=MINIMUM)
-		self.registry.on_request(on_request, priority=MINIMUM)
-		self.registry.on_after_request(on_after_request, priority=MINIMUM)
-		self.registry.on_tool_call(on_tool_calling, priority=MINIMUM)
-		self.registry.on_turn_end(on_turn_end, priority=MINIMUM)
-		self.registry.on_agent_end(on_agent_end, priority=MINIMUM)
+		registry.on_agent_start(on_agent_start, priority=MINIMUM)
+		registry.on_turn_start(on_turn_start, priority=MINIMUM)
+		registry.on_before_compact(on_before_compact, priority=MINIMUM)
+		registry.on_compact(on_compact, priority=MINIMUM)
+		registry.on_after_compact(on_after_compact, priority=MINIMUM)
+		registry.on_before_request(on_before_request, priority=MINIMUM)
+		registry.on_request(on_request, priority=MINIMUM)
+		registry.on_after_request(on_after_request, priority=MINIMUM)
+		registry.on_tool_call(on_tool_calling, priority=MINIMUM)
+		registry.on_turn_end(on_turn_end, priority=MINIMUM)
+		registry.on_agent_end(on_agent_end, priority=MINIMUM)
 	
-	async def on_close(self) -> None: ...
+	async def on_close(self) -> None:
+		
+		registry = get_handler_registry()
+		
+		registry.remove_agent_start(on_agent_start)
+		registry.remove_turn_start(on_turn_start)
+		registry.remove_before_compact(on_before_compact)
+		registry.remove_compact(on_compact)
+		registry.remove_after_compact(on_after_compact)
+		registry.remove_before_request(on_before_request)
+		registry.remove_request(on_request)
+		registry.remove_after_request(on_after_request)
+		registry.remove_tool_call(on_tool_calling)
+		registry.remove_turn_end(on_turn_end)
+		registry.remove_agent_end(on_agent_end)

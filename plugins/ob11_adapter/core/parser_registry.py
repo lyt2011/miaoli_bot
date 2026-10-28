@@ -1,12 +1,11 @@
-
 from miaoli_bot.api	import store_recall
 from ..consts		import EVENT_PARSER, SEGMENT_PARSER
 from ..parsers		import Parser
 
 
-class Registry:
+class ParserRegistry:
 	
-	"""ob11_adapter 子插件注册器"""
+	"""ob11_adapter 解析器注册器"""
 	
 	def register_segment_parser(self, parser: Parser) -> None:
 		store_recall(SEGMENT_PARSER).register_parser(parser)

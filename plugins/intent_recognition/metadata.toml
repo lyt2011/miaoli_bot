@@ -1,0 +1,4 @@
+name = "intent_recognition"
+entry_class = "main.IntentRecognition"
+description = "识别用户意图，据此增删提示词段"
+dependences = []

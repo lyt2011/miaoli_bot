@@ -1,0 +1,4 @@
+name = "miaoli_bot_adapter"
+entry_class = "main.MiaoliBotAdapter"
+description = "把 miaoli_bot 的内部数据适配成图节点可直接消费的形状"
+dependences = []

@@ -11,7 +11,7 @@ from langgraph.checkpoint.base		import BaseCheckpointSaver
 from miaoli_pipeline.core		import GraphPipeline
 from miaoli_pipeline.errors		import AgentAborted
 
-from .core		import ToolRegistry, PluginLoader, Registry
+from .core		import ToolRegistry, Loader, HandlerRegistry
 from .stores	import SHARE_STORE
 from .protocols	import BaseCheckpointerSaverAdapter as BCSA
 from .models	import GraphRuntimeContext, GraphState, PluginConfig
@@ -26,6 +26,7 @@ from .consts	import (
 	PLUGIN_DIR,
 	GRAPH_PIPELINE,
 	TOOL_REGISTRY,
+	HANDLER_REGISTRY,
 	WORKSPACE_DIR,
 	GRAPH_EVENTS,
 )
@@ -52,7 +53,7 @@ class MiaoLiBot(NcatBotPlugin):
 	def __init__(self, *args, **kwargs) -> None:
 		super().__init__(*args, **kwargs)
 		
-		self.plugin_loader	: Optional[PluginLoader]	= None
+		self.plugin_loader	: Optional[Loader]		= None
 		self.cpa			: Optional[BCSA]			= None
 		self.session_locks	: Dict[str, asyncio.Lock]	= defaultdict(asyncio.Lock)
 	
@@ -67,7 +68,7 @@ class MiaoLiBot(NcatBotPlugin):
 	
 	async def on_load(self) -> None:
 		
-		plugin_config = PluginConfig.model_validate(self.config)
+		plugin_config	= PluginConfig.model_validate(self.config)
 		
 		database	= plugin_config.checkpointer.database
 		connect_to	= plugin_config.checkpointer.connect_to
@@ -87,12 +88,11 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		SHARE_STORE.set(TOOL_REGISTRY, tool_registry)
 		SHARE_STORE.set(GRAPH_PIPELINE, graph_pipeline)
+		SHARE_STORE.set(HANDLER_REGISTRY, HandlerRegistry())
 		
-		self.plugin_loader = PluginLoader(
-			path		= plugin_config.sub_plugin.load_from,
-			registry	= Registry(pipeline=graph_pipeline, tools=tool_registry),
-		)
-		await self.plugin_loader.load_all() # NOTE: 一个插件错误会全炸完
+		self.plugin_loader = Loader(plugin_config.sub_plugin.load_from)
+		self.plugin_loader.prepare_plugins() # NOTE: 缺元数据会全炸完(故意的)
+		await self.plugin_loader.load_plugins()
 		
 		self.logger.info(f"{PLUGIN_NAME} 已加载")
 		
@@ -108,8 +108,9 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		SHARE_STORE.drop(TOOL_REGISTRY)
 		SHARE_STORE.drop(GRAPH_PIPELINE)
+		SHARE_STORE.drop(HANDLER_REGISTRY)
 		
-		await self.plugin_loader.unload_all()
+		await self.plugin_loader.unload_plugins()
 		await self.cpa.close()
 				
 		if not SHARE_STORE.is_empty():
@@ -177,7 +178,6 @@ class MiaoLiBot(NcatBotPlugin):
 					
 					await asyncio.sleep(tol_speed)
 				
-				# REVIEW: 试行，首个块使用 event.reply 回复，如果好用我将会保留
 				if index == 0:
 					await event.reply(content_part)
 					continue

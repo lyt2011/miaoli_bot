@@ -1,4 +1,4 @@
-from miaoli_bot.api			import store_drop, store_set
+from miaoli_bot.api			import store_drop, store_set, get_handler_registry
 from miaoli_bot.protocols	import PluginProtocol
 
 from .models	import PluginConfig
@@ -12,6 +12,8 @@ class ToolPermissionManager(PluginProtocol):
 		
 		config = PluginConfig.model_validate(self.config)
 		
+		registry = get_handler_registry()
+		
 		store_set(PLUGIN_CONFIG, config)
 		store_set(RAW_CONFIG, self.config)
 		
@@ -19,9 +21,13 @@ class ToolPermissionManager(PluginProtocol):
 		if not config.enable:
 			return None
 		
-		self.registry.on_before_request(pick_tools, 1)
+		registry.on_before_request(pick_tools, 1)
 	
 	async def on_close(self) -> None:
+		
+		registry = get_handler_registry()
+		
+		registry.remove_before_request(pick_tools)
 		
 		store_drop(PLUGIN_CONFIG)
 		store_drop(RAW_CONFIG)

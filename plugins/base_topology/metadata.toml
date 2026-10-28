@@ -1,0 +1,4 @@
+name = "base_topology"
+entry_class = "main.BaseTopology"
+description = "基础拓扑"
+dependences = []

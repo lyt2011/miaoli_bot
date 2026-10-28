@@ -13,7 +13,7 @@ QQ 平台工具 —— 把消息 / 文件发回 QQ，以及查询、撤回。
 
 ```
 qq_platform_tools/
-├── plugin.toml
+├── metadata.toml
 ├── main.py         # 入口类 QQPlatformTools，on_load 逐个 register_tool
 ├── README.md
 └── tools/          # 全部工具（一个工具一个文件）

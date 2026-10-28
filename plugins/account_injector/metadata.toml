@@ -1,0 +1,4 @@
+name = "account_injector"
+entry_class = "main.AccountInjector"
+description = "提供账号注入"
+dependences = []

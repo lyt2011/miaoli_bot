@@ -1,4 +1,4 @@
-from miaoli_bot.api			import store_drop, store_set
+from miaoli_bot.api			import store_drop, store_set, get_handler_registry
 from miaoli_bot.protocols	import PluginProtocol
 from miaoli_bot.consts		import NORMAL
 
@@ -15,6 +15,8 @@ class MiaoliBotAdapter(PluginProtocol):
 		
 		config = PluginConfig.model_validate(self.config)
 		
+		registry = get_handler_registry()
+		
 		store_set(RAW_CONFIG, self.config)
 		store_set(PLUGIN_CONFIG, config)
 		
@@ -23,10 +25,15 @@ class MiaoliBotAdapter(PluginProtocol):
 			return None
 		
 		# 必须先于 build_client 写入 base_url / api_key / model / max_tokens
-		self.registry.on_turn_start(inject_model_info, priority=NORMAL + 1)
-		self.registry.on_turn_start(inject_soul, priority=NORMAL + 1)
+		registry.on_turn_start(inject_model_info, priority=NORMAL + 1)
+		registry.on_turn_start(inject_soul, priority=NORMAL + 1)
 	
 	async def on_close(self) -> None:
+		
+		registry = get_handler_registry()
+		
+		registry.remove_turn_start(inject_model_info)
+		registry.remove_turn_start(inject_soul)
 		
 		store_drop(RAW_CONFIG)
 		store_drop(PLUGIN_CONFIG)

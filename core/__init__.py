@@ -1,11 +1,10 @@
-from .tool_registry		import ToolRegistry
-from .registry			import Registry
-from .plugin_loader		import PluginLoader
+from .registries		import ToolRegistry, HandlerRegistry
+from .plugin			import Loader
 
 __all__ = [
 
 	"ToolRegistry",
-	"Registry",
-	"PluginLoader",
+	"HandlerRegistry",
+	"Loader",
 
 ]

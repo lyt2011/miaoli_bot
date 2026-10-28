@@ -1,4 +1,4 @@
-from .share_store_keys	import PLUGIN_CONFIG, RAW_CONFIG, EVENT_PARSER, SEGMENT_PARSER, REGISTRY
+from .share_store_keys	import PLUGIN_CONFIG, RAW_CONFIG, EVENT_PARSER, SEGMENT_PARSER, PARSER_REGISTRY
 
 
 __all__ = [
@@ -8,6 +8,6 @@ __all__ = [
 
 	"EVENT_PARSER",
 	"SEGMENT_PARSER",
-	"REGISTRY",
+	"PARSER_REGISTRY",
 
 ]

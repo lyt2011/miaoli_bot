@@ -1,4 +1,4 @@
-from miaoli_bot.api			import store_drop, store_recall, store_set
+from miaoli_bot.api			import store_drop, store_recall, store_set, get_tool_registry
 from miaoli_bot.protocols	import PluginProtocol
 
 import aiohttp
@@ -22,6 +22,8 @@ class WebSearch(PluginProtocol):
 		
 		config = PluginConfig.model_validate(self.config)
 		
+		tool_registry = get_tool_registry()
+		
 		store_set(PLUGIN_CONFIG, config)
 		store_set(RAW_CONFIG, self.config)
 		store_set(CLIENT_SESSION, aiohttp.ClientSession())
@@ -31,9 +33,14 @@ class WebSearch(PluginProtocol):
 			return None
 		
 		# 根据实际需求注册工具
-		self.registry.register_tool(TOOL_MAPPING[config.adapter])
+		tool_registry.register(TOOL_MAPPING[config.adapter])
 	
 	async def on_close(self) -> None:
+		
+		tool_registry = get_tool_registry()
+		config = PluginConfig.model_validate(self.config)
+		
+		tool_registry.remove(TOOL_MAPPING[config.adapter].name, ignore_error=True)
 		
 		client_session = store_recall(CLIENT_SESSION)
 		

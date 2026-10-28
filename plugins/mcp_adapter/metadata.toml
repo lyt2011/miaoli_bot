@@ -1,0 +1,4 @@
+name = "mcp_adapter"
+entry_class = "main.MCPAdapter"
+description = "MCP 适配 —— 接入 MCP server 并把其工具注册进工具表"
+dependences = []

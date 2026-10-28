@@ -1,0 +1,4 @@
+name = "pending_tool_fixer"
+entry_class = "main.PendingToolFixer"
+description = "修复悬空工具调用"
+dependences = []

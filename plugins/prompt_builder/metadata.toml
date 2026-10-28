@@ -1,0 +1,4 @@
+name = "prompt_builder"
+entry_class = "main.PromptBuilder"
+description = "把 state 里的提示词段拼成一条系统消息，插到消息列表最前面"
+dependences = []

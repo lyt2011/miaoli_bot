@@ -1,4 +1,4 @@
-from miaoli_bot.api			import store_drop, store_set
+from miaoli_bot.api			import store_drop, store_set, get_handler_registry
 from miaoli_bot.protocols	import PluginProtocol
 from miaoli_bot.consts		import NORMAL
 
@@ -14,6 +14,8 @@ class ToolAttachmentFixer(PluginProtocol):
 		
 		config = PluginConfig.model_validate(self.config)
 		
+		registry = get_handler_registry()
+		
 		store_set(PLUGIN_CONFIG, config)
 		store_set(RAW_CONFIG, self.config)
 		
@@ -21,9 +23,13 @@ class ToolAttachmentFixer(PluginProtocol):
 		if not config.enable:
 			return None
 		
-		self.registry.on_tool_call(fix_tool_attachment, priority=NORMAL-2)
+		registry.on_tool_call(fix_tool_attachment, priority=NORMAL-2)
 	
 	async def on_close(self) -> None:
+		
+		registry = get_handler_registry()
+		
+		registry.remove_tool_call(fix_tool_attachment)
 		
 		store_drop(PLUGIN_CONFIG)
 		store_drop(RAW_CONFIG)

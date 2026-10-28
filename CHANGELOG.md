@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.29.0](CHANGELOG/v0.29.0.md) — 2026-10-29 — 子插件框架重写为 `core.Loader`，`plugin.toml` 改 `metadata.toml`，注册器迁入 `core/registries`，子插件 `on_close` 对称摘除（破坏性）
 - [v0.28.0](CHANGELOG/v0.28.0.md) — 2026-10-21 — 状态通道 prompt 改名 prompts，intent_recognition 修工具循环匹配错位，meme_ops 用常驻 memes 段取代 list_memes（破坏性）
 - [v0.27.2](CHANGELOG/v0.27.2.md) — 2026-10-21 — 意图注入段加一行引导语，说明内容不保留、有用就去读原文件
 - [v0.27.1](CHANGELOG/v0.27.1.md) — 2026-10-21 — 统一补齐全仓库 .py 末尾换行，模板新增 with_path

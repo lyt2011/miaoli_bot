@@ -1,0 +1,4 @@
+name = "tool_attachment_fixer"
+entry_class = "main.ToolAttachmentFixer"
+description = "修复工具附件"
+dependences = []

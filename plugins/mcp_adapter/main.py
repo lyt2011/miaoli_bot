@@ -1,4 +1,4 @@
-from miaoli_bot.api			import store_drop, store_set
+from miaoli_bot.api			import store_drop, store_set, get_handler_registry
 from miaoli_bot.protocols	import PluginProtocol
 from miaoli_bot.consts		import MEDIUM
 
@@ -20,13 +20,14 @@ class MCPAdapter(PluginProtocol):
 	
 	async def on_load(self) -> None:
 		
+		handler_registry = get_handler_registry()
 		config = PluginConfig.model_validate(self.config)
 		
-		registry = MCPClientRegistry()
+		client_registry = MCPClientRegistry()
 		
 		store_set(PLUGIN_CONFIG, config)
 		store_set(RAW_CONFIG, self.config)
-		store_set(MCP_CLIENT_REGISTRY, registry)
+		store_set(MCP_CLIENT_REGISTRY, client_registry)
 		
 		# 不启用直接跳过节点/工具注册
 		if not config.enable:
@@ -38,11 +39,15 @@ class MCPAdapter(PluginProtocol):
 			mcp_arg	= {mcp.name: mcp.transport.model_dump()}
 			client	= MSMC(mcp_arg, tool_name_prefix=config.tool_prefix)
 			
-			registry.register_client(client, reusable=mcp.reusable)
+			client_registry.register_client(client, reusable=mcp.reusable)
 		
-		self.registry.on_before_request(recall_mcp_tools, priority=MEDIUM)
+		handler_registry.on_before_request(recall_mcp_tools, priority=MEDIUM)
 	
 	async def on_close(self) -> None:
+		
+		handler_registry = get_handler_registry()
+		
+		handler_registry.remove_before_request(recall_mcp_tools)
 		
 		store_drop(PLUGIN_CONFIG)
 		store_drop(RAW_CONFIG)

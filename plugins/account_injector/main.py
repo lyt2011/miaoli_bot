@@ -1,3 +1,4 @@
+from miaoli_bot.api			import get_handler_registry
 from miaoli_bot.protocols	import PluginProtocol
 from miaoli_bot.consts		import NORMAL
 
@@ -10,6 +11,12 @@ class AccountInjector(PluginProtocol):
 	
 	async def on_load(self) -> None:
 		
-		self.registry.on_agent_start(inject_account, priority=NORMAL)
+		registry = get_handler_registry()
+		
+		registry.on_agent_start(inject_account, priority=NORMAL)
 
-	async def on_close(self) -> None: ...
+	async def on_close(self) -> None:
+		
+		registry = get_handler_registry()
+		
+		registry.remove_agent_start(inject_account)

@@ -24,7 +24,7 @@ miaoli_bot 内部数据适配 —— 把 miaoli_bot 自己的数据**适配**成
 
 ```
 miaoli_bot_adapter/
-├── plugin.toml                 # 插件声明（入口文件 / 入口类）
+├── metadata.toml               # 元信息（name / entry_class / description / dependences）
 ├── main.py                     # 入口类 MiaoliBotAdapter
 ├── config.example.yaml         # 配置模板（config.yaml 已 gitignore，不入库）
 ├── consts/                     # SHARE_STORE 键（PLUGIN_CONFIG / RAW_CONFIG）

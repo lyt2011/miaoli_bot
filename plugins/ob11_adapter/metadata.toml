@@ -1,0 +1,4 @@
+name = "ob11_adapter"
+entry_class = "main.OB11AdapterPlugin"
+description = "ncatbot OB11 事件适配插件"
+dependences = []

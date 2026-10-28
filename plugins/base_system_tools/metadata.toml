@@ -1,0 +1,4 @@
+name = "base_system_tools"
+entry_class = "main.BaseSystemTools"
+description = "基础系统工具"
+dependences = []

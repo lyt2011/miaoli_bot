@@ -1,0 +1,4 @@
+name = "qq_platform_tools"
+entry_class = "main.QQPlatformTools"
+description = "QQ 平台工具"
+dependences = []

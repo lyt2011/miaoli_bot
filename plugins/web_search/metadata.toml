@@ -1,0 +1,4 @@
+name = "web_search"
+entry_class = "main.WebSearch"
+description = "联网搜索工具"
+dependences = []

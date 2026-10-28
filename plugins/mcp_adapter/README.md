@@ -135,7 +135,7 @@ mcps:
 
 ```
 mcp_adapter/
-├── plugin.toml                     # 入口声明
+├── metadata.toml                   # 元信息（name / entry_class / description / dependences）
 ├── main.py                         # 入口类 MCPAdapter
 ├── README.md
 ├── config.example.yaml             # 配置模板（config.yaml 已 gitignore，不入库）

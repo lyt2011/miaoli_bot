@@ -1,8 +1,8 @@
-from .registry	import Registry
+from .parser_registry_ops	import get_parser_registry
 
 
 __all__ = [
 
-	"Registry",
+	"get_parser_registry",
 
 ]

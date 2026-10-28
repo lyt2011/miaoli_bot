@@ -1,4 +1,4 @@
-from miaoli_bot.api			import store_drop, store_set
+from miaoli_bot.api			import store_drop, store_set, get_handler_registry
 from miaoli_bot.protocols	import PluginProtocol
 from miaoli_bot.consts		import NORMAL
 
@@ -15,6 +15,8 @@ class PendingToolFixer(PluginProtocol):
 		
 		config = PluginConfig.model_validate(self.config)
 		
+		registry = get_handler_registry()
+		
 		store_set(PLUGIN_CONFIG, config)
 		store_set(RAW_CONFIG, self.config)
 		
@@ -23,9 +25,13 @@ class PendingToolFixer(PluginProtocol):
 			return None
 		
 		# 优先级高于 call_llm(0) 保证在请求模型之前修好
-		self.registry.on_request(fix_pending_tool_call, priority=NORMAL+2)
+		registry.on_request(fix_pending_tool_call, priority=NORMAL+2)
 	
 	async def on_close(self) -> None:
+		
+		registry = get_handler_registry()
+		
+		registry.remove_request(fix_pending_tool_call)
 		
 		store_drop(PLUGIN_CONFIG)
 		store_drop(RAW_CONFIG)

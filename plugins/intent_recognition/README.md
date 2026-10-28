@@ -6,7 +6,7 @@
 
 ```
 intent_recognition/
-├── plugin.toml               # 入口声明（enter_file / enter_class）
+├── metadata.toml             # 元信息（name / entry_class / description / dependences）
 ├── __init__.py
 ├── main.py                   # IntentRecognition，读配置 + 注册节点
 ├── config.example.yaml       # 配置模板

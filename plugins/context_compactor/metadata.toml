@@ -1,0 +1,4 @@
+name = "context_compactor"
+entry_class = "main.ContextCompactor"
+description = "上下文压缩"
+dependences = []

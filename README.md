@@ -4,7 +4,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.30.1
+- **版本**：0.30.2
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -31,7 +31,7 @@
 - 🚪 **`api/` 门面层**：子插件不直接碰 `SHARE_STORE`，统一从 `miaoli_bot.api` 取东西 —— 账号信息（`get_admin_id` 等）、存储操作（`store_recall` / `store_set` / `store_drop` / `store_update`）、运行时句柄（`get_ncatbot_api`）、注册器句柄（`get_handler_registry` / `get_tool_registry`）、配置派生（`get_model_info` / `get_provider_info` / `get_prompt`）、发送封装（`easier_send` 等）。好处是把「键名 + 取值路径 + 类型」这些内部细节锁在门面层里，子插件只依赖函数签名。
 - 🔔 **事件优先级让位**：`on_message` 以 `priority=-100` 注册，排在后处理的位置 —— 扩展插件可用更高优先级抢先接收并停止事件传播（如 `miaoli_like` 的 `赞我` 用 `priority=100`），被上游截下的消息不会再进入 LLM。
 - 🎭 **角色扮演**：内置猫娘「喵璃」人设提示词（`data/prompts/prompt_v1.7.md`，另有 v1.0 ~ v1.6 历史版本）；`account_injector` 子插件的 `inject_account` 节点把人设与管理员 / 机器人的 QQ 号、昵称拼成提示词块，一起写进系统提示词。
-- ⏱️ **输出切块与打字延迟**：`on_message` 按根配置 `split`（`enable` / `delimiter`）把回复切块，跳过空块；若 `typing.enable`，每块按 `len(块) * uniform(base_speed ± speed_offset)` sleep 后再发送，模拟真人在打字。发送由 `main.py` 负责（首块 `event.reply`，其余 `easier_send`）。
+- ⏱️ **输出切块与打字延迟**：`on_message` 按根配置 `split`（`enable` / `delimiter`）把回复切块，跳过空块；若 `typing.enable`，每块按 `len(块) * uniform(base_speed ± speed_offset)` sleep 后再发送，模拟真人在打字。发送由 `main.py` 负责：群聊首块走 `event.reply`（带引用），其余块与**私聊的全部块**走 `easier_send`。
 - 🧪 **本地测试（待重写）**：`tests/` 目录（gitignore，不随仓库提交）里的用例针对的是 pi 桥接层，随 0.8.0 重构整体失效。
 
 ## 架构设计
@@ -77,7 +77,7 @@ miaoli_pipeline.GraphPipeline.ainvoke({"event"}, thread_id=session_id, context=�
 
         │  final_state["final_answer"]（按 split.delimiter 切块 + typing 延迟）
         ▼
-main.py  event.reply / utils.easier_send(api, …)  ──▶  QQ
+main.py  event.reply(群聊首块) / utils.easier_send(api, …)  ──▶  QQ
 ```
 
 ### 目录结构
@@ -156,7 +156,7 @@ miaoli_bot/
 6. `ON_TURN_START` 之后进入**压缩三段**：`ON_BEFORE_COMPACT` 的守卫 `should_compact`（`context_compactor` 子插件，`priority=NORMAL`）算 token 判阈值 —— 不需要压缩就 `Goto(ON_BEFORE_REQUEST)` 直接往下走；需要压缩就 `Goto(ON_COMPACT)`，`compact` 节点把历史压成一条 `<abstract>` 摘要并返回 `{"messages": Overwrite([摘要, *保留窗口])}` 整体替换历史（`Overwrite` 是 langgraph 官方的「绕过 reducer 直接写入」包装，`merge_into_updates` 折叠多个处理器的产出时保留它、`merge_into_state` 构建视图时消费它，因此「整体替换」与其它处理器的「追加 / 定向删除」可以任意顺序组合），再由 `ON_AFTER_COMPACT` 的默认跳转**回到 `ON_TURN_START`** 重走一轮 —— 这一轮守卫会命中 `messages` 里的 `<abstract>` 标志并 `Abort`，本轮到此结束（`AgentAborted` 冒到 `ainvoke` 调用处，由 `main.py` 转成一条提示回复）。`ON_BEFORE_REQUEST` 批次（按 priority 降序）先跑 `build_prompt`（`priority=NORMAL+1`，`prompt_builder` 子插件）把 `prompts` 的各段拼成 `<key>value</key>` 并用 `Overwrite` 放到 `messages[0]`，再跑 `pick_tools`（`priority=1`）按 `config.yaml` 权限表与 `event.sender.user_id` 摘掉无权使用的工具（未声明的工具默认拒绝并打 warning）、随后 `ON_REQUEST` 先跑 `pending_tool_fixer`（`priority=NORMAL+2`）给悬空的 `tool_calls` 补上合成返回、`orphan_tool_fixer`（`priority=NORMAL+2`）删掉找不到发起者的 `ToolMessage`（两者只在上一轮异常中断留下坏形状时才有产出，历史本就合法时直接返回 `None`、不写任何增量），最后由 `call_llm` 直接把 `state["messages"]`（首条已是 `build_prompt` 放好的 `SystemMessage`）交给模型，返回的 `AIMessage` 追加进 `messages`。
 7. `ON_AFTER_REQUEST` 由 `base_topology` 的 `on_after_request` 节点分流（它注册在最低优先级 `MINIMUM`，因此任何插件都能抢在它之前改道）：末条消息带 `tool_calls` → 跳 `ON_TOOL_CALLING`，由 `invoke_tools` 用 `ToolNode` 执行工具、`ToolMessage` 追加进 `messages`，若工具结果是**非字符串**内容（多模态块列表），由 `tool_attachment_fixer` 子插件把它整体挪成一条 `HumanMessage`（原 `ToolMessage` 正文换成 `replace_text`，只对 `models` 里声明的模型生效），然后跳回 `ON_TURN_START` 重走一轮（重跑 `build_client` / `pick_tools` / `call_llm`）；无 `tool_calls` → 跳 `ON_TURN_END`，再经 `on_turn_end` 跳 `ON_AGENT_END`，最后 `on_agent_end` 返回 `Goto(END)` 收尾（`END` 被 langgraph 过滤，于是没有下一跳）。
 8. `ON_AGENT_END` 的 `latest_to_answer` 取 `messages[-1]`，是 `AIMessage` 就把 `content` 写进 `final_answer`（否则回退成携带 `thread_id` 的提示文案）。
-9. `on_message` 拿 `final_state` 的 `final_answer`（用 `.get()` 兜底 —— 该键是 `UntrackedValue`，本轮没走到 `on_agent_end` 时不存在），按根配置 `split`（`enable` / `delimiter`）切块并跳过空块；若 `typing.enable`，每块按 `len(块) * uniform(base_speed ± speed_offset)` sleep；首块用 `event.reply`，其余用 `utils.easier_send` 发回 QQ。
+9. `on_message` 拿 `final_state` 的 `final_answer`（用 `.get()` 兜底 —— 该键是 `UntrackedValue`，本轮没走到 `on_agent_end` 时不存在），按根配置 `split`（`enable` / `delimiter`）切块并跳过空块；若 `typing.enable`，每块按 `len(块) * uniform(base_speed ± speed_offset)` sleep；群聊的首块用 `event.reply`（带引用），其余块与私聊的全部块用 `utils.easier_send` 发回 QQ。
 10. 插件卸载（`on_close`）：先 `await plugin_loader.unload_plugins()` 倒序卸载子插件（逐个 `deactivate()` 转发 `on_close()` + `unload()` 清 `sys.modules`；卸载失败的留在列表里，下次还能再试）—— **必须先于清共享容器**，子插件的 `on_close` 要靠 `HandlerRegistry` / `ToolRegistry` 把挂上去的节点和工具摘回去；再 `await self.cpa.close()` 显式关闭 checkpointer（sqlite 关 `aiosqlite` 连接、postgresql 关连接池、memory 无副作用）；最后显式 `drop` 掉已知键（含 `TOOL_REGISTRY` / `EVENT_PARSER` / `SEGMENT_PARSER` / `GRAPH_PIPELINE`），残留键只记 warning。
 
 ## 内置子插件

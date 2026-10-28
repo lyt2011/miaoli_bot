@@ -184,7 +184,7 @@ class MiaoLiBot(NcatBotPlugin):
 					
 					await asyncio.sleep(tol_speed)
 				
-				if index == 0:
+				if index == 0 and is_group: # reply 在私聊看太jb丑了
 					await event.reply(content_part)
 					continue
 				

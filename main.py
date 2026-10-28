@@ -98,6 +98,10 @@ class MiaoLiBot(NcatBotPlugin):
 		
 	async def on_close(self) -> None:
 		
+		# 子插件的 on_close 要从注册器摘节点和工具 必须先卸再清共享容器
+		await self.plugin_loader.unload_plugins()
+		await self.cpa.close()
+		
 		SHARE_STORE.drop(NCATBOT_API)
 		
 		SHARE_STORE.drop(PLUGIN_CONFIG)
@@ -109,9 +113,6 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.drop(TOOL_REGISTRY)
 		SHARE_STORE.drop(GRAPH_PIPELINE)
 		SHARE_STORE.drop(HANDLER_REGISTRY)
-		
-		await self.plugin_loader.unload_plugins()
-		await self.cpa.close()
 				
 		if not SHARE_STORE.is_empty():
 			self.logger.warning(f"共享容器可能存在资源泄露: {list(SHARE_STORE.keys())}")

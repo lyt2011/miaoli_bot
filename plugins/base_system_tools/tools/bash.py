@@ -4,7 +4,6 @@ from pydantic				import BaseModel, Field
 from typing					import Dict, Any, List
 from asyncio				import wait_for
 from asyncio.streams		import StreamReader
-from asyncio.subprocess		import Process
 from contextlib				import suppress
 
 
@@ -12,26 +11,8 @@ from ..consts	import PLUGIN_CONFIG
 
 import asyncio	
 import codecs	
-
-
-async def _read_stream(stream: StreamReader, buffer: List[bytes]) -> None:
-	
-	async for line in stream:
-		buffer.append(line)
-	
-	return
-
-async def _ensure_end(proc: Process, reader: StreamReader) -> None:
-	
-	with suppress(Exception):
-		proc.kill()
-		reader.cancel()
-		await proc.wait()
-	
-	return
-
-def _buffer_to_string(buffer: List[bytes], encoding: str) -> str:
-	return b"".join(buffer).decode(encoding, errors="replace")
+import os		
+import signal	
 
 
 class ToolSchema(BaseModel):
@@ -41,11 +22,7 @@ class ToolSchema(BaseModel):
 
 
 @tool(args_schema=ToolSchema)
-async def bash(
-	cmd		: str,
-	encoding: str,
-	timeout	: float,
-) -> Dict[str, Any]:
+async def bash(cmd: str, encoding: str, timeout: float) -> Dict[str, Any]:
 	
 	"""执行终端指令"""
 	
@@ -57,14 +34,15 @@ async def bash(
 		codecs.lookup(encoding)
 		
 		proc = await asyncio.create_subprocess_shell(
-			cmd		= cmd,
-			limit	= bash_config.limit,
-			stdout	= asyncio.subprocess.PIPE,
-			stderr	= asyncio.subprocess.STDOUT,
+			cmd					= cmd,
+			limit				= bash_config.limit,
+			stdout				= asyncio.subprocess.PIPE,
+			stderr				= asyncio.subprocess.STDOUT,
+			start_new_session	= True, # 自成进程组 超时才能整组杀掉
 		)
 		
 		buffer	= []
-		reader	= asyncio.create_task(_read_stream(stream=proc.stdout, buffer=buffer))
+		reader	= asyncio.create_task(read_stream(stream=proc.stdout, buffer=buffer))
 	
 	except Exception as e:
 		return {"status": False, "error": f"{type(e).__name__}: {str(e)}"}
@@ -76,9 +54,24 @@ async def bash(
 		await wait_for(reader, timeout=bash_config.reader_timeout)
 	
 	except Exception as e:
-		return {"status": False, "exit_code": proc.returncode, "stdout": _buffer_to_string(buffer, encoding), "error": f"{type(e).__name__}: {e}"}
+		
+		# 超时或异常 必须整组杀 只 kill 掉 sh 会让真正干活的子进程脱管成孤儿
+		if proc.returncode is None:
+			with suppress(ProcessLookupError, PermissionError):
+				os.killpg(proc.pid, signal.SIGKILL)
+		
+		with suppress(Exception):
+			reader.cancel()
+			await proc.wait()
+		
+		return {"status": False, "exit_code": proc.returncode, "stdout": decode_buffer(buffer, encoding), "error": f"{type(e).__name__}: {e}"}
 	
-	finally:
-		await _ensure_end(proc=proc, reader=reader)
-	
-	return {"status": True, "exit_code": proc.returncode, "stdout": _buffer_to_string(buffer, encoding)}
+	return {"status": True, "exit_code": proc.returncode, "stdout": decode_buffer(buffer, encoding)}
+
+
+async def read_stream(stream: StreamReader, buffer: List[bytes]) -> None:
+	async for line in stream:
+		buffer.append(line)
+
+def decode_buffer(buffer: List[bytes], encoding: str) -> str:
+	return b"".join(buffer).decode(encoding, errors="replace")

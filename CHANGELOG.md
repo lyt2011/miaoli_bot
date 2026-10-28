@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.30.1](CHANGELOG/v0.30.1.md) — 2026-10-29 — 新增英文 README `README/en.md`，根 README 顶部加入语言互链
 - [v0.30.0](CHANGELOG/v0.30.0.md) — 2026-10-29 — 删掉按标签检索表情包的工具，标签随 `inject_memes` 常驻注入，`MemeSqlite` 方法重排重命名并收紧 SQL（破坏性）
 - [v0.29.2](CHANGELOG/v0.29.2.md) — 2026-10-29 — Loader 暴露 erred/prepared/loaded 只读属性，卸载时汇总加载失败的子插件
 - [v0.29.1](CHANGELOG/v0.29.1.md) — 2026-10-29 — 修复 on_close 先清共享容器再卸子插件，17 个子插件停用全部 KeyError

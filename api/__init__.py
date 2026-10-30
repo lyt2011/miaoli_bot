@@ -5,7 +5,12 @@ from .account_ops	import (
 	get_bot_nickname,
 )
 
-from .platform_ops	import get_ncatbot_api
+from .platform_ops	import (
+	get_ncatbot_api,
+	get_invoke_lock,
+)
+
+from .pipeline_ops	import get_pipeline
 
 from .store_ops	import (
 	store_recall,
@@ -54,6 +59,10 @@ __all__ = [
 
 	# platform_ops
 	"get_ncatbot_api",
+	"get_invoke_lock",
+
+	# pipeline_ops
+	"get_pipeline",
 
 	# sugar
 	"get_model_info",

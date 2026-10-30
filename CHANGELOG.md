@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.31.0](CHANGELOG/v0.31.0.md) — 2026-10-30 — 没有 event 时跳过 ob11 解析而不是丢弃整轮，执行锁改名 `invoke_locks` 并进共享容器，`base_system_tools` 四个工具改返回字符串（破坏性）
 - [v0.30.2](CHANGELOG/v0.30.2.md) — 2026-10-29 — 私聊首条不再走 `event.reply`，统一用 `easier_send`
 - [v0.30.1](CHANGELOG/v0.30.1.md) — 2026-10-29 — 新增英文 README `README/en.md`，根 README 顶部加入语言互链
 - [v0.30.0](CHANGELOG/v0.30.0.md) — 2026-10-29 — 删掉按标签检索表情包的工具，标签随 `inject_memes` 常驻注入，`MemeSqlite` 方法重排重命名并收紧 SQL（破坏性）

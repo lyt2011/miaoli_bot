@@ -4,7 +4,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.30.2
+- **版本**：0.31.0
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -20,7 +20,7 @@
 - 📝 **提示词分段拼装**：`prompts` 不是一整个字符串，而是 `Dict[str, str]` —— 各子插件写各自的段（`{"identity": …}` / `{"style": …}`），写入 `None` 表示删除该段。`prompt_builder` 子插件的 `build_prompt` 节点（`ON_BEFORE_REQUEST`，`priority=NORMAL+1`）把全部段拼成 `<key>value</key>` 形式，用 `Overwrite` 放到 `messages[0]`；内容与现有首条 `SystemMessage` 完全相同时返回 `None`，不白写一次 `Overwrite`。
 - 📜 **状态与运行时分离**：`models.GraphState`（会话状态：`messages` 用 `add_messages`、`prompts` 用 `SectionPatch`，两者**进 checkpoint**；`event` / `model` / `base_url` / `api_key` / `max_tokens` / `final_answer` 六键用 `Annotated[T, UntrackedValue]` —— 单次 `ainvoke` 内可见、**不落盘**）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖：`client` / `tools`）分离 —— `context` 不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`（放 state 会因 msgpack 无法序列化而当场崩）。
 - 🎛️ **配置模型化（分层 + 更名）**：`PluginConfig` 含 `providers`（`List[Provider]`，每项用 `name` 字段标识 —— `Provider` 有 `name` / `base_url` / `api_key` / `protocol` / `models`，而 `models` 是 `List[LLM]`、`LLM` 有 `name` / `context_window` / `max_tokens` / `support_visions`）、`provider` / `model`（两个名字，由 `model_validator` 校验确实存在于 `providers` 里）、`account`（`bot_id` / `admin_id` / `bot_nickname` / `admin_nickname`，四项全必填）、`split`、`typing`、`checkpointer`、`sub_plugin` 与 `prompt_file` / `prompt`。
-- 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolNode` 执行，返回值统一是 `{"status": bool, ...}` 字典；主包不再内置任何工具，平台 / 系统 / meme / 联网搜索工具全部由内置子插件注册；`tool_permission_manager` 子插件可在此基础上按身份做工具级权限控制（`on_before_request` 摘 `runtime.context["tools"]`，未声明即拒绝）。
+- 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolNode` 执行。返回值目前**不统一**：`base_system_tools` 的读写工具返回纯字符串（失败时 `[..]` 包裹），平台 / meme / 联网工具仍是 `{"status": bool, ...}` 字典。主包不内置任何工具，平台 / 系统 / meme / 联网搜索工具全部由内置子插件注册；`tool_permission_manager` 子插件可在此基础上按身份做工具级权限控制（`on_before_request` 摘 `runtime.context["tools"]`，未声明即拒绝）。
 - 🔍 **联网搜索**：`web_search` 子插件注册一个 `web_search` 工具（**工具名与后端无关**），`adapter` 选后端 —— 请求地址取自子插件 `config.yaml` 的 `api_url`（模板里 `langsearch` 为 `https://api.langsearch.com/v1/web-search`），原始响应整体交给模型。`adapter` 只影响工具的入参 schema 与返回数据形状，不影响工具名。实测**英文检索质量明显优于中文**（技术 / 包名类相关率约 65% vs 30%），工具 docstring 已要求模型优先用英文搜。
 - 🖼️ **工具附件兜底**：部分模型不接受 `tool` 消息携带多模态块（无论块里是什么内容都会 `400` 或静默忽略），`tool_attachment_fixer` 子插件的 `fix_tool_attachment` 节点（`ON_TOOL_CALLING`，`priority=NORMAL-2`）把**非字符串**的 `ToolMessage.content` 整体挪进紧跟其后的一条 `HumanMessage`、原 `ToolMessage` 正文换成 `replace_text`；只对 `models` 里声明的模型生效，无改动时返回 `None` 不写增量。
 - 🧩 **两级解析链**：`EventParseChain`（群 / 私聊事件元数据）与 `SegmentParseChain`（文本 / AT / 图片 / 文件 / 引用消息段）双链分发，由 `ob11_adapter` 子插件的 `event_adapter` 节点调起；解析器**完全吃字典**，不 import ncatbot 任何类。
@@ -291,4 +291,5 @@ cd <插件父目录>          # plugins/
 - **工具只有「谁能用」，没有「能干什么」**：进程以 root 身份运行，`tool_permission_manager` 管的是工具可见性；`bash` / `write` / `replace` 一旦放行，就没有文件系统边界
 - **`mcp_adapter` 只做去重不做下架**：MCP server 撤掉的工具不会从工具表里消失
 - **压缩摘要是「摘要的摘要」**：第二次压缩吃的是第一次压缩的产物，压缩次数一多细节必然流失，会话越长越明显
+- **工具返回值不统一**：`base_system_tools` 的 `read_file` / `replace` / `write` / `read_image` 返回字符串，其余子插件的工具返回 `{"status": bool, ...}` 字典。模型侧要按工具名记忆两种格式，提示词里也没法笼统描述
 - **`intent_recognition` 是纯字符串匹配**：没有语义理解，判据只拿到末条消息的正文。「上一轮是不是我发的」「这张图算不算表情包」这类需要上下文或工具返回的条件，当前的 `is_hit(data)` 签名装不下

@@ -29,6 +29,7 @@ from .consts	import (
 	HANDLER_REGISTRY,
 	WORKSPACE_DIR,
 	GRAPH_EVENTS,
+	INVOKE_LOCKS,
 )
 from .adapters	import (
 	InMemoryAdapter,
@@ -55,7 +56,7 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		self.plugin_loader	: Optional[Loader]			= None
 		self.cpa			: Optional[BCSA]			= None
-		self.session_locks	: Dict[str, asyncio.Lock]	= defaultdict(asyncio.Lock)
+		self.invoke_locks	: Dict[str, asyncio.Lock]	= defaultdict(asyncio.Lock)
 	
 	@staticmethod
 	def _build_graph(checkpointer: BaseCheckpointSaver) -> GraphPipeline:
@@ -76,6 +77,7 @@ class MiaoLiBot(NcatBotPlugin):
 		self.cpa	= await CPA_MAPPING[database].connect(connect_to, **extra)
 		
 		SHARE_STORE.set(NCATBOT_API, self.api)
+		SHARE_STORE.set(INVOKE_LOCKS, self.invoke_locks)
 		
 		SHARE_STORE.set(PLUGIN_CONFIG, plugin_config)
 		SHARE_STORE.set(RAW_CONFIG, self.config)
@@ -114,6 +116,7 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.drop(TOOL_REGISTRY)
 		SHARE_STORE.drop(GRAPH_PIPELINE)
 		SHARE_STORE.drop(HANDLER_REGISTRY)
+		SHARE_STORE.drop(INVOKE_LOCKS)
 				
 		if not SHARE_STORE.is_empty():
 			self.logger.warning(f"共享容器可能存在资源泄露: {list(SHARE_STORE.keys())}")
@@ -142,7 +145,7 @@ class MiaoLiBot(NcatBotPlugin):
 			return
 		
 		# 保证并发顺序
-		async with self.session_locks[session_id]:
+		async with self.invoke_locks[session_id]:
 		
 			# 调用模型产生回复
 			try:
@@ -150,7 +153,7 @@ class MiaoLiBot(NcatBotPlugin):
 				final_state = await graph_pipeline.ainvoke(
 					{"event": event._data.model_dump()},
 					thread_id	= session_id,
-					context		= {"client": None, "tools": tool_registry.tools}
+					context		= {"tools": tool_registry.tools}
 				)
 			
 			except AgentAborted as e:

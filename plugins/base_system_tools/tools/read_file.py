@@ -1,7 +1,6 @@
 from langchain_core.tools	import tool
 
 from pydantic			import BaseModel, Field
-from typing				import Dict, Any
 from pathlib			import Path
 
 import os
@@ -14,12 +13,12 @@ class ToolSchema(BaseModel):
 
 
 @tool(args_schema=ToolSchema)
-async def read_file(path: str, encoding: str) -> Dict[str, Any]:
+async def read_file(path: str, encoding: str) -> str:
 	
 	"""读取一个文件"""
 	
 	if not os.path.isfile(path):
-		return {"status": False, "message": f"{path} 不是一个文件或不存在"}
+		return f"[{path} 不是一个文件或不存在]"
 	
 	try:
 		
@@ -27,6 +26,6 @@ async def read_file(path: str, encoding: str) -> Dict[str, Any]:
 		s_data	= b_data.decode(encoding)
 	
 	except Exception as e:
-		return {"status": False, "message": f"读取失败: {type(e).__name__}: {e}"}
+		return f"[读取失败: {type(e).__name__}: {e}]"
 	
-	return {"status": True, "message": s_data}
+	return s_data

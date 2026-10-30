@@ -1,5 +1,4 @@
 from pydantic				import BaseModel, Field
-from typing					import Dict
 from langchain_core.tools	import tool
 
 import aiofiles
@@ -12,7 +11,7 @@ class ToolSchema(BaseModel):
 
 
 @tool(args_schema=ToolSchema)
-async def write(path: str, content: str, encoding: str) -> Dict[str, str]:
+async def write(path: str, content: str, encoding: str) -> str:
 	
 	"""
 	将 content 写入 path 指向的文件
@@ -25,6 +24,6 @@ async def write(path: str, content: str, encoding: str) -> Dict[str, str]:
 			await file.write(content)
 	
 	except Exception as e:
-		return {"status": False, "message": f"写入失败: {type(e).__name__}: {e}"}
+		return f"[写入失败: {type(e).__name__}: {e}]"
 	
-	return {"status": True, "message": "写入成功"}
+	return "[写入成功]"

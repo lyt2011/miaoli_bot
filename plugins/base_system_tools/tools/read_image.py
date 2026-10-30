@@ -16,7 +16,7 @@ class ToolSchema(BaseModel):
 
 
 @tool(args_schema=ToolSchema)
-async def read_image(path: str) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+async def read_image(path: str) -> Union[List[Dict[str, Any]], str]:
 	
 	"""读取一张图片"""
 	
@@ -26,18 +26,18 @@ async def read_image(path: str) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
 		
 		kind = filetype.guess(path)
 		if kind is None:
-			return {"status": False, "message": f"无法识别 {path} 的类型"}
+			return f"[无法识别 {path} 的类型]"
 		
 		mime, extension	= kind.mime, kind.extension
 		if extension not in read_image_config.support_image:
-			return {"status": False, "message": f"不支持的数据类型 {extension}"}
+			return f"[不支持的数据类型 {extension}]"
 		
 		image_b64 = b64encode(Path(path).read_bytes()).decode()
 	
 	except Exception as e:
-		return {"status": False, "message": f"{type(e).__name__}: {str(e)}"}
+		return f"[读取出错: {type(e).__name__}: {str(e)}]"
 	
 	return [
-		{ "type": "text", "text": "图片已添加到上下文中" },
+		{ "type": "text", "text": "[图片已添加到上下文中]" },
 		{ "type": "image_url", "image_url": { "url": f"data:{mime};base64,{image_b64}" } }
 	]

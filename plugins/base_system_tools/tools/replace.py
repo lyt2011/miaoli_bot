@@ -1,5 +1,4 @@
 from pydantic				import BaseModel, Field
-from typing					import Dict
 from pathlib				import Path
 from langchain_core.tools	import tool
 
@@ -15,13 +14,7 @@ class ToolSchema(BaseModel):
 
 
 @tool(args_schema=ToolSchema)
-async def replace(
-	path	: str,
-	old_text: str,
-	new_text: str,
-	encoding: str,
-	count	: int,
-) -> Dict[str, str]:
+async def replace(path: str, old_text: str, new_text: str, encoding: str, count: int) -> str:
 	
 	"""
 	替换文件内容
@@ -37,6 +30,6 @@ async def replace(
 			await file.write(new_content)
 	
 	except Exception as e:
-		return {"status": False, "message": f"替换失败: {type(e).__name__}: {e}"}
+		return f"[替换失败: {type(e).__name__}: {e}]"
 	
-	return {"status": True, "message": f"替换成功: {old_text} -> {new_text}"}
+	return f"[替换成功: {old_text} -> {new_text}]"

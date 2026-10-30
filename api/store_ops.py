@@ -19,11 +19,10 @@ def store_recall(key: str, *, default: Any = _UNSET) -> Any:
 	default 不传且 SHARE_STORE 没有这个键就会报错
 	"""
 	
-	value = SHARE_STORE.recall(key, default=default)
-	if value is _UNSET:
-		raise KeyError(f"容器中不存在 {key}")
+	if default is _UNSET:
+		return SHARE_STORE.recall(key)
 	
-	return value
+	return SHARE_STORE.recall(key, default=default)
 
 def store_drop(key: str) -> None:
 	"""SHARE_STORE 的便捷 drop 转发 api"""

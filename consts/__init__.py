@@ -7,6 +7,7 @@ from .share_store_keys	import (
 	WORKSPACE_DIR,
 	TOOL_REGISTRY,
 	HANDLER_REGISTRY,
+	INVOKE_LOCKS,
 )
 
 from .id_prefix	import (
@@ -53,6 +54,7 @@ __all__ = [
 	"WORKSPACE_DIR",
 	"TOOL_REGISTRY",
 	"HANDLER_REGISTRY",
+	"INVOKE_LOCKS",
 	
 	# id_prefix
 	"PRIVATE_PREFIX",

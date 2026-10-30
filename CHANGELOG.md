@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.32.1](CHANGELOG/v0.32.1.md) — 2026-10-31 — 新增 `PluginTopologyRuntime` 与 `tp_sort2`，拓扑排序的另一种写法（尚未接入加载流程）
 - [v0.32.0](CHANGELOG/v0.32.0.md) — 2026-10-31 — `tp_sort` 从占位实现成真的拓扑排序，`Plugin.dependences` 与重复依赖校验落地，运行时上下文新增 `custom_status`
 - [v0.31.0](CHANGELOG/v0.31.0.md) — 2026-10-30 — 没有 event 时跳过 ob11 解析而不是丢弃整轮，执行锁改名 `invoke_locks` 并进共享容器，`base_system_tools` 四个工具改返回字符串（破坏性）
 - [v0.30.2](CHANGELOG/v0.30.2.md) — 2026-10-29 — 私聊首条不再走 `event.reply`，统一用 `easier_send`

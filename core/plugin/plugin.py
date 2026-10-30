@@ -1,11 +1,11 @@
 from pathlib	import Path
-from typing		import Any, Dict, Optional, Self
+from typing		import Any, Dict, List, Optional, Self
 from types		import ModuleType
 
 from ...protocols	import PluginProtocol
 
 from .errors	import EntryClassNotFound, MetadataMissingError, NotAPackageError
-from .models	import PluginMetadata
+from .models	import PluginMetadata, Dependence
 
 import importlib.util
 import sys
@@ -40,6 +40,10 @@ class Plugin:
 	@property
 	def package_name(self) -> str:
 		return self.path.name
+	
+	@property
+	def dependences(self) -> List[Dependence]:
+		return list(self.metadata.dependences)
 	
 	def is_package(self) -> bool:
 		return Path(self.path / "__init__.py").is_file()

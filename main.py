@@ -153,7 +153,7 @@ class MiaoLiBot(NcatBotPlugin):
 				final_state = await graph_pipeline.ainvoke(
 					{"event": event._data.model_dump()},
 					thread_id	= session_id,
-					context		= {"tools": tool_registry.tools}
+					context		= {"tools": tool_registry.tools, "custom_status": ["main"]}
 				)
 			
 			except AgentAborted as e:

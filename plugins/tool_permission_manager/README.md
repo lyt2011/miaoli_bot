@@ -29,7 +29,7 @@ permissions:
   - tool_name: "read_file"
     permission: "white_list"
     white_list: ["10001", "10002"]
-  - tool_name: "search_memes_by_tags"
+  - tool_name: "list_memes"
     permission: "anyone"
 ```
 

@@ -77,7 +77,7 @@ class Loader:
 		加载或激活失败会立即停下并执行资源清理
 		"""
 		
-		for plugin in tp_sort(self.prepared):
+		for plugin in topology_sort_plugins(self.prepared):
 			
 			if self.is_loaded(plugin):
 				LOGGER.warning(f"{plugin.package_name} 已经被加载 跳过")
@@ -127,44 +127,7 @@ class Loader:
 			self._loaded.remove(plugin)
 
 
-def tp_sort(plugins: Iterable[Plugin]) -> List[Plugin]:
-	
-	"""对插件进行拓扑排序"""
-	
-	# 稳定排序
-	plugins = sorted(list(plugins), key=lambda p: p.package_name)
-	
-	# 插件名 -> 插件/插件名 -> 依赖/已排序完成的插件
-	plugins_mapping		= {plugin.package_name: plugin for plugin in plugins} # 需要用来判断缺失依赖还是环的 当前没人消费
-	dependences_mapping	= {plugin.package_name: [dep.name for dep in plugin.dependences] for plugin in plugins}
-	sorted_plugins		= []
-	
-	while plugins_mapping:
-		
-		# 先拿到没有依赖的插件的插件名
-		_no_deps = [name for name, deps in dependences_mapping.items() if not deps]
-		
-		# 没有新的结果
-		if not _no_deps:
-			raise RuntimeError(f"存在循环依赖或缺失依赖: {list(dependences_mapping)}")
-		
-		for dep_name in _no_deps:
-			
-			# 标记插件已排序
-			sorted_plugins.append(plugins_mapping[dep_name])
-				
-			# 清理映射表残留
-			del plugins_mapping[dep_name]
-			del dependences_mapping[dep_name]
-			
-			# 摘掉 dependences_mapping 的依赖关系
-			for plug_name in list(dependences_mapping.keys()):
-				if dep_name in dependences_mapping[plug_name]:
-					dependences_mapping[plug_name].remove(dep_name)
-	
-	return sorted_plugins
-
-def tp_sort2(plugins: Iterable[Plugin]) -> List[Plugin]:
+def topology_sort_plugins(plugins: Iterable[Plugin]) -> List[Plugin]:
 	
 	"""对插件进行拓扑排序"""
 	

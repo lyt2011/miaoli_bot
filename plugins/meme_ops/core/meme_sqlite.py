@@ -39,16 +39,7 @@ SELECT id, description, hash, base64
 FROM memes
 WHERE hash = ?
 """
-FETCH_MEME_INFOS_BY_IDS	= "SELECT id, description, hash, base64 FROM memes WHERE id IN ({placeholder}) ORDER BY id"
 FETCH_TAGS_BY_MEME_IDS	= "SELECT meme_id, tag FROM tags WHERE meme_id IN ({placeholder}) ORDER BY meme_id, tag"
-FETCH_MEME_IDS_BY_TAGS	= """
-SELECT meme_id
-FROM tags
-WHERE tag IN ({placeholder})
-GROUP BY meme_id
-HAVING COUNT(*) = {count}
-ORDER BY meme_id
-"""
 
 
 class MemeSqlite:
@@ -118,19 +109,6 @@ class MemeSqlite:
 		
 		return tags
 	
-	async def fetch_memes_by_tags(self, tags: List[str]) -> Dict[int, Dict[str, Any]]:
-		
-		"""取同时带有全部指定标签的表情包 缺一个标签的不返回"""
-		
-		meme_ids	= await self._fetch_meme_ids_by_tags(tags)
-		memes		= await self._fetch_meme_infos_by_ids(meme_ids)
-		tags_map	= await self.fetch_tags_by_meme_ids(meme_ids)
-		
-		for meme_id in memes:
-			memes[meme_id]["tags"] = tags_map.get(meme_id, [])
-		
-		return memes
-	
 	async def has_hash(self, hash_: str) -> bool:
 		
 		"""hash 是否已归档"""
@@ -170,43 +148,3 @@ class MemeSqlite:
 		await self.conn.commit()
 		
 		return meme_id
-	
-	# ------------------------------------------------------------------ 内部查询
-	
-	async def _fetch_meme_ids_by_tags(self, tags: List[str]) -> List[int]:
-		
-		"""通过 tags 找同时命中全部标签的 meme_id (tag, meme_id) 是主键 所以 COUNT(*) 不会重复计数"""
-		
-		tags		= tuple(dict.fromkeys(tags))
-		tags_len	= len(tags)
-		
-		if not tags_len:
-			return []
-		
-		placeholder = ", ".join("?" * tags_len)
-		command		= FETCH_MEME_IDS_BY_TAGS.format(placeholder=placeholder, count=tags_len)
-		
-		cur		= await self.conn.execute(command, tags)
-		rows	= await cur.fetchall()
-		
-		return [row[0] for row in rows]
-	
-	async def _fetch_meme_infos_by_ids(self, meme_ids: List[int]) -> Dict[int, Dict[str, Any]]:
-		
-		"""通过 meme_id 批量取表情包本体 (含 base64)"""
-		
-		meme_ids = tuple(dict.fromkeys(meme_ids))
-		
-		if not meme_ids:
-			return {}
-		
-		placeholder = ", ".join("?" * len(meme_ids))
-		command		= FETCH_MEME_INFOS_BY_IDS.format(placeholder=placeholder)
-		
-		cur		= await self.conn.execute(command, meme_ids)
-		rows	= await cur.fetchall()
-		
-		return {
-			meme_id: {"description": description, "hash": _hash, "base64": base64}
-			for (meme_id, description, _hash, base64) in rows
-		}

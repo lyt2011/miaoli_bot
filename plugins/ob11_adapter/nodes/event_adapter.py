@@ -24,7 +24,7 @@ async def event_adapter(state: GraphState, runtime: Runtime[GraphRuntimeContext]
 	# 有事件才解析 没有事件跳过解析而不是丢弃
 	if (event := state.get("event")) is None:
 		
-		LOGGER.warning(f"没有可用 event 对象 跳过 ob11 解析")
+		LOGGER.warning("没有可用 event 对象 跳过 ob11 解析")
 		return None
 	
 	# 解析事件 DispatchResult 可能没有/无效

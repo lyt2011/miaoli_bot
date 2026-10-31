@@ -17,6 +17,7 @@ from .protocols	import BaseCheckpointerSaverAdapter as BCSA
 from .models	import GraphRuntimeContext, GraphState, PluginConfig
 from .utils		import (
 	easier_send,
+	inject_workspace,
 	concatenate_id,
 )
 from .consts	import (
@@ -69,20 +70,23 @@ class MiaoLiBot(NcatBotPlugin):
 	
 	async def on_load(self) -> None:
 		
-		plugin_config	= PluginConfig.model_validate(self.config)
+		# 加载并注入插件目录
+		p_path	= Path(__file__).resolve().parent
+		config	= inject_workspace(self.config, str(p_path))
+		config	= PluginConfig.model_validate(config)
 		
-		database	= plugin_config.checkpointer.database
-		connect_to	= plugin_config.checkpointer.connect_to
-		extra		= plugin_config.checkpointer.extra
+		database	= config.checkpointer.database
+		connect_to	= config.checkpointer.connect_to
+		extra		= config.checkpointer.extra
 		self.cpa	= await CPA_MAPPING[database].connect(connect_to, **extra)
 		
 		SHARE_STORE.set(NCATBOT_API, self.api)
 		SHARE_STORE.set(INVOKE_LOCKS, self.invoke_locks)
 		
-		SHARE_STORE.set(PLUGIN_CONFIG, plugin_config)
+		SHARE_STORE.set(PLUGIN_CONFIG, config)
 		SHARE_STORE.set(RAW_CONFIG, self.config)
 		
-		SHARE_STORE.set(PLUGIN_DIR, Path(__file__).resolve().parent)
+		SHARE_STORE.set(PLUGIN_DIR, p_path)
 		SHARE_STORE.set(WORKSPACE_DIR, self.workspace)
 		
 		tool_registry	= ToolRegistry()
@@ -92,7 +96,7 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.set(GRAPH_PIPELINE, graph_pipeline)
 		SHARE_STORE.set(HANDLER_REGISTRY, HandlerRegistry())
 		
-		self.plugin_loader = Loader(plugin_config.sub_plugin.load_from)
+		self.plugin_loader = Loader(config.sub_plugin.load_from)
 		
 		self.plugin_loader.prepare_plugins()
 		await self.plugin_loader.load_plugins()

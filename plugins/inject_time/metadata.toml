@@ -1,0 +1,4 @@
+name = "inject_time"
+entry_class = "main.CurrentTimeInjector"
+description = "每轮把当前时间注入 prompts.current_time"
+dependences = []

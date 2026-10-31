@@ -40,7 +40,3 @@ def get_provider_info() -> Dict[str, Any]:
 		raise KeyError(f"供应商 '{provider_name}' 未配置")
 	
 	return providers[provider_name].model_dump()
-
-def get_prompt() -> str:
-	"""获取提示词的便捷 api"""
-	return SHARE_STORE.recall(PLUGIN_CONFIG).prompt

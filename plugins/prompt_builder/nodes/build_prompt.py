@@ -2,7 +2,7 @@ from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
 from typing						import Any, Dict, List
 from langgraph.runtime			import Runtime
-from langgraph.types				import Overwrite
+from langgraph.types			import Overwrite
 from langchain_core.messages	import BaseMessage, SystemMessage
 
 
@@ -17,7 +17,7 @@ async def build_prompt(state: GraphState, runtime: Runtime[GraphRuntimeContext])
 	prompt_array: List[str]			= []
 	
 	for prompt_key, prompt_content in state.get("prompts", {}).items():
-		prompt_array.append(f"<{prompt_key}>{prompt_content}</{prompt_key}>")
+		prompt_array.append(f"<{prompt_key}>\n{prompt_content}\n</{prompt_key}>")
 	
 	# 防止 Overwrite 浪费资源 内容一样则跳过注入
 	prompt_string: str = "\n\n".join(prompt_array)

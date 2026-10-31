@@ -2,9 +2,9 @@ from miaoli_bot.api			import store_drop, store_set, get_handler_registry
 from miaoli_bot.protocols	import PluginProtocol
 from miaoli_bot.consts		import NORMAL
 
-from .consts	import PLUGIN_CONFIG, RAW_CONFIG
+from .consts	import PLUGIN_CONFIG, RAW_CONFIG, WORKSPACE
 from .models	import PluginConfig
-from .nodes		import inject_model_info, inject_soul
+from .nodes		import inject_model_info, inject_soul, inject_output_protocol
 
 
 class MiaoliBotAdapter(PluginProtocol):
@@ -19,6 +19,7 @@ class MiaoliBotAdapter(PluginProtocol):
 		
 		store_set(RAW_CONFIG, self.config)
 		store_set(PLUGIN_CONFIG, config)
+		store_set(WORKSPACE, self.workspace)
 		
 		# 不启用直接跳过节点与工具注册
 		if not config.enable:
@@ -27,6 +28,7 @@ class MiaoliBotAdapter(PluginProtocol):
 		# 必须先于 build_client 写入 base_url / api_key / model / max_tokens
 		registry.on_turn_start(inject_model_info, priority=NORMAL + 1)
 		registry.on_turn_start(inject_soul, priority=NORMAL + 1)
+		registry.on_turn_start(inject_output_protocol, priority=NORMAL + 1)
 	
 	async def on_close(self) -> None:
 		
@@ -34,6 +36,8 @@ class MiaoliBotAdapter(PluginProtocol):
 		
 		registry.remove_turn_start(inject_model_info)
 		registry.remove_turn_start(inject_soul)
+		registry.remove_turn_start(inject_output_protocol)
 		
 		store_drop(RAW_CONFIG)
 		store_drop(PLUGIN_CONFIG)
+		store_drop(WORKSPACE)

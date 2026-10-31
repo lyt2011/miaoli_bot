@@ -3,6 +3,7 @@ from typing		import Any, Dict, List, Optional, Self
 from types		import ModuleType
 
 from ...protocols	import PluginProtocol
+from ...utils		import inject_workspace
 
 from .errors	import EntryClassNotFound, MetadataMissingError, NotAPackageError
 from .models	import PluginMetadata, Dependence
@@ -81,7 +82,11 @@ class Plugin:
 		if not cfg_file.is_file():
 			return None
 		
-		self._config = yaml.safe_load(cfg_file.read_bytes())
+		# 加载并给 "$workspace" 占位符注入路径
+		config = yaml.safe_load(cfg_file.read_bytes())
+		config = inject_workspace(config, str(self.path))
+		
+		self._config = config
 	
 	def _build_package(self) -> None:
 		
@@ -150,3 +155,4 @@ def unregister_module(name: str) -> None:
 	for module_name in list(sys.modules.keys()):
 		if module_name.startswith(f"{name}.") or module_name == name:
 			del sys.modules[module_name]
+

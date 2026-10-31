@@ -7,7 +7,7 @@ from langgraph.runtime	import Runtime
 
 async def inject_model_info(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Dict[str, Any]:
 	
-	"""注入模型信息 给 build_client 构造 [OI] 实例"""
+	"""注入模型信息 给 build_client 构造 OpenAIClient 实例"""
 	
 	# 获取模型与供应商信息
 	provider_info	: Dict[str, Any] = get_provider_info()

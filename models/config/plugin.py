@@ -1,6 +1,5 @@
-from pydantic	import BaseModel, Field, ConfigDict, model_validator, PrivateAttr
-from typing		import Optional, Self, Dict, List
-from pathlib	import Path
+from pydantic	import BaseModel, Field, ConfigDict, model_validator
+from typing		import Self, Dict, List
 
 from .provider		import Provider, LLM
 from .account		import Account
@@ -13,8 +12,6 @@ from .typing		import TypingConfig
 class PluginConfig(BaseModel):
 	
 	model_config = ConfigDict(extra="allow")
-
-	prompt_file: Optional[str]	= Field(default=None, description="系统提示词文件")
 	
 	provider	: str				= Field(..., description="将要使用的供应商")
 	model		: str				= Field(..., description="将要使用的模型")
@@ -25,22 +22,6 @@ class PluginConfig(BaseModel):
 	sub_plugin	: SubPluginConfig		= Field(default_factory=SubPluginConfig, description="插件配置")
 	split		: SplitConfig			= Field(default_factory=SplitConfig, description="分割配置")
 	typing		: TypingConfig			= Field(default_factory=TypingConfig, description="打字速度配置")
-	
-	_prompt: str = PrivateAttr(default="")
-	
-	
-	@property
-	def prompt(self) -> str:
-		
-		"""
-		懒加载提示词
-		空文件会导致每次调用都加载，这是故意的
-		"""
-		
-		if self.prompt_file and not self._prompt:
-			self._prompt = Path(self.prompt_file).read_text(encoding="utf-8")
-		
-		return self._prompt
 	
 	@model_validator(mode="after")
 	def ensure_pm_exist(self) -> Self:

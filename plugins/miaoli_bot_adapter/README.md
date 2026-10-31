@@ -1,13 +1,15 @@
 # Miaoli Bot Adapter
 
-miaoli_bot 内部数据适配 —— 把 miaoli_bot 自己的数据**适配**成图节点可直接消费的形状，供图节点使用。
+miaoli_bot 内部数据适配 —— 把 miaoli_bot 自己的数据**适配**成图节点可直接消费的形状。
+
+此外，**人格与输出协议这两份提示词资产也归本插件持有**（`data/`），主包不再内置任何提示词、也不再提供 `prompt_file` / `get_prompt`。
 
 ## 定位：与 `ob11_adapter` 对称
 
 | 插件 | 适配的对象 | 数据来源 |
 | --- | --- | --- |
 | `ob11_adapter` | **信息**（QQ 事件 / 消息段） | ncatbot |
-| `miaoli_bot_adapter` | **miaoli_bot 内部数据**（根配置、供应商、模型等） | miaoli_bot |
+| `miaoli_bot_adapter` | **miaoli_bot 内部数据**（根配置、供应商、模型等）+ **人格资产**（`SOUL.md` / `output_protocol.md`） | miaoli_bot / 本插件 `data/` |
 
 `ob11_adapter` 让图节点不必依赖 ncatbot 的类，本插件让图节点不必依赖 miaoli_bot 的根配置结构。
 
@@ -15,10 +17,22 @@ miaoli_bot 内部数据适配 —— 把 miaoli_bot 自己的数据**适配**成
 
 | 节点 | 事件 / 优先级 | 产出 |
 | --- | --- | --- |
-| `inject_model_info` | `on_turn_start`（`NORMAL + 1`） | `base_url` / `api_key` / `model` / `max_tokens` 四个 state 键，供 `build_client` 构造 [OI] 实例 |
-| `inject_soul` | `on_turn_start`（`NORMAL + 1`） | `prompt` 的 `soul` 段，内容是根配置 `prompt_file` 指向的人设全文 |
+| `inject_model_info` | `on_turn_start`（`NORMAL + 1`） | `base_url` / `api_key` / `model` / `max_tokens` 四个 state 键，供 `build_client` 构造 `ChatOpenAI` 实例 |
+| `inject_soul` | `on_turn_start`（`NORMAL + 1`） | `prompts` 的 `soul` 段，内容是 `data/SOUL.md` 全文 |
+| `inject_output_protocol` | `on_turn_start`（`NORMAL + 1`） | `prompts` 的 `output_protocol` 段，内容是 `data/output_protocol.md` 全文 |
 
-两个节点都必须排在 `build_client`（`NORMAL`）之前 —— `inject_model_info` 是它的输入，`inject_soul` 则是为了让 `prompt_builder` 在 `on_before_request` 拼装时能读到人设。
+三个节点都必须排在 `build_client`（`NORMAL`）之前 —— `inject_model_info` 是它的输入，两个提示词节点则是为了让 `prompt_builder` 在 `on_before_request` 拼装时能读到人格与输出协议。
+
+## 人格资产
+
+| 文件 | 段名 | 内容 |
+| --- | --- | --- |
+| `data/SOUL.md` | `soul` | 她是谁：身份 / 外貌 / 脾气 / 口吻 |
+| `data/output_protocol.md` | `output_protocol` | 怎么输出：长度 / 接话 / 松弛 / 符号 / 分寸 / 消息边界 / 回复通道 / 标点 / 语序 / 输出格式 |
+
+两份都是**每轮读盘**的，改完 `md` 文件不用改代码，下一轮就生效。路径由 `WORKSPACE` 这个 store 键拿到的插件目录拼出（`workspace / "data" / "SOUL.md"`），所以部署时只换文件、不换配置。
+
+拆分的判据：**去掉聊天场景还成立的写进 `soul`，必须看对方怎么发才决定怎么回的写进 `output_protocol`。**
 
 ## 目录结构
 
@@ -27,9 +41,11 @@ miaoli_bot_adapter/
 ├── metadata.toml               # 元信息（name / entry_class / description / dependences）
 ├── main.py                     # 入口类 MiaoliBotAdapter
 ├── config.example.yaml         # 配置模板（config.yaml 已 gitignore，不入库）
-├── consts/                     # SHARE_STORE 键（PLUGIN_CONFIG / RAW_CONFIG）
+├── README.md                   # 本文件
+├── consts/                     # SHARE_STORE 键（PLUGIN_CONFIG / RAW_CONFIG / WORKSPACE）
+├── data/                       # 人格资产（SOUL.md / output_protocol.md）
 ├── models/                     # PluginConfig
-└── nodes/                      # inject_model_info / inject_soul
+└── nodes/                      # inject_model_info / inject_soul / inject_output_protocol
 ```
 
 ## 配置
@@ -50,3 +66,4 @@ cp plugins/miaoli_bot_adapter/config.example.yaml plugins/miaoli_bot_adapter/con
 | --- | --- | --- |
 | `PLUGIN_CONFIG` | `miaoli_bot/subplugin/miaoli_bot_adapter.models.plugin_config` | 校验后的 `PluginConfig` |
 | `RAW_CONFIG` | `miaoli_bot/subplugin/miaoli_bot_adapter.plugin_config` | 原始 `config.yaml` 字典 |
+| `WORKSPACE` | `miaoli_bot/subplugin/miaoli_bot_adapter.workspace` | 本插件的目录（`Path`），`on_load` 时写入，供两个提示词节点拼 `data/` 下的路径 |

@@ -28,7 +28,6 @@ from .registry_ops	import (
 from .sugar	import (
 	get_model_info,
 	get_provider_info,
-	get_prompt,
 )
 
 from ..utils	import (
@@ -67,7 +66,6 @@ __all__ = [
 	# sugar
 	"get_model_info",
 	"get_provider_info",
-	"get_prompt",
 
 	# utils
 	"private_easier_send",

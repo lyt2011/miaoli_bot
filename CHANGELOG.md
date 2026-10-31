@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.33.0](CHANGELOG/v0.33.0.md) — 2026-11-01 — 人设与输出协议从主包剥离给 `miaoli_bot_adapter`，删 `data/prompts/` / `prompt_file` / `get_prompt`，新增 `inject_time` 子插件，`load_from` 收紧为 `DirectoryPath`（破坏性）
 - [v0.32.2](CHANGELOG/v0.32.2.md) — 2026-10-31 — 删干净 `search_memes_by_tags` 留下的死方法与 SQL 常量，`tp_sort2` 改名 `topology_sort_plugins`，补掉最后一条 ruff 报错
 - [v0.32.1](CHANGELOG/v0.32.1.md) — 2026-10-31 — 新增 `PluginTopologyRuntime` 与 `tp_sort2`，拓扑排序的另一种写法（尚未接入加载流程）
 - [v0.32.0](CHANGELOG/v0.32.0.md) — 2026-10-31 — `tp_sort` 从占位实现成真的拓扑排序，`Plugin.dependences` 与重复依赖校验落地，运行时上下文新增 `custom_status`

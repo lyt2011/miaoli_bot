@@ -15,5 +15,5 @@ database:                     # sqlite 数据库
 
 help_doc:                     # 表情包扩展帮助文档
   # ⚠️ 可以「关闭 + 不填路径」，但不能「启用 + 不填路径」——后者加载期直接 ValueError
-  path: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins/meme_ops/data/meme_helper.md"
+  path: "$workspace/data/meme_helper.md"
   encoding: "utf-8"           # 读取 help_doc.path 用的编码

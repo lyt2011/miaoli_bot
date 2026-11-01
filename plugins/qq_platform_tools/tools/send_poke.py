@@ -1,8 +1,10 @@
+from langchain_core.tools	import tool
+
+from pydantic	import BaseModel, Field
+
 from miaoli_bot.api	import get_ncatbot_api
 
-from pydantic				import BaseModel, Field
-from typing					import Optional, Dict, Any
-from langchain_core.tools	import tool
+from typing	import Optional, Dict, Any
 
 class ToolSchema(BaseModel):
 	user_id	: str			= Field(..., description="目标用户")

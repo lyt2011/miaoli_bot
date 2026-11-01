@@ -1,11 +1,12 @@
+from langgraph.runtime	import Runtime
+
 from miaoli_bot.api		import store_recall
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
-from typing				import Any, Dict
-from pathlib			import Path
-from langgraph.runtime	import Runtime
-
 from ..consts	import PLUGIN_CONFIG
+
+from pathlib	import Path
+from typing		import Any, Dict
 
 
 async def inject_doc(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Dict[str, Any]:

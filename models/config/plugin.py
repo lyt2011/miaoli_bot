@@ -1,12 +1,13 @@
 from pydantic	import BaseModel, Field, ConfigDict, model_validator
-from typing		import Self, Dict, List
 
-from .provider		import Provider, LLM
 from .account		import Account
-from .sub_plugin	import SubPluginConfig
-from .check_pointer	import CheckPointerConfig
 from .split			import SplitConfig
 from .typing		import TypingConfig
+from .provider		import Provider, LLM
+from .sub_plugin	import SubPluginConfig
+from .check_pointer	import CheckPointerConfig
+
+from typing	import Self, Dict, List
 
 
 class PluginConfig(BaseModel):

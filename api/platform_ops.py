@@ -1,9 +1,9 @@
-import asyncio
+from ..core		import SHARE_STORE
+from ..consts	import INVOKE_LOCKS, NCATBOT_API
 
 from typing	import Any
 
-from ..consts	import INVOKE_LOCKS, NCATBOT_API
-from ..core		import SHARE_STORE
+import asyncio
 
 
 def get_ncatbot_api() -> Any:

@@ -1,8 +1,9 @@
-from miaoli_bot.models			import GraphRuntimeContext, GraphState
-from miaoli_pipeline.actions	import Goto
-from miaoli_bot.consts			import ON_BEFORE_COMPACT
-
 from langgraph.runtime	import Runtime
+
+from miaoli_pipeline.actions	import Goto
+
+from miaoli_bot.consts	import ON_BEFORE_COMPACT
+from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
 
 async def on_turn_start(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Goto:

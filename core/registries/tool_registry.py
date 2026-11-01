@@ -1,5 +1,6 @@
-from typing					import Dict, List
 from langchain_core.tools	import BaseTool
+
+from typing	import Dict, List
 
 
 class ToolRegistry:

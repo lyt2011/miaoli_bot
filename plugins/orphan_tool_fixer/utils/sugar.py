@@ -1,6 +1,6 @@
-from typing	import List, Set
-
 from langchain_core.messages	import AIMessage, BaseMessage
+
+from typing	import List, Set
 
 
 def declared_tool_call_ids(messages: List[BaseMessage]) -> Set[str]:

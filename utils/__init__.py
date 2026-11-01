@@ -1,11 +1,10 @@
+from .sugar			import concatenate_id
+from .config_ops	import inject_workspace
 from .easier_sender	import (
 	private_easier_send,
 	group_easier_send,
 	easier_send,
 )
-
-from .config_ops	import inject_workspace
-from .sugar			import concatenate_id
 
 
 __all__ = [

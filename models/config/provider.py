@@ -1,5 +1,6 @@
 from pydantic	import BaseModel, Field
-from typing		import List, Literal
+
+from typing	import List, Literal
 
 
 Vision		= Literal["image", "video", "text", "audio"]

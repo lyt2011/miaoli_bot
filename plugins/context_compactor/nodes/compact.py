@@ -1,15 +1,17 @@
-from miaoli_bot.api		import store_recall
-from miaoli_bot.models	import GraphRuntimeContext, GraphState
+from langchain_core.messages	import HumanMessage, SystemMessage
+
+from langgraph.runtime	import Runtime
+from langgraph.types	import Overwrite
 
 from miaoli_pipeline.actions	import Abort
 
-from typing						import Any, Dict
-from langgraph.runtime			import Runtime
-from langgraph.types			import Overwrite
-from langchain_core.messages	import HumanMessage, SystemMessage
+from miaoli_bot.api		import store_recall
+from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
-from ..consts	import ABSTRACT_TAG, PLUGIN_CONFIG
 from ..utils	import keep_recent_messages
+from ..consts	import ABSTRACT_TAG, PLUGIN_CONFIG
+
+from typing	import Any, Dict
 
 
 async def compact(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Dict[str, Any]:

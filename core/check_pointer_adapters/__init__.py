@@ -1,8 +1,7 @@
-from .protocols	import BaseCheckpointerSaverAdapter
-
-from .memory		import InMemoryAdapter
 from .sqlite		import SQLiteAdapter
+from .memory		import InMemoryAdapter
 from .postgresql	import PostgresqlAdapter
+from .protocols		import BaseCheckpointerSaverAdapter
 
 __all__ = [
 

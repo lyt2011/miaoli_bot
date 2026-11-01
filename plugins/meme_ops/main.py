@@ -1,10 +1,10 @@
-from miaoli_bot.api		import store_drop, store_set, get_handler_registry, get_tool_registry
-from miaoli_bot.core	import PluginProtocol
 from miaoli_bot.consts	import NORMAL
+from miaoli_bot.core	import PluginProtocol
+from miaoli_bot.api		import store_drop, store_set, get_handler_registry, get_tool_registry
 
 from .models	import PluginConfig
-from .consts	import PLUGIN_CONFIG, RAW_CONFIG
 from .nodes		import inject_doc, inject_memes
+from .consts	import PLUGIN_CONFIG, RAW_CONFIG
 from .tools		import (
 	archive_meme,
 	send_meme_to_qq,

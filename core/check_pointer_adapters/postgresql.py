@@ -1,11 +1,13 @@
-from typing	import Self
-
-from psycopg.rows						import DictRow, RowMaker, dict_row
-from psycopg_pool						import AsyncConnectionPool
 from langgraph.checkpoint.base			import BaseCheckpointSaver
 from langgraph.checkpoint.postgres.aio	import AsyncPostgresSaver
 
+from psycopg.rows	import DictRow, RowMaker, dict_row
+
+from psycopg_pool	import AsyncConnectionPool
+
 from .protocols	import BaseCheckpointerSaverAdapter
+
+from typing	import Self
 
 
 class PostgresqlAdapter(BaseCheckpointerSaverAdapter):

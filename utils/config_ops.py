@@ -1,5 +1,5 @@
-from string	import Template
 from typing	import Union
+from string	import Template
 
 
 def inject_workspace(data: Union[str, list, dict], workspace: str) -> Union[str, list, dict]:

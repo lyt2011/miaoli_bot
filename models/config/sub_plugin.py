@@ -1,5 +1,6 @@
 from pydantic	import BaseModel, Field, DirectoryPath
-from typing		import List
+
+from typing	import List
 
 
 class SubPluginConfig(BaseModel):

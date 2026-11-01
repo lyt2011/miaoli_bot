@@ -1,8 +1,8 @@
-from .replace		import replace
-from .read_image	import read_image
-from .read_file		import read_file
-from .write			import write
 from .bash			import bash
+from .write			import write
+from .replace		import replace
+from .read_file		import read_file
+from .read_image	import read_image
 
 
 __all__ = [

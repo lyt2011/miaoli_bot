@@ -1,17 +1,16 @@
-from pathlib	import Path
-from typing		import Any, Dict, List, Optional, Self
-from types		import ModuleType
-
 from .protocols	import PluginProtocol
 from ...utils	import inject_workspace
-
-from .errors	import EntryClassNotFound, MetadataMissingError, NotAPackageError
 from .models	import PluginMetadata, Dependence
+from .errors	import EntryClassNotFound, MetadataMissingError, NotAPackageError
 
-import importlib.util
+from pathlib	import Path
+from types		import ModuleType
+from typing		import Any, Dict, List, Optional, Self
+
 import sys
-import tomllib
 import yaml
+import tomllib
+import importlib.util
 
 
 class Plugin:

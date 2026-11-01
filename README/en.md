@@ -5,7 +5,7 @@
 An LLM-agent QQ bot plugin built on [Ncatbot](https://github.com/NapNeko/NcatBot) + [LangGraph](https://github.com/langchain-ai/langgraph).
 A self-built graph pipeline feeds QQ conversations to any OpenAI-compatible endpoint, so each incoming message drives the model to think, reply, and call tools.
 
-- **Version**: 0.33.1
+- **Version**: 0.34.1
 - **Entry point**: `main.py` (plugin class `MiaoLiBot`)
 - **Runtime host**: Ncatbot plugin system (NapCat / OneBot protocol)
 - **LLM client**: `ChatOpenAI` from `langchain-openai` (`base_url` can point at any OpenAI-compatible endpoint)
@@ -26,10 +26,11 @@ A self-built graph pipeline feeds QQ conversations to any OpenAI-compatible endp
 - 🖼️ **Tool attachment fallback**: some models reject multimodal blocks inside `tool` messages (any block type yields `400` or is silently ignored). The `tool_attachment_fixer` sub-plugin's `fix_tool_attachment` node (`ON_TOOL_CALLING`, `priority=NORMAL-2`) moves a **non-string** `ToolMessage.content` into a following `HumanMessage` and replaces the original body with `replace_text`; it only applies to models declared in `models` and returns `None` when nothing changes.
 - 🧩 **Two-level parse chains**: `EventParseChain` (group / private event metadata) and `SegmentParseChain` (text / AT / image / file / reply segments) dispatch separately, invoked by `event_adapter` in the `ob11_adapter` sub-plugin; the parsers **consume plain dicts** and import no ncatbot classes.
 - 🖼️ **Multiple message segment types**: `text` → `{text}`, `at` → `{at}`, `image` → `{image, size, sub_tp}`, `file` → `{file, size}`, `reply` → `{reply}`; parsers dispatch on the segment's `type`.
-- 🔧 **Protocols first**: `protocols/abc/` defines compile-time abstractions (`PluginProtocol` / `ChainProtocol` / `StoreProtocol` / `BaseCheckpointerSaverAdapter`).
-- 🗄️ **Checkpointer adapter layer**: `checkpointer.database` switches checkpoint storage between `memory` / `sqlite` / `postgresql` — the three adapters under `adapters/check_pointers/` unify `InMemorySaver` / `AsyncSqliteSaver` / `AsyncPostgresSaver` behind one facade (`protocols.BaseCheckpointerSaverAdapter`: 1:1 forwarding of `BaseCheckpointSaver`'s sync/async protocol methods, `connect(connect_to, **extra)` to open, `close()` to release). `main.py`'s `CPA_MAPPING` picks the class by `database`, `on_load` injects it into the graph, `on_close` closes it.
-- 💾 **Shared store**: `stores/SHARE_STORE` is a global container; core keys live in `consts/share_store_keys.py` (`NCATBOT_API` / `RAW_CONFIG` / `PLUGIN_CONFIG` / `PLUGIN_DIR` / `GRAPH_PIPELINE` / `WORKSPACE_DIR` / `TOOL_REGISTRY` / `HANDLER_REGISTRY`, 8 in total), and sub-plugins use their own namespaced keys (e.g. `ob11_adapter`'s `EVENT_PARSER` / `SEGMENT_PARSER` / `REGISTRY`).
+- 🔧 **Protocols first**: each abstraction lives with the layer that owns it — `PluginProtocol` in `core/plugin/protocols/`, `BaseCheckpointerSaverAdapter` in `core/check_pointer_adapters/protocols/`, `ChainProtocol` in `ob11_adapter/chains/`. The standalone `protocols/abc/` directory and `StoreProtocol` are gone.
+- 🗄️ **Checkpointer adapter layer**: `checkpointer.database` switches checkpoint storage between `memory` / `sqlite` / `postgresql` — the three adapters under `core/check_pointer_adapters/` unify `InMemorySaver` / `AsyncSqliteSaver` / `AsyncPostgresSaver` behind one facade (`core.check_pointer_adapters.BaseCheckpointerSaverAdapter`: 1:1 forwarding of `BaseCheckpointSaver`'s sync/async protocol methods, `connect(connect_to, **extra)` to open, `close()` to release). `main.py`'s `CPA_MAPPING` picks the class by `database`, `on_load` injects it into the graph, `on_close` closes it.
+- 💾 **Shared store**: `core/SHARE_STORE` (defined in `core/_share_store.py`) is a global container; core keys live in `consts/share_store_keys.py` (`NCATBOT_API` / `RAW_CONFIG` / `PLUGIN_CONFIG` / `PLUGIN_DIR` / `GRAPH_PIPELINE` / `WORKSPACE_DIR` / `TOOL_REGISTRY` / `HANDLER_REGISTRY`, 8 in total), and sub-plugins use their own namespaced keys (e.g. `ob11_adapter`'s `EVENT_PARSER` / `SEGMENT_PARSER` / `REGISTRY`).
 - 🚪 **`api/` facade**: sub-plugins never touch `SHARE_STORE` directly; they take everything from `miaoli_bot.api` — account info (`get_admin_id` etc.), store operations (`store_recall` / `store_set` / `store_drop` / `store_update`), runtime handles (`get_ncatbot_api`), registry handles (`get_handler_registry` / `get_tool_registry`), config-derived values (`get_model_info` / `get_provider_info`), and send wrappers (`easier_send` etc.). Key names, lookup paths, and types stay locked inside the facade; sub-plugins depend on function signatures only.
+- 🧹 **Import blocks and alignment**: the imports at the top of a module are grouped as `__future__` → third-party `from` (one block per top-level package) → cross-package self references `miaoli_bot.x` → same-package relative imports `.` / `..` → stdlib `from` → plain `import`, with a blank line between blocks and shorter statements first inside a block. Columns are aligned to the next multiple of 4 after the longest prefix in the group (tab stop = 4), and **a multi-line import closes its group** — it aligns with the lines above it, while the lines below start a new group. Sub-plugins import from exactly one layer of the main package (`miaoli_bot.api` / `core` / `models` / `consts` / `utils`).
 - 🔔 **Priority yielding**: `on_message` registers at `priority=-100`, sitting in the post-processing position — extension plugins can take a message earlier and stop propagation (e.g. `miaoli_like`'s `赞我` uses `priority=100`); messages intercepted upstream never reach the LLM.
 - 🎭 **Persona and output protocol live outside the core**: the main package no longer holds any prompt assets — the `data/prompts/` directory, the root config's `prompt_file`, and `miaoli_bot.api`'s `get_prompt` are all removed. The persona (`plugins/miaoli_bot_adapter/data/SOUL.md`) and the output protocol (`plugins/miaoli_bot_adapter/data/output_protocol.md`) are assets of the `miaoli_bot_adapter` sub-plugin, read from disk every turn by `inject_soul` / `inject_output_protocol` into the `soul` / `output_protocol` sections of `prompts`; `account_injector`'s `inject_account` only handles admin/bot QQ numbers and nicknames and never touches the persona.
 - ⏱️ **Output splitting and typing delay**: `on_message` splits the reply per root config `split` (`enable` / `delimiter`), skipping empty chunks; when `typing.enable` is on, each chunk sleeps `len(chunk) * uniform(base_speed ± speed_offset)` before sending, simulating a human typing. Sending is `main.py`'s job: in group chats the first chunk goes via `event.reply` (quoted), while the remaining chunks — and **every chunk in private chats** — go via `easier_send`.
@@ -87,9 +88,7 @@ miaoli_bot/
 ├── main.py                        # plugin entry: MiaoLiBot (builds the container + graph + sub-plugin loader)
 ├── manifest.toml                  # plugin manifest (name / version / entry_class / pip_dependencies)
 ├── config.example.yaml            # config template (the real config.yaml is gitignored, it holds secrets)
-├── __init__.py                    # root only re-exports the api / models entry points
-├── adapters/                      # adapters
-│   └── check_pointers/            #   checkpointer adapters: InMemory / SQLite / Postgresql
+├── __init__.py                    # root only re-exports the api / core / models entry points
 ├── api/                           # the only entry point for sub-plugins (facade, never exposes SHARE_STORE)
 │   ├── account_ops.py             #   get_admin_id / get_bot_id / get_admin_nickname / get_bot_nickname
 │   ├── platform_ops.py            #   get_ncatbot_api (host runtime handle)
@@ -101,12 +100,16 @@ miaoli_bot/
 │   ├── node_priorities.py         #   nine priority tiers (MAXIMUM 9999 … NORMAL 0 … MINIMUM -9999)
 │   ├── id_prefix.py               #   session key prefixes (group- / private-)
 │   └── share_store_keys.py        #   SHARE_STORE keys (including TOOL_REGISTRY / HANDLER_REGISTRY)
-├── core/                          # sub-plugin loading and registration facade (the graph itself moved to miaoli_pipeline)
+├── core/                          # framework layer: loading / registries / shared container / adapters / scheduler
+│   ├── _share_store.py            #   SHARE_STORE: the global container (single _ShareStore instance)
+│   ├── check_pointer_adapters/    #   checkpointer adapters: InMemory / SQLite / Postgresql (+ protocols/ forwarding base)
 │   ├── plugin/                    #   sub-plugin loading framework
 │   │   ├── loader.py              #   Loader: prepare_plugins / load_plugins / unload_plugins
 │   │   ├── plugin.py              #   Plugin: from_path / load / activate / deactivate / unload
+│   │   ├── protocols/             #   PluginProtocol: on_load / on_close lifecycle
 │   │   ├── models/                #   PluginMetadata / Dependence / Specifier
 │   │   └── errors/                #   BasePluginError / NotAPackageError / MetadataMissingError / EntryClassNotFound
+│   ├── scheduler/                 #   minimal scheduler: Job (func + timer) + BaseTimer + Once / Every
 │   └── registries/                #   the two registries
 │       ├── handler_registry.py    #   HandlerRegistry: event → graph node registration (on / on_xxx + priority)
 │       └── tool_registry.py       #   ToolRegistry: tools by name (register / remove / tools)
@@ -137,9 +140,6 @@ miaoli_bot/
 │   ├── tool_attachment_fixer/     #   tool attachment repair (nodes/ + utils/ + models/ + consts/ + config.example.yaml + README)
 │   ├── tool_permission_manager/   #   tool permission control (nodes/ + models/ + consts/ + config.example.yaml permission table + README)
 │   └── web_search/                #   web search (tools/ + models/ + consts/ + config.example.yaml + README)
-├── protocols/                     # abstract protocols
-│   └── abc/                       #   compile-time abstractions: PluginProtocol / ChainProtocol / StoreProtocol / BaseCheckpointerSaverAdapter
-├── stores/                        # global shared store (SHARE_STORE)
 ├── tests/                         # local pytest cases (gitignored, not committed; pending rewrite)
 └── utils/                         # helpers
     ├── easier_sender.py           #   convenience wrappers for private / group sends

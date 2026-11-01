@@ -1,7 +1,8 @@
 from pydantic	import BaseModel, Field
-from typing		import List
 
 from .permission	import Permission
+
+from typing	import List
 
 
 class PluginConfig(BaseModel):

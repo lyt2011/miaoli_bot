@@ -1,5 +1,6 @@
 from pydantic	import BaseModel, Field, DirectoryPath
-from typing		import List, Literal, Optional
+
+from typing	import List, Literal, Optional
 
 
 CWD		= Optional[DirectoryPath]

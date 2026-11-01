@@ -1,8 +1,9 @@
-from typing						import Annotated, Any, Dict, TypedDict
-from langgraph.graph.message	import add_messages
 from langgraph.channels			import UntrackedValue
+from langgraph.graph.message	import add_messages
 
 from miaoli_pipeline.channels	import SectionPatch
+
+from typing	import Annotated, Any, Dict, TypedDict
 
 
 class GraphState(TypedDict):

@@ -1,9 +1,9 @@
 from __future__	import annotations
 
+from ..dependence	import Dependence
+
 from dataclasses	import dataclass, field
 from typing			import TYPE_CHECKING, List, Optional, Self
-
-from ..dependence	import Dependence
 
 if TYPE_CHECKING:
 	from ...plugin	import Plugin

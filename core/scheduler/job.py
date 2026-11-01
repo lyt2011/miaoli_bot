@@ -1,12 +1,12 @@
-import uuid
-from asyncio			import CancelledError
-from collections.abc	import Awaitable, Callable
-from datetime			import datetime
-from typing				import Any, Optional, Union
-from logging			import getLogger
-
 from .protocols.timer	import BaseTimer
 
+from datetime			import datetime
+from logging			import getLogger
+from asyncio			import CancelledError
+from typing				import Any, Optional, Union
+from collections.abc	import Awaitable, Callable
+
+import uuid
 import asyncio
 
 

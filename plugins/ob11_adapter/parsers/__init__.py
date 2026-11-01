@@ -3,7 +3,6 @@ from .event_parsers	import (
 	PrivateMessageEventParser,
 	GroupMessageEventParser,
 )
-
 from .segment_parsers	import (
 	ReplySegmentParser,
 	FileSegmentParser,

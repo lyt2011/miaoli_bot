@@ -1,6 +1,6 @@
+from typing			import Union
 from dataclasses	import dataclass
 from datetime		import datetime, timedelta
-from typing			import Union
 
 
 @dataclass(frozen=True)

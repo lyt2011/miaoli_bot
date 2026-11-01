@@ -1,6 +1,6 @@
-from dataclasses	import dataclass
-
 from ...protocols	import ToolObtainanle
+
+from dataclasses	import dataclass
 
 
 @dataclass

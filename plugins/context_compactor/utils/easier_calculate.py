@@ -1,7 +1,8 @@
 from tiktoken	import Encoding
-from typing		import List, Any
 
 from .sugar	import merge_contents
+
+from typing	import List, Any
 
 
 def tiktoken_calculate(messages: List[Any], *, encoding: Encoding) -> int:

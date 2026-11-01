@@ -1,5 +1,6 @@
 from pydantic	import BaseModel, Field, FilePath, PrivateAttr
-from typing		import Optional
+
+from typing	import Optional
 
 OPTIONAL_PATH	= Optional[FilePath]
 

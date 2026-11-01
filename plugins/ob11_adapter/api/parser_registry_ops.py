@@ -1,6 +1,7 @@
 from miaoli_bot.api	import store_recall
-from ..consts		import PARSER_REGISTRY
-from ..core			import ParserRegistry
+
+from ..core		import ParserRegistry
+from ..consts	import PARSER_REGISTRY
 
 
 def get_parser_registry() -> ParserRegistry:

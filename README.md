@@ -4,7 +4,7 @@
 
 一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把 QQ 对话接给 LLM，让 QQ 消息驱动模型思考、回复并调用工具。
 
-- **版本**：0.34.0
+- **版本**：0.34.1
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
 - **LLM 客户端**：`langchain-openai` 的 `ChatOpenAI`（`base_url` 指向任意 OpenAI 兼容端点）
@@ -25,10 +25,11 @@
 - 🖼️ **工具附件兜底**：部分模型不接受 `tool` 消息携带多模态块（无论块里是什么内容都会 `400` 或静默忽略），`tool_attachment_fixer` 子插件的 `fix_tool_attachment` 节点（`ON_TOOL_CALLING`，`priority=NORMAL-2`）把**非字符串**的 `ToolMessage.content` 整体挪进紧跟其后的一条 `HumanMessage`、原 `ToolMessage` 正文换成 `replace_text`；只对 `models` 里声明的模型生效，无改动时返回 `None` 不写增量。
 - 🧩 **两级解析链**：`EventParseChain`（群 / 私聊事件元数据）与 `SegmentParseChain`（文本 / AT / 图片 / 文件 / 引用消息段）双链分发，由 `ob11_adapter` 子插件的 `event_adapter` 节点调起；解析器**完全吃字典**，不 import ncatbot 任何类。
 - 🖼️ **多类型消息段**：`text` → `{text}`、`at` → `{at}`、`image` → `{image, size, sub_tp}`、`file` → `{file, size}`、`reply` → `{reply}`；解析器按段字典的 `type` 判别。
-- 🔧 **协议先行**：`protocols/abc/` 定义编译期抽象（`PluginProtocol` / `ChainProtocol` / `StoreProtocol` / `BaseCheckpointerSaverAdapter`）。
-- 🗄️ **checkpointer 适配层**：`checkpointer.database` 在 `memory` / `sqlite` / `postgresql` 之间切换 checkpoint 存储 —— `adapters/check_pointers/` 的三个适配器把 `InMemorySaver` / `AsyncSqliteSaver` / `AsyncPostgresSaver` 收拢成同一门面（`protocols.BaseCheckpointerSaverAdapter`：1:1 转发 `BaseCheckpointSaver` 的同步 / 异步协议方法，`connect(connect_to, **extra)` 建连、`close()` 释放），`main.py` 的 `CPA_MAPPING` 按 `database` 取类，`on_load` 注入图、`on_close` 统一关闭。
-- 💾 **共享存储**：`stores/SHARE_STORE` 全局共享容器；core 的键在 `consts/share_store_keys.py`（`NCATBOT_API` / `RAW_CONFIG` / `PLUGIN_CONFIG` / `PLUGIN_DIR` / `GRAPH_PIPELINE` / `WORKSPACE_DIR` / `TOOL_REGISTRY` / `HANDLER_REGISTRY`，共 8 个），子插件用自带命名空间键（如 `ob11_adapter` 的 `EVENT_PARSER` / `SEGMENT_PARSER` / `REGISTRY`）。
+- 🔧 **协议先行**：抽象跟着所属层走 —— `PluginProtocol` 在 `core/plugin/protocols/`、`BaseCheckpointerSaverAdapter` 在 `core/check_pointer_adapters/protocols/`、`ChainProtocol` 在 `ob11_adapter/chains/`；原先独立的 `protocols/abc/` 目录与 `StoreProtocol` 已删除。
+- 🗄️ **checkpointer 适配层**：`checkpointer.database` 在 `memory` / `sqlite` / `postgresql` 之间切换 checkpoint 存储 —— `core/check_pointer_adapters/` 的三个适配器把 `InMemorySaver` / `AsyncSqliteSaver` / `AsyncPostgresSaver` 收拢成同一门面（`core.check_pointer_adapters.BaseCheckpointerSaverAdapter`：1:1 转发 `BaseCheckpointSaver` 的同步 / 异步协议方法，`connect(connect_to, **extra)` 建连、`close()` 释放），`main.py` 的 `CPA_MAPPING` 按 `database` 取类，`on_load` 注入图、`on_close` 统一关闭。
+- 💾 **共享存储**：`core/SHARE_STORE`（定义在 `core/_share_store.py`）全局共享容器；core 的键在 `consts/share_store_keys.py`（`NCATBOT_API` / `RAW_CONFIG` / `PLUGIN_CONFIG` / `PLUGIN_DIR` / `GRAPH_PIPELINE` / `WORKSPACE_DIR` / `TOOL_REGISTRY` / `HANDLER_REGISTRY`，共 8 个），子插件用自带命名空间键（如 `ob11_adapter` 的 `EVENT_PARSER` / `SEGMENT_PARSER` / `REGISTRY`）。
 - 🚪 **`api/` 门面层**：子插件不直接碰 `SHARE_STORE`，统一从 `miaoli_bot.api` 取东西 —— 账号信息（`get_admin_id` 等）、存储操作（`store_recall` / `store_set` / `store_drop` / `store_update`）、运行时句柄（`get_ncatbot_api`）、注册器句柄（`get_handler_registry` / `get_tool_registry`）、配置派生（`get_model_info` / `get_provider_info`）、发送封装（`easier_send` 等）。好处是把「键名 + 取值路径 + 类型」这些内部细节锁在门面层里，子插件只依赖函数签名。
+- 🧹 **导入分块与对齐**：模块顶部的导入按「`__future__` → 第三方 `from`（按顶层包名各成一块）→ 跨包自引用 `miaoli_bot.x` → 同包相对导入 `.` / `..` → 内置 `from` → 普通 `import`」排列，块与块之间空一行，块内按语句字符数从短到长；列对齐到组内最长前缀的下一个 4 的倍数（tab stop = 4），**换行导入是组尾** —— 它可以跟上面的行对齐，它下面的行另起一组。子插件只从主包的一层导入（`miaoli_bot.api` / `core` / `models` / `consts` / `utils`）。
 - 🔔 **事件优先级让位**：`on_message` 以 `priority=-100` 注册，排在后处理的位置 —— 扩展插件可用更高优先级抢先接收并停止事件传播（如 `miaoli_like` 的 `赞我` 用 `priority=100`），被上游截下的消息不会再进入 LLM。
 - 🎭 **人格与输出协议外置**：主包不再持有任何提示词资产 —— `data/prompts/` 目录、根配置的 `prompt_file` 与 `miaoli_bot.api` 的 `get_prompt` 都已删除。人格（`plugins/miaoli_bot_adapter/data/SOUL.md`）与输出协议（`plugins/miaoli_bot_adapter/data/output_protocol.md`）都是 `miaoli_bot_adapter` 子插件的资产，由 `inject_soul` / `inject_output_protocol` 每轮读盘写进 `prompts` 的 `soul` / `output_protocol` 段；`account_injector` 的 `inject_account` 只管管理员 / 机器人的 QQ 号与昵称，不碰人格。
 - ⏱️ **输出切块与打字延迟**：`on_message` 按根配置 `split`（`enable` / `delimiter`）把回复切块，跳过空块；若 `typing.enable`，每块按 `len(块) * uniform(base_speed ± speed_offset)` sleep 后再发送，模拟真人在打字。发送由 `main.py` 负责：群聊首块走 `event.reply`（带引用），其余块与**私聊的全部块**走 `easier_send`。
@@ -87,9 +88,7 @@ miaoli_bot/
 ├── main.py                        # 插件入口：MiaoLiBot（建容器 + 建图 + 起子插件加载器）
 ├── manifest.toml                  # 插件清单（name / version / entry_class / pip_dependencies）
 ├── config.example.yaml            # 配置模板（config.yaml 已 gitignore，内含密钥不提交）
-├── __init__.py                    # 顶层只重导出 api / models 两个入口
-├── adapters/                      # 适配器
-│   └── check_pointers/            #   checkpointer 适配器：InMemory / SQLite / Postgresql
+├── __init__.py                    # 顶层只重导出 api / core / models 三个入口
 ├── api/                           # 子插件唯一入口（门面层，不直接暴露 SHARE_STORE）
 │   ├── account_ops.py             #   get_admin_id / get_bot_id / get_admin_nickname / get_bot_nickname
 │   ├── platform_ops.py            #   get_ncatbot_api（框架运行时句柄）
@@ -101,12 +100,16 @@ miaoli_bot/
 │   ├── node_priorities.py         #   九档优先级阶梯（MAXIMUM 9999 … NORMAL 0 … MINIMUM -9999）
 │   ├── id_prefix.py               #   会话键前缀（group- / private-）
 │   └── share_store_keys.py        #   SHARE_STORE 键名（含 TOOL_REGISTRY / HANDLER_REGISTRY）
-├── core/                          # 子插件加载与注册门面（图管线本身已迁到 miaoli_pipeline）
+├── core/                          # 框架层：加载 / 注册 / 共享容器 / 适配器 / 调度器
+│   ├── _share_store.py            #   SHARE_STORE：全局共享容器（_ShareStore 唯一实例）
+│   ├── check_pointer_adapters/    #   checkpointer 适配器：InMemory / SQLite / Postgresql（+ protocols/ 的转发基类）
 │   ├── plugin/                    #   子插件加载框架
 │   │   ├── loader.py              #   Loader：prepare_plugins / load_plugins / unload_plugins
 │   │   ├── plugin.py              #   Plugin：from_path / load / activate / deactivate / unload
+│   │   ├── protocols/             #   PluginProtocol：on_load / on_close 两个生命周期方法
 │   │   ├── models/                #   PluginMetadata / Dependence / Specifier
 │   │   └── errors/                #   BasePluginError / NotAPackageError / MetadataMissingError / EntryClassNotFound
+│   ├── scheduler/                 #   最小调度器：Job（func + timer）+ BaseTimer + Once / Every
 │   └── registries/                #   两个注册器
 │       ├── handler_registry.py    #   HandlerRegistry：事件 → 图节点注册（on / on_xxx + priority）
 │       └── tool_registry.py       #   ToolRegistry：按名字存工具（register / remove / tools）
@@ -137,9 +140,6 @@ miaoli_bot/
 │   ├── tool_attachment_fixer/     #   工具附件修复（nodes/ + utils/ + models/ + consts/ + config.example.yaml + README）
 │   ├── tool_permission_manager/   #   工具权限控制（nodes/ + models/ + consts/ + config.example.yaml 权限表 + README）
 │   └── web_search/                #   联网搜索（tools/ + models/ + consts/ + config.example.yaml + README）
-├── protocols/                     # 抽象协议
-│   └── abc/                       #   编译期抽象：PluginProtocol / ChainProtocol / StoreProtocol / BaseCheckpointerSaverAdapter
-├── stores/                        # 全局共享存储（SHARE_STORE）
 ├── tests/                         # 本地 pytest 用例（gitignore，不提交；当前待重写）
 └── utils/                         # 工具函数
     ├── easier_sender.py           #   private / group 便捷发送封装

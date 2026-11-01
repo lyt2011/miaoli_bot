@@ -1,7 +1,8 @@
 from pydantic	import BaseModel, Field
-from typing		import List, Literal
 
 from ...protocols	import BaseRule
+
+from typing	import List, Literal
 
 
 class AnyKeywordsRule(BaseModel, BaseRule):

@@ -1,8 +1,9 @@
+from langgraph.runtime	import Runtime
+
 from miaoli_bot.api		import get_model_info, get_provider_info
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
-from typing				import Any, Dict
 
-from langgraph.runtime	import Runtime
+from typing	import Any, Dict
 
 
 async def inject_model_info(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Dict[str, Any]:

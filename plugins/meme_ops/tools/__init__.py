@@ -1,5 +1,5 @@
-from .send_meme		import send_meme_to_qq
 from .archive_meme	import archive_meme
+from .send_meme		import send_meme_to_qq
 from .remove_meme	import remove_meme_by_hash
 
 

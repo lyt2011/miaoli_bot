@@ -1,9 +1,10 @@
-import re
-
 from pydantic	import BaseModel, Field, PrivateAttr
-from typing		import Literal, Optional
 
 from ...protocols	import BaseRule
+
+from typing	import Literal, Optional
+
+import re
 
 
 RegexCache = Optional[re.Pattern]

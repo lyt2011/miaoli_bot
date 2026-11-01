@@ -1,8 +1,9 @@
 from pydantic	import BaseModel, Field, model_validator
-from typing		import Self
 
-from .database_config	import DatabaseConfig
 from .help_doc_config	import HelpDocConfig
+from .database_config	import DatabaseConfig
+
+from typing	import Self
 
 class PluginConfig(BaseModel):
 	

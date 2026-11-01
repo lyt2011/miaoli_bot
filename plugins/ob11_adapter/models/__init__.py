@@ -1,5 +1,5 @@
-from .runtime	import DispatchResult
 from .config	import PluginConfig
+from .runtime	import DispatchResult
 
 
 __all__ = [

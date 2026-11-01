@@ -1,13 +1,15 @@
+from langchain_core.messages	import HumanMessage, ToolMessage
+
+from langgraph.runtime	import Runtime
+from langgraph.types	import Overwrite
+
 from miaoli_bot.api		import store_recall
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
-from typing						import Any, Dict, Optional
-from langgraph.runtime			import Runtime
-from langgraph.types			import Overwrite
-from langchain_core.messages	import HumanMessage, ToolMessage
-
 from ..consts	import PLUGIN_CONFIG
 from ..utils	import is_target_model
+
+from typing	import Any, Dict, Optional
 
 
 async def fix_tool_attachment(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Optional[Dict[str, Any]]:

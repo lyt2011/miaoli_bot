@@ -1,6 +1,6 @@
+from ..parsers	import Parser
 from .chain		import ChainProtocol
 from ..models	import DispatchResult
-from ..parsers	import Parser
 
 from typing	import Set, Any
 

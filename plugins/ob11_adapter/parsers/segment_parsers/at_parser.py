@@ -1,6 +1,6 @@
-from typing	import Any, Dict
-
 from ..parser	import Parser
+
+from typing	import Any, Dict
 
 
 class AtSegmentParser(Parser):

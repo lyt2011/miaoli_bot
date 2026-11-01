@@ -1,9 +1,10 @@
-from typing	import Self
-
-import aiosqlite
 from langgraph.checkpoint.sqlite.aio	import AsyncSqliteSaver
 
 from .protocols	import BaseCheckpointerSaverAdapter
+
+from typing	import Self
+
+import aiosqlite
 
 
 class SQLiteAdapter(BaseCheckpointerSaverAdapter):

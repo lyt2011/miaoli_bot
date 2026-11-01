@@ -1,5 +1,6 @@
 from pydantic	import BaseModel, Field, model_validator
-from typing		import Optional, Literal, Self
+
+from typing	import Optional, Literal, Self
 
 
 SUPPORT_ENCODER	= Literal["o200k_base", "cl100k_base"]

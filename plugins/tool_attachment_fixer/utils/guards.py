@@ -1,6 +1,7 @@
 
 from miaoli_bot.api	import store_recall
-from ..consts		import PLUGIN_CONFIG
+
+from ..consts	import PLUGIN_CONFIG
 
 
 def is_target_model(provider: str, model: str) -> bool:

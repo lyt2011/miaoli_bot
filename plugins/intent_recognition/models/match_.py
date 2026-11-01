@@ -1,7 +1,8 @@
 from pydantic	import BaseModel, ConfigDict, Field, FilePath
-from typing		import Annotated, List, Union
 
 from .rules	import AnyKeywordsRule, MinKeywordsRule, RegexRule, SingleKeywordRule
+
+from typing	import Annotated, List, Union
 
 
 Rule = Annotated[

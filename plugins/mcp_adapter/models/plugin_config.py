@@ -1,7 +1,8 @@
 from pydantic	import BaseModel, Field, model_validator
-from typing		import List, Self
 
 from .mcp_server	import MCPServer
+
+from typing	import List, Self
 
 
 class PluginConfig(BaseModel):

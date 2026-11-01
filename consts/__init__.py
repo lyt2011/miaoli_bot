@@ -1,3 +1,18 @@
+from .id_prefix	import (
+	PRIVATE_PREFIX,
+	GROUP_PREFIX,
+)
+from .node_priorities	import (
+	MAXIMUM,
+	HIGHEST,
+	HIGH,
+	MEDIUM,
+	NORMAL,
+	LOW,
+	LOWEST,
+	TRIVIAL,
+	MINIMUM,
+)
 from .share_store_keys	import (
 	NCATBOT_API,
 	PLUGIN_CONFIG,
@@ -9,12 +24,6 @@ from .share_store_keys	import (
 	HANDLER_REGISTRY,
 	INVOKE_LOCKS,
 )
-
-from .id_prefix	import (
-	PRIVATE_PREFIX,
-	GROUP_PREFIX,
-)
-
 from .graph_events	import (
 	ON_AGENT_START,
 	ON_TURN_START,
@@ -28,18 +37,6 @@ from .graph_events	import (
 	ON_AGENT_END,
 	ON_REQUEST,
 	GRAPH_EVENTS,
-)
-
-from .node_priorities	import (
-	MAXIMUM,
-	HIGHEST,
-	HIGH,
-	MEDIUM,
-	NORMAL,
-	LOW,
-	LOWEST,
-	TRIVIAL,
-	MINIMUM,
 )
 
 

@@ -1,5 +1,3 @@
-from typing	import Any, Awaitable, Callable, Dict
-
 from langgraph.runtime	import Runtime
 from langgraph.typing	import StateT, ContextT
 
@@ -18,6 +16,8 @@ from ...consts		import (
 	ON_TURN_END,
 	ON_AGENT_END,
 )
+
+from typing	import Any, Awaitable, Callable, Dict
 
 
 Function = Callable[[StateT, Runtime[ContextT]], Awaitable[Dict[str, Any]]]

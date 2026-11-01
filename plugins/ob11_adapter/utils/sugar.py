@@ -1,5 +1,6 @@
 from miaoli_bot.api	import store_recall
-from ..consts		import SEGMENT_PARSER
+
+from ..consts	import SEGMENT_PARSER
 
 from typing	import Any, Dict, List
 

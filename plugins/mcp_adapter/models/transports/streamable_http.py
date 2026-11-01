@@ -1,7 +1,8 @@
 from pydantic	import Field
-from typing		import Any, Dict, Literal
 
 from .base_transport	import BaseTransport
+
+from typing	import Any, Dict, Literal
 
 
 class StreamableHttpTransport(BaseTransport):

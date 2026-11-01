@@ -1,5 +1,6 @@
 from pydantic	import BaseModel, Field
-from typing		import Union
+
+from typing	import Union
 
 
 class TypingConfig(BaseModel):

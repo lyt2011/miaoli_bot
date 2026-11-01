@@ -1,6 +1,6 @@
 from ncatbot.api					import QQAPIClient
-from ncatbot.types.napcat.message	import SendMessageResult
 from ncatbot.types					import MessageArray
+from ncatbot.types.napcat.message	import SendMessageResult
 
 from typing	import Union
 

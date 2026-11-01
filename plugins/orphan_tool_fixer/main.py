@@ -1,6 +1,6 @@
-from miaoli_bot.api		import get_handler_registry
-from miaoli_bot.core	import PluginProtocol
 from miaoli_bot.consts	import NORMAL
+from miaoli_bot.core	import PluginProtocol
+from miaoli_bot.api		import get_handler_registry
 
 from .models	import PluginConfig
 from .nodes		import fix_orphan_tool_message

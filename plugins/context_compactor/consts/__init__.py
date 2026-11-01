@@ -1,5 +1,5 @@
-from .share_store_keys	import PLUGIN_CONFIG, RAW_CONFIG
 from .tags				import ABSTRACT_TAG
+from .share_store_keys	import PLUGIN_CONFIG, RAW_CONFIG
 
 
 __all__ = [

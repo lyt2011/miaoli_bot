@@ -1,5 +1,5 @@
-from .every	import Every
 from .once	import Once
+from .every	import Every
 
 
 __all__ = [

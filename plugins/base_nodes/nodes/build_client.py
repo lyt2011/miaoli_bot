@@ -1,7 +1,8 @@
-from miaoli_bot.models	import GraphRuntimeContext, GraphState
+from langchain_openai	import ChatOpenAI
 
 from langgraph.runtime	import Runtime
-from langchain_openai	import ChatOpenAI
+
+from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
 
 async def build_client(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> None:

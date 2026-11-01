@@ -1,8 +1,8 @@
+from .plugin	import Plugin
+from .models	import PluginTopologyRuntime
+
 from pathlib	import Path
 from typing		import Iterable, List
-
-from .models	import PluginTopologyRuntime
-from .plugin	import Plugin
 
 import logging
 

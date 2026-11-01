@@ -1,11 +1,12 @@
+from langgraph.runtime	import Runtime
+
 from miaoli_bot.api		import store_recall
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
-from typing				import Any, Dict
-from langgraph.runtime	import Runtime
-
-from ..consts	import PLUGIN_CONFIG
 from ..core		import MemeSqlite
+from ..consts	import PLUGIN_CONFIG
+
+from typing	import Any, Dict
 
 
 async def inject_memes(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Dict[str, Any]:

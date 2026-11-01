@@ -1,6 +1,7 @@
 from miaoli_bot.api	import store_recall
-from ..consts		import EVENT_PARSER, SEGMENT_PARSER
-from ..parsers		import Parser
+
+from ..parsers	import Parser
+from ..consts	import EVENT_PARSER, SEGMENT_PARSER
 
 
 class ParserRegistry:

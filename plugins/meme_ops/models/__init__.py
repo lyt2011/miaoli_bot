@@ -1,6 +1,6 @@
 from .plugin_config		import PluginConfig
-from .database_config	import DatabaseConfig
 from .help_doc_config	import HelpDocConfig
+from .database_config	import DatabaseConfig
 
 
 __all__ = [

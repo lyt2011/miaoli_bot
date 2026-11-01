@@ -1,5 +1,6 @@
 from pydantic	import BaseModel, Field, model_validator
-from typing		import Any, Dict, Literal, Optional, Self
+
+from typing	import Any, Dict, Literal, Optional, Self
 
 
 Database = Literal["memory", "sqlite", "postgresql"]

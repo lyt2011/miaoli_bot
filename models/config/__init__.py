@@ -1,7 +1,7 @@
-from .plugin	import PluginConfig
-from .provider	import LLM, Provider
 from .split		import SplitConfig
+from .plugin	import PluginConfig
 from .typing	import TypingConfig
+from .provider	import LLM, Provider
 
 
 __all__ = [

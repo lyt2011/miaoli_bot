@@ -1,6 +1,6 @@
-from typing	import Any, Dict, List, Union
-
 from .image_ops	import image_to_tokens
+
+from typing	import Any, Dict, List, Union
 
 
 HOLDER = "图"

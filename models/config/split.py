@@ -1,5 +1,6 @@
 from pydantic	import BaseModel, Field, model_validator
-from typing		import Optional, Self
+
+from typing	import Optional, Self
 
 
 class SplitConfig(BaseModel):

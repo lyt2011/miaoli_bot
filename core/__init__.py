@@ -1,7 +1,7 @@
 from ._share_store	import SHARE_STORE
-from .registries	import ToolRegistry, HandlerRegistry
 from .plugin		import Loader, PluginProtocol
 from .scheduler		import BaseTimer, Every, Job, Once
+from .registries	import ToolRegistry, HandlerRegistry
 
 __all__ = [
 

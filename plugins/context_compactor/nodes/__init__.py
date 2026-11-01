@@ -1,5 +1,5 @@
-from .should_compact	import should_compact
 from .compact			import compact
+from .should_compact	import should_compact
 
 __all__ = [
 

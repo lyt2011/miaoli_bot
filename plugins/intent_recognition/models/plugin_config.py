@@ -1,7 +1,8 @@
 from pydantic	import BaseModel, ConfigDict, Field
-from typing		import List
 
 from .match_	import Match
+
+from typing	import List
 
 
 class PluginConfig(BaseModel):

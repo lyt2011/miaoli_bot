@@ -1,7 +1,7 @@
 from pydantic	import BaseModel, Field
 
-from .calculate_config	import CalculateConfig
 from .compact_config	import CompactConfig
+from .calculate_config	import CalculateConfig
 
 class PluginConfig(BaseModel):
 	

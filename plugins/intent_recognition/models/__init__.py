@@ -1,6 +1,6 @@
 from .match_		import Match
-from .rules			import AnyKeywordsRule, MinKeywordsRule, RegexRule, SingleKeywordRule
 from .plugin_config	import PluginConfig
+from .rules			import AnyKeywordsRule, MinKeywordsRule, RegexRule, SingleKeywordRule
 
 
 __all__ = [

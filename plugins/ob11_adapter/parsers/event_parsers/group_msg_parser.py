@@ -1,8 +1,8 @@
 from typing		import Any, Dict
 from datetime	import datetime
 
-from ..parser		import Parser
-from ...utils		import parse_segments
+from ..parser	import Parser
+from ...utils	import parse_segments
 
 
 class GroupMessageEventParser(Parser):

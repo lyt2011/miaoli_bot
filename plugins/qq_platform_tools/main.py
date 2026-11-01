@@ -1,5 +1,5 @@
-from miaoli_bot.api			import get_tool_registry
-from miaoli_bot.protocols	import PluginProtocol
+from miaoli_bot.api		import get_tool_registry
+from miaoli_bot.core	import PluginProtocol
 
 from .tools	import (
 	send_file_to_qq,

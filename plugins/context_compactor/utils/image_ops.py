@@ -1,7 +1,7 @@
-from typing						import Dict
-from io							import BytesIO
-from base64						import b64decode
-from PIL						import Image as PIL
+from typing	import Dict
+from io		import BytesIO
+from base64	import b64decode
+from PIL	import Image as PIL
 
 import math
 

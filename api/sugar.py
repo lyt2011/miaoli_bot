@@ -2,7 +2,7 @@ from typing	import Any, Dict
 
 from ..consts	import PLUGIN_CONFIG
 from ..models	import LLM, Provider
-from ..stores	import SHARE_STORE
+from ..core		import SHARE_STORE
 
 
 def get_model_info() -> Dict[str, Any]:

@@ -1,7 +1,7 @@
 import re
 
-from pydantic		import BaseModel, Field, PrivateAttr
-from typing			import Literal, Optional
+from pydantic	import BaseModel, Field, PrivateAttr
+from typing		import Literal, Optional
 
 from ...protocols	import BaseRule
 

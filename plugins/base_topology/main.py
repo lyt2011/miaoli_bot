@@ -1,6 +1,6 @@
-from miaoli_bot.api			import get_handler_registry
-from miaoli_bot.protocols	import PluginProtocol
-from miaoli_bot.consts		import MINIMUM
+from miaoli_bot.api		import get_handler_registry
+from miaoli_bot.core	import PluginProtocol
+from miaoli_bot.consts	import MINIMUM
 
 from .models	import PluginConfig
 from .nodes		import (

@@ -5,7 +5,7 @@ from langgraph.runtime	import Runtime
 from miaoli_bot.api		import store_recall
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
-from ..consts			import WORKSPACE
+from ..consts	import WORKSPACE
 
 
 async def inject_output_protocol(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Dict[str, Any]:

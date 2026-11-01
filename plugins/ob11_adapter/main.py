@@ -1,6 +1,6 @@
-from miaoli_bot.api			import store_drop, store_set, get_handler_registry
-from miaoli_bot.protocols	import PluginProtocol
-from miaoli_bot.consts		import HIGH
+from miaoli_bot.api		import store_drop, store_set, get_handler_registry
+from miaoli_bot.core	import PluginProtocol
+from miaoli_bot.consts	import HIGH
 
 from .consts	import PLUGIN_CONFIG, RAW_CONFIG, EVENT_PARSER, SEGMENT_PARSER, PARSER_REGISTRY
 from .chains	import EventParseChain, SegmentParseChain

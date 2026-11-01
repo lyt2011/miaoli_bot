@@ -1,6 +1,6 @@
 from ..consts	import HANDLER_REGISTRY, TOOL_REGISTRY
 from ..core		import HandlerRegistry, ToolRegistry
-from ..stores	import SHARE_STORE
+from ..core		import SHARE_STORE
 
 
 def get_tool_registry() -> ToolRegistry:

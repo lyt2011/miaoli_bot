@@ -1,5 +1,5 @@
-from pydantic		import BaseModel, Field
-from typing			import List, Literal
+from pydantic	import BaseModel, Field
+from typing		import List, Literal
 
 from ...protocols	import BaseRule
 

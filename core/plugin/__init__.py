@@ -1,6 +1,7 @@
 from .models	import Dependence, Specifier, PluginMetadata
 
 from .plugin	import Plugin
+from .protocols	import PluginProtocol
 from .loader	import Loader
 
 from .errors	import (
@@ -12,11 +13,21 @@ from .errors	import (
 
 __all__ = [
 
+	# models
 	"Dependence",
 	"Specifier",
 	"PluginMetadata",
+
+	# plugin
 	"Plugin",
+
+	# protocols
+	"PluginProtocol",
+
+	# loader
 	"Loader",
+
+	# errors
 	"BasePluginError",
 	"EntryClassNotFound",
 	"MetadataMissingError",

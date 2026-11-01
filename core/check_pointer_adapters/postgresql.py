@@ -5,7 +5,7 @@ from psycopg_pool						import AsyncConnectionPool
 from langgraph.checkpoint.base			import BaseCheckpointSaver
 from langgraph.checkpoint.postgres.aio	import AsyncPostgresSaver
 
-from ...protocols	import BaseCheckpointerSaverAdapter
+from .protocols	import BaseCheckpointerSaverAdapter
 
 
 class PostgresqlAdapter(BaseCheckpointerSaverAdapter):

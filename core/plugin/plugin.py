@@ -2,8 +2,8 @@ from pathlib	import Path
 from typing		import Any, Dict, List, Optional, Self
 from types		import ModuleType
 
-from ...protocols	import PluginProtocol
-from ...utils		import inject_workspace
+from .protocols	import PluginProtocol
+from ...utils	import inject_workspace
 
 from .errors	import EntryClassNotFound, MetadataMissingError, NotAPackageError
 from .models	import PluginMetadata, Dependence

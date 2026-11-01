@@ -1,7 +1,7 @@
 from typing		import List, Self
 from pydantic	import BaseModel, Field, model_validator
 
-from ..errors	import RepeatDependenceError
+from ..errors		import RepeatDependenceError
 from .dependence	import Dependence
 
 

@@ -1,5 +1,5 @@
-from .parser			import Parser
-from .event_parsers		import (
+from .parser		import Parser
+from .event_parsers	import (
 	PrivateMessageEventParser,
 	GroupMessageEventParser,
 )

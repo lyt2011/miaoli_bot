@@ -1,5 +1,5 @@
-from miaoli_bot.api			import store_drop, store_set, get_tool_registry
-from miaoli_bot.protocols	import PluginProtocol
+from miaoli_bot.api		import store_drop, store_set, get_tool_registry
+from miaoli_bot.core	import PluginProtocol
 
 from .tools		import write, replace, read_image, read_file, bash
 from .consts	import PLUGIN_CONFIG, RAW_CONFIG

@@ -6,7 +6,7 @@ SHARE_STORE 的便捷 api
 
 from typing	import Any
 
-from ..stores	import SHARE_STORE
+from ..core	import SHARE_STORE
 
 
 _UNSET = object()

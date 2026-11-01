@@ -11,6 +11,7 @@
 ## 索引
 
 - [v0.33.1](CHANGELOG/v0.33.1.md) — 2026-11-01 — 全仓 27 个文本文件补齐末尾换行，内容一字未改
+- [v0.34.0](CHANGELOG/v0.34.0.md) — 2026-11-02 — `stores/` / `protocols/` / `adapters/` 收拢进 `core/`，新增 `core/scheduler/`（`Job` + `Once` / `Every`），子插件导入统一收敛到主包 1 层（破坏性）
 - [v0.33.2](CHANGELOG/v0.33.2.md) — 2026-11-02 — 上下文压缩合并内容时带上思维链（尚未适配 DeepSeek API，分支暂不生效），`StreamableHttpTransport.timeout` 收敛为 `float`
 - [v0.33.0](CHANGELOG/v0.33.0.md) — 2026-11-01 — 人设与输出协议从主包剥离给 `miaoli_bot_adapter`，删 `data/prompts/` / `prompt_file` / `get_prompt`，新增 `inject_time` 子插件，`load_from` 收紧为 `DirectoryPath`（破坏性）
 - [v0.32.2](CHANGELOG/v0.32.2.md) — 2026-10-31 — 删干净 `search_memes_by_tags` 留下的死方法与 SQL 常量，`tp_sort2` 改名 `topology_sort_plugins`，补掉最后一条 ruff 报错

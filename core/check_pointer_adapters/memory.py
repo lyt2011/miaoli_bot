@@ -2,7 +2,7 @@ from typing	import Self
 
 from langgraph.checkpoint.memory	import InMemorySaver
 
-from ...protocols	import BaseCheckpointerSaverAdapter
+from .protocols	import BaseCheckpointerSaverAdapter
 
 
 class InMemoryAdapter(BaseCheckpointerSaverAdapter):

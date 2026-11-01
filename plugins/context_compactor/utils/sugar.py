@@ -1,7 +1,7 @@
 from typing						import Any, List
 from langchain_core.messages	import AIMessage, HumanMessage, SystemMessage
 
-from .block_ops					import handle_block
+from .block_ops	import handle_block
 
 
 def keep_recent_messages(messages: List[Any], n: int) -> List[Any]:

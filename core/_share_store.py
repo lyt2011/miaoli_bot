@@ -1,14 +1,12 @@
 from dataclasses	import dataclass, field
 from typing			import Dict, Any, Iterator
 
-from ..protocols	import StoreProtocol
-
 
 _UNSET = object()
 
 
 @dataclass # 全局共享容器
-class _ShareStore(StoreProtocol):
+class _ShareStore:
 	_store: Dict[str, Any] = field(default_factory=dict)
 	
 	def set(self, key: str, value: Any) -> None:

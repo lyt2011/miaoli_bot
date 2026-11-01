@@ -1,5 +1,5 @@
 from ..consts	import PLUGIN_CONFIG
-from ..stores	import SHARE_STORE
+from ..core		import SHARE_STORE
 
 
 def get_admin_id() -> str:

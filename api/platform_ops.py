@@ -3,7 +3,7 @@ import asyncio
 from typing	import Any
 
 from ..consts	import INVOKE_LOCKS, NCATBOT_API
-from ..stores	import SHARE_STORE
+from ..core		import SHARE_STORE
 
 
 def get_ncatbot_api() -> Any:

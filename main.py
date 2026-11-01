@@ -6,21 +6,20 @@ from collections	import defaultdict
 from pathlib		import Path
 from typing			import Optional, Dict
 
-from langgraph.checkpoint.base		import BaseCheckpointSaver
+from langgraph.checkpoint.base	import BaseCheckpointSaver
 
-from miaoli_pipeline.core		import GraphPipeline
-from miaoli_pipeline.errors		import AgentAborted
+from miaoli_pipeline.core	import GraphPipeline
+from miaoli_pipeline.errors	import AgentAborted
 
-from .core		import ToolRegistry, Loader, HandlerRegistry
-from .stores	import SHARE_STORE
-from .protocols	import BaseCheckpointerSaverAdapter as BCSA
-from .models	import GraphRuntimeContext, GraphState, PluginConfig
-from .utils		import (
+from .core							import ToolRegistry, Loader, HandlerRegistry, SHARE_STORE
+from .core.check_pointer_adapters	import BaseCheckpointerSaverAdapter as BCSA
+from .models						import GraphRuntimeContext, GraphState, PluginConfig
+from .utils							import (
 	easier_send,
 	inject_workspace,
 	concatenate_id,
 )
-from .consts	import (
+from .consts						import (
 	NCATBOT_API,
 	PLUGIN_CONFIG,
 	RAW_CONFIG,
@@ -32,7 +31,7 @@ from .consts	import (
 	GRAPH_EVENTS,
 	INVOKE_LOCKS,
 )
-from .adapters	import (
+from .core.check_pointer_adapters	import (
 	InMemoryAdapter,
 	SQLiteAdapter,
 	PostgresqlAdapter,

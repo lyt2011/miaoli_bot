@@ -55,7 +55,7 @@ ON_BEFORE_REQUEST → build_prompt（priority=NORMAL+1）→ 其余节点
 
 ## 与 account_injector 的分工
 
-`account_injector` 只负责**产出**（往 `prompt` 写 `account_info` 段），本插件只负责**组装与落位**。两者不再抢同一个字符串键。
+`account_injector` 只负责**产出**（往 `prompt` 写 `account-info` 段），本插件只负责**组装与落位**。两者不再抢同一个字符串键。
 
 ## 注册
 

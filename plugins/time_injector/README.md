@@ -8,7 +8,7 @@
 return {"prompts": {"current_time": "2026-11-01-04-50-39"}}
 ```
 
-`prompts` 是 `Dict[str, str]`，`prompt_builder` 会把它渲染成 `<current_time>...</current_time>` 放进系统提示词。
+`prompts` 是 `Dict[str, str]`，`prompt_builder` 会把它渲染成 `<current-time>...</current-time>` 放进系统提示词。
 
 ## 注册
 

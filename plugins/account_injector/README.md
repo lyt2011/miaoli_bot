@@ -1,6 +1,6 @@
 把账号信息注入提示词。
 
-`inject_account` 节点挂在 `on_agent_start`，把管理员 / 机器人的 QQ 号与昵称拼成一个信息块，写进 `prompt` 的 `account_info` 段。
+`inject_account` 节点挂在 `on_agent_start`，把管理员 / 机器人的 QQ 号与昵称拼成一个信息块，写进 `prompt` 的 `account-info` 段。
 
 ## 为什么是「段」而不是整串
 

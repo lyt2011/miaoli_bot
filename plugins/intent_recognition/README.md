@@ -148,8 +148,8 @@ return {"prompt": {"intent_recognition": build_prompt(field_prompts)}}
 所以提示词里长这样（两个 matcher 都命中时）：
 
 ```
-<intent_recognition><meme>…</meme>
-<privacy>…</privacy></intent_recognition>
+<intent-recognition><meme>…</meme>
+<privacy>…</privacy></intent-recognition>
 ```
 
 `matcher.name` 是段内的子标签，不是段名。
@@ -201,4 +201,4 @@ self.registry.on_before_request(recognize_intent, priority=NORMAL + 2)
 {"prompt": {"intent_recognition": ""}}
 ```
 
-也就是该段被置为空字符串而不是删除，`prompt_builder` 会渲染出一个空的 `<intent_recognition></intent_recognition>`。这样做的好处是上一轮命中的内容不会残留 —— 每轮都覆盖，不留陈旧段。
+也就是该段被置为空字符串而不是删除，`prompt_builder` 会渲染出一个空的 `<intent-recognition></intent-recognition>`。这样做的好处是上一轮命中的内容不会残留 —— 每轮都覆盖，不留陈旧段。

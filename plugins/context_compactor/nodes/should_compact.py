@@ -1,3 +1,5 @@
+from langchain_core.messages	import HumanMessage
+
 from langgraph.runtime	import Runtime
 
 from miaoli_pipeline.actions	import Goto
@@ -7,7 +9,7 @@ from miaoli_bot.consts	import ON_COMPACT, ON_BEFORE_REQUEST
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
 from ..consts	import PLUGIN_CONFIG
-from ..utils	import base_calculate, tiktoken_calculate
+from ..utils	import base_calculate, tiktoken_calculate, read_compact_prompt
 
 from typing	import Any
 
@@ -20,7 +22,8 @@ async def should_compact(state: GraphState, runtime: Runtime[GraphRuntimeContext
 	
 	plugin_cfg = store_recall(PLUGIN_CONFIG)
 	
-	messages = state.get("messages", [])
+	messages	= state.get("messages", [])
+	messages	= [*messages, HumanMessage(read_compact_prompt())] # 加一条压缩提示词进去
 	
 	# 根据计算模式动态选择公式/tiktoken
 	if plugin_cfg.calculate.mode == "base":

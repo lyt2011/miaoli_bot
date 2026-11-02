@@ -1,4 +1,9 @@
-<compact_request>
+from miaoli_bot.api	import store_recall
+
+from ..consts	import PLUGIN_CONFIG
+
+
+DEFAULT_PROMPT = """
 上下文窗口即将溢出，请你根据以下要求生成上下文摘要：
 - 必须使用类似 `2001-01-01 00:00:01` 的**绝对时间表述**，禁止使用 `今天`、`昨天`、`明天`、`次日` 等相对时间表述。
 - 使用第三人称客观地总结上下文生成摘要。
@@ -7,4 +12,20 @@
 - **保留所有关键事实**：人名、地名、日期、时间点、数字、具体事件、决策结果。当原文中出现列表（如人员名单、待办事项）时，逐项记录，不要用"等人"或"多项任务"等概括表述替代。
 - 保留姓名、地名、账号名、型号等原文写法；**不要改名、合并相似实体**，或仅凭上下文猜测别名指向。对话中的事实与用户的猜测、玩笑、假设要区分清楚。
 - 摘要长度可根据原文信息密度调整：事实密集的对话生成较长摘要，闲聊为主的对话可精简。**优先保证事实完整性，其次考虑简洁性**。
-</compact_request>
+"""
+
+
+def read_compact_prompt() -> str:
+	
+	"""读取压缩提示词 不会缓存、每次重读"""
+	
+	config	= store_recall(PLUGIN_CONFIG)
+	compact	= config.compact
+	
+	if compact.prompt_file and compact.prompt_file.is_file():
+		prompt = compact.prompt_file.read_text(encoding=compact.encoding)
+	
+	else:
+		prompt = DEFAULT_PROMPT # 没有自定义提示词 / 自定义提示词不存在时使用默认提示词
+	
+	return "<compact-request>" + "\n" + prompt + "\n" + "</compact-request>"

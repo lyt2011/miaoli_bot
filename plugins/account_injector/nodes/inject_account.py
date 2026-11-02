@@ -17,4 +17,4 @@ async def inject_account(state: GraphState, runtime: Runtime[GraphRuntimeContext
 		f"\nbot nickname: {get_bot_nickname()}\n"
 	)
 
-	return {"prompts": {"account_info": account_info}}
+	return {"prompts": {"account-info": account_info}}

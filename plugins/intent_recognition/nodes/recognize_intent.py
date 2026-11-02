@@ -47,4 +47,4 @@ async def recognize_intent(state: GraphState, runtime: Runtime[GraphRuntimeConte
 		except Exception as e:
 			LOGGER.error(f"匹配 {matcher.name} 时出现错误: {type(e).__name__}: {e}")
 	
-	return {"prompts": {"intent_recognition": f"{GUIDE}\n{build_prompt(field_prompts)}"}}
+	return {"prompts": {"intent-recognition": f"{GUIDE}\n{build_prompt(field_prompts)}"}}

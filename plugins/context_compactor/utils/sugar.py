@@ -57,3 +57,4 @@ def merge_contents(messages: List[Any]) -> str:
 			contents += str(reasoning_content)
 	
 	return contents
+

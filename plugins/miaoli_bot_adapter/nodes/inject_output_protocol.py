@@ -18,4 +18,4 @@ async def inject_output_protocol(state: GraphState, runtime: Runtime[GraphRuntim
 	workspace	= Path(workspace)
 	prompt_file	= workspace / "data" / "output_protocol.md"
 	
-	return {"prompts": {"output_protocol": prompt_file.read_text(encoding="utf-8")}}
+	return {"prompts": {"output-protocol": prompt_file.read_text(encoding="utf-8")}}

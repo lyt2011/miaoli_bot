@@ -10,7 +10,7 @@
 
 **守卫 `should_compact`**（`on_before_compact`，`priority=NORMAL`）
 
-1. **算 token** —— 按 `calculate.mode` 选公式（见下）
+1. **算 token** —— 按 `calculate.mode` 选公式（见下），并把压缩提示词本身也计进去（它会被拼进压缩请求，不算就会导致「判定不压 → 请求带上提示词 → 溢出」）
 2. **判是否要压** —— `usage_tokens + max_tokens < context_window` 时返回 `Goto(ON_BEFORE_REQUEST)`（不压缩，直接往下走）
 3. **要压** —— 返回 `Goto(ON_COMPACT)`
 
@@ -45,7 +45,7 @@ enable: true
 compact:
   recall_system_prompt: true
   encoding: "utf-8"
-  prompt_file: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins/context_compactor/data/compact_prompt.md"
+  prompt_file: null       # 留空 = 用内置默认提示词
   keep_count: 20
 
 calculate:
@@ -58,7 +58,7 @@ calculate:
 | `enable` | 关闭时不注册节点，即不压缩 |
 | `compact.recall_system_prompt` | 压缩后是否把原 `messages[0]` 的 `SystemMessage` 回填到首位 |
 | `compact.encoding` | 读 `compact.prompt_file` 用的编码 |
-| `compact.prompt_file` | 压缩提示词文件，**绝对路径** |
+| `compact.prompt_file` | 压缩提示词的覆盖文件，可留空 —— 留空用内置的 `DEFAULT_PROMPT`；填了但文件不存在也回落到默认值 |
 | `compact.keep_count` | 压缩后保留多少条最近消息（`ToolMessage` 不计数），默认 20 |
 
 ### 保留规则
@@ -103,7 +103,7 @@ calculate:
 
 ## 注意事项
 
-- **`compact.prompt_file` 用绝对路径**，不再依赖进程 CWD
+- **压缩提示词默认内置在 `utils/prompt_ops.py`**（`DEFAULT_PROMPT`），每次压缩重读一次，不做缓存；`compact.prompt_file` 指向的文件存在时优先用它
 - **`on_close` 会 `drop` 两个 `SHARE_STORE` 键**，插件重载不会残留旧配置
-- **摘要质量取决于 `compact.prompt_file`** —— 仓库默认提示词要求「绝对时间表述 + 第三人称」，实际效果受对话内容影响（有明确时间戳的对话遵守得更好）
+- **摘要质量取决于压缩提示词** —— 内置的 `DEFAULT_PROMPT` 要求「绝对时间表述 + 第三人称」，实际效果受对话内容影响（有明确时间戳的对话遵守得更好）
 - **坏图片会让压缩一并失败**：压缩请求带全量 `messages`，若其中含 API 拒绝的图片，压缩和 `call_llm` 会同时 `400`

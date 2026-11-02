@@ -11,7 +11,7 @@ from ..consts	import PLUGIN_CONFIG
 from ..models	import LLM, Provider
 from ..errors	import ClientNotFound, ModelNotFound, ProviderNotFound
 
-from typing	import Optional, Type, Union
+from typing	import Any, Dict, Optional, Type, Union
 
 
 CLIENT_MAPPING = {
@@ -21,7 +21,7 @@ CLIENT_MAPPING = {
 }
 
 
-def get_model_info() -> LLM:
+def get_model_info() -> Dict[str, Any]:
 	
 	"""获取当前使用的模型信息"""
 	
@@ -31,11 +31,11 @@ def get_model_info() -> LLM:
 	provider	= _get_provider(config.provider)
 	model		= _get_model(config.model, provider)
 	
-	return model
+	return model.model_dump()
 
-def get_provider_info() -> Provider:
+def get_provider_info() -> Dict[str, Any]:
 	"""获取当前使用的供应商信息"""
-	return _get_provider(SHARE_STORE.recall(PLUGIN_CONFIG).provider)
+	return _get_provider(SHARE_STORE.recall(PLUGIN_CONFIG).provider).model_dump()
 
 def build_client(
 	provider_name	: Optional[str] = None,

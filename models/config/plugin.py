@@ -35,6 +35,6 @@ class PluginConfig(BaseModel):
 		
 		models: Dict[str, LLM]	= {model.name: model for model in providers[self.provider].models}
 		if self.model not in models:
-			ValueError(f"供应商 '{self.provider}' 未配置 '{self.model}' 模型")
+			raise ValueError(f"供应商 '{self.provider}' 未配置 '{self.model}' 模型")
 		
 		return self

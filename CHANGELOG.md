@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.35.2](CHANGELOG/v0.35.2.md) — 2026-11-02 — 压缩合并内容时正确读取 `additional_kwargs` 里的思维链
 - [v0.35.1](CHANGELOG/v0.35.1.md) — 2026-11-02 — `get_model_info` / `get_provider_info` 恢复返回 dict，`model` 校验补上 `raise`，`build_prompt` 空提示词不注入且段排序稳定
 - [v0.35.0](CHANGELOG/v0.35.0.md) — 2026-11-02 — LLM 客户端改为按 `providers[].client` 选实现（ChatOpenAI / ChatDeepSeek / ChatAnthropic），api 层拆成一组 `*_ops`，三个子插件改名，新增三个 Error（破坏性）
 - [v0.34.1](CHANGELOG/v0.34.1.md) — 2026-11-02 — 导入分块拆出跨包自引用与同包相对两块，列对齐改为「换行导入即组尾」

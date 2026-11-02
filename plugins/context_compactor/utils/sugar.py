@@ -53,7 +53,7 @@ def merge_contents(messages: List[Any]) -> str:
 			contents += str(message.tool_calls)
 		
 		# 注意模型会拼接思维链
-		if hasattr(message, "reasoning_content") and message.reasoning_content:
-			contents += str(message.reasoning_content)
+		if (reasoning_content := message.additional_kwargs.get("reasoning_content")):
+			contents += str(reasoning_content)
 	
 	return contents

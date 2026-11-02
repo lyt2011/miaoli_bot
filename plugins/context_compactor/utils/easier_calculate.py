@@ -14,6 +14,7 @@ def tiktoken_calculate(messages: List[Any], *, encoding: Encoding) -> int:
 	
 	contents	= merge_contents(messages)
 	token_array	= encoding.encode(contents, disallowed_special=())
+	
 	return len(token_array)
 
 def base_calculate(messages: List[Any]) -> int:

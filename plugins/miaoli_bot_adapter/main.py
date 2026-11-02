@@ -3,8 +3,8 @@ from miaoli_bot.core	import PluginProtocol
 from miaoli_bot.api		import store_drop, store_set, get_handler_registry
 
 from .models	import PluginConfig
+from .nodes		import inject_soul, inject_output_protocol
 from .consts	import PLUGIN_CONFIG, RAW_CONFIG, WORKSPACE
-from .nodes		import inject_model_info, inject_soul, inject_output_protocol
 
 
 class MiaoliBotAdapter(PluginProtocol):
@@ -25,8 +25,6 @@ class MiaoliBotAdapter(PluginProtocol):
 		if not config.enable:
 			return None
 		
-		# 必须先于 build_client 写入 base_url / api_key / model / max_tokens
-		registry.on_turn_start(inject_model_info, priority=NORMAL + 1)
 		registry.on_turn_start(inject_soul, priority=NORMAL + 1)
 		registry.on_turn_start(inject_output_protocol, priority=NORMAL + 1)
 	
@@ -34,7 +32,6 @@ class MiaoliBotAdapter(PluginProtocol):
 		
 		registry = get_handler_registry()
 		
-		registry.remove_turn_start(inject_model_info)
 		registry.remove_turn_start(inject_soul)
 		registry.remove_turn_start(inject_output_protocol)
 		

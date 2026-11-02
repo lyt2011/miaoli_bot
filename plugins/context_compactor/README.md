@@ -21,7 +21,7 @@
 
 摘要以 `<abstract>...</abstract>` 包裹后作为 `HumanMessage` 落在 `messages[0]`；`compact.recall_system_prompt` 为真且原 `messages[0]` 是 `SystemMessage` 时，提示词会被回填到 `messages[0]`，摘要落到 `messages[1]`。
 
-压缩完由 `base_topology` 的 `on_after_compact` 跳回 `ON_TURN_START`，重走一轮 —— 这一轮守卫命中 `<abstract>` 标志后 `Abort`，本轮结束（见下方「二次压缩靠 HACK 拦截」）。
+压缩完由 `default_routing` 的 `on_after_compact` 跳回 `ON_TURN_START`，重走一轮 —— 这一轮守卫命中 `<abstract>` 标志后 `Abort`，本轮结束（见下方「二次压缩靠 HACK 拦截」）。
 
 ## 为什么拆成两个事件
 

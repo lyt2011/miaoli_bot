@@ -1,0 +1,4 @@
+name = "default_routing"
+entry_class = "main.DefaultRouting"
+description = "默认跳转"
+dependences = []

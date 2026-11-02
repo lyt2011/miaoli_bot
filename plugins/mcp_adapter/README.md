@@ -11,7 +11,7 @@ MCP 适配演示子插件：接入 [MCP（Model Context Protocol）](https://mod
 
 `recall_mcp_tools` 节点挂在 `on_before_request`，`priority=MEDIUM`（=10）：
 
-- 高于 `base_topology` 默认 `Goto` 的 `MINIMUM`，因此一定会被执行
+- 高于 `default_routing` 默认 `Goto` 的 `MINIMUM`，因此一定会被执行
 - 高于 `tool_permission_manager` 的 `pick_tools`（`priority=1`），**这一点是必须的** ——
   `pick_tools` 会把「未配置权限的工具」从 `runtime.context["tools"]` 里摘掉，
   如果 `recall_mcp_tools` 排在它后面，MCP 工具就会被追加回来，**绕过整套权限控制**

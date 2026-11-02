@@ -1,7 +1,7 @@
-# base_topology 配置模板
+# default_routing 配置模板
 #
 # 用法：
-#   cp plugins/base_topology/config.example.yaml plugins/base_topology/config.yaml
+#   cp plugins/default_routing/config.example.yaml plugins/default_routing/config.yaml
 #
 # config.yaml 已加入 .gitignore，不会被提交。本文件是入库的模板。
 

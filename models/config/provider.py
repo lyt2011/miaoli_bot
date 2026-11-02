@@ -3,8 +3,8 @@ from pydantic	import BaseModel, Field
 from typing	import List, Literal
 
 
-Vision		= Literal["image", "video", "text", "audio"]
-Protocol	= Literal["openai-completions", "openai-responses"]
+Vision	= Literal["image", "video", "text", "audio"]
+Client	= Literal["openai", "deepseek", "anthropic"]
 
 
 class LLM(BaseModel):
@@ -24,5 +24,5 @@ class Provider(BaseModel):
 	name	: str		= Field(..., description="供应商名字")	
 	base_url: str		= Field(..., description="请求的地址")
 	api_key	: str		= Field(..., description="鉴权密钥")
-	protocol: Protocol	= Field(..., description="协议")
+	client	: Client	= Field(..., description="客户端配置 决定使用的适配器")
 	models	: List[LLM]	= Field(default_factory=list, description="模型配置", min_length=1)

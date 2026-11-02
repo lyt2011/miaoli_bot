@@ -6,9 +6,9 @@ from .consts	import PLUGIN_CONFIG, RAW_CONFIG
 from .tools		import write, replace, read_image, read_file, bash
 
 
-class BaseSystemTools(PluginProtocol):
+class SystemTools(PluginProtocol):
 	
-	"""基础系统工具"""
+	"""系统工具"""
 
 	async def on_load(self) -> None:
 		

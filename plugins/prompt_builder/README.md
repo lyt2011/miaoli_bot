@@ -63,4 +63,4 @@ ON_BEFORE_REQUEST → build_prompt（priority=NORMAL+1）→ 其余节点
 self.registry.on_before_request(build_prompt, priority=NORMAL + 1)
 ```
 
-`register()` 内部是 `reverse=True` 排序，**priority 数值越大越先执行**。比 `NORMAL` 高一级，保证在 `pick_tools`（`priority=1`，同档按注册顺序）与 `base_topology` 的默认跳转（`MINIMUM`）之前跑完。
+`register()` 内部是 `reverse=True` 排序，**priority 数值越大越先执行**。比 `NORMAL` 高一级，保证在 `pick_tools`（`priority=1`，同档按注册顺序）与 `default_routing` 的默认跳转（`MINIMUM`）之前跑完。

@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.35.0](CHANGELOG/v0.35.0.md) — 2026-11-02 — LLM 客户端改为按 `providers[].client` 选实现（ChatOpenAI / ChatDeepSeek / ChatAnthropic），api 层拆成一组 `*_ops`，三个子插件改名，新增三个 Error（破坏性）
 - [v0.34.1](CHANGELOG/v0.34.1.md) — 2026-11-02 — 导入分块拆出跨包自引用与同包相对两块，列对齐改为「换行导入即组尾」
 - [v0.34.0](CHANGELOG/v0.34.0.md) — 2026-11-02 — `stores/` / `protocols/` / `adapters/` 收拢进 `core/`，新增 `core/scheduler/`（`Job` + `Once` / `Every`），子插件导入统一收敛到主包 1 层（破坏性）
 - [v0.33.2](CHANGELOG/v0.33.2.md) — 2026-11-02 — 上下文压缩合并内容时带上思维链（尚未适配 DeepSeek API，分支暂不生效），`StreamableHttpTransport.timeout` 收敛为 `float`

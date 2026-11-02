@@ -1,4 +1,4 @@
-# Inject Time
+# Time Injector
 
 每轮往 `state["prompts"]` 写一段 `current_time`，值是当前时间，格式 `年-月-日-小时-分钟-秒`。
 

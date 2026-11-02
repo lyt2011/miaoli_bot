@@ -1,4 +1,4 @@
-name = "inject_time"
-entry_class = "main.CurrentTimeInjector"
+name = "time_injector"
+entry_class = "main.TimeInjector"
 description = "每轮把当前时间注入 prompts.current_time"
 dependences = []

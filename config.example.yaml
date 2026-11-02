@@ -18,7 +18,7 @@ providers:
   - name: "deepseek"                            # 供应商名（provider 字段的取值）
     base_url: "https://api.deepseek.com/v1"     # 请求地址，填到 /v1 这一层，不要带 /chat/completions
     api_key: "YOUR_API_KEY_HERE"
-    protocol: "openai-completions"              # openai-completions / openai-responses
+    client: "deepseek"                          # 客户端实现 openai / deepseek / anthropic
     models:
       - name: "deepseek-flash"                  # 模型名（model 字段的取值）
         context_window: 128000                  # 上下文窗口

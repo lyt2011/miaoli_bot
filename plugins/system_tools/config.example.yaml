@@ -1,7 +1,7 @@
-# base_system_tools 配置模板
+# system_tools 配置模板
 #
 # 用法：
-#   cp plugins/base_system_tools/config.example.yaml plugins/base_system_tools/config.yaml
+#   cp plugins/system_tools/config.example.yaml plugins/system_tools/config.yaml
 #
 # config.yaml 已加入 .gitignore（各部署环境的路径/取值可能不同），不会被提交。
 # 本文件是入库的模板；PluginConfig 字段有变动时请同步这里。

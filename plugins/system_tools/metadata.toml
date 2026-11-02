@@ -1,0 +1,4 @@
+name = "system_tools"
+entry_class = "main.SystemTools"
+description = "系统工具"
+dependences = []

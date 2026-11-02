@@ -1,6 +1,6 @@
 # Miaoli Bot Adapter
 
-miaoli_bot 内部数据适配 —— 把 miaoli_bot 自己的数据**适配**成图节点可直接消费的形状。
+miaoli_bot 内部数据适配 —— `on_load` 把根配置解析成 `PluginConfig` 放进 `SHARE_STORE`（子插件经 `miaoli_bot.api.get_root_config()` 取），省得每个节点自己解析 `providers` 列表。LLM 客户端**不再经由本插件**：那件事由 `miaoli_bot.api.build_client()` + `base_nodes` 的 `build_client` 节点负责。
 
 此外，**人格与输出协议这两份提示词资产也归本插件持有**（`data/`），主包不再内置任何提示词、也不再提供 `prompt_file` / `get_prompt`。
 
@@ -9,7 +9,7 @@ miaoli_bot 内部数据适配 —— 把 miaoli_bot 自己的数据**适配**成
 | 插件 | 适配的对象 | 数据来源 |
 | --- | --- | --- |
 | `ob11_adapter` | **信息**（QQ 事件 / 消息段） | ncatbot |
-| `miaoli_bot_adapter` | **miaoli_bot 内部数据**（根配置、供应商、模型等）+ **人格资产**（`SOUL.md` / `output_protocol.md`） | miaoli_bot / 本插件 `data/` |
+| `miaoli_bot_adapter` | **miaoli_bot 内部数据**（根配置 → `SHARE_STORE`）+ **人格资产**（`SOUL.md` / `output_protocol.md`） | miaoli_bot / 本插件 `data/` |
 
 `ob11_adapter` 让图节点不必依赖 ncatbot 的类，本插件让图节点不必依赖 miaoli_bot 的根配置结构。
 
@@ -17,11 +17,10 @@ miaoli_bot 内部数据适配 —— 把 miaoli_bot 自己的数据**适配**成
 
 | 节点 | 事件 / 优先级 | 产出 |
 | --- | --- | --- |
-| `inject_model_info` | `on_turn_start`（`NORMAL + 1`） | `base_url` / `api_key` / `model` / `max_tokens` 四个 state 键，供 `build_client` 构造 `ChatOpenAI` 实例 |
 | `inject_soul` | `on_turn_start`（`NORMAL + 1`） | `prompts` 的 `soul` 段，内容是 `data/SOUL.md` 全文 |
 | `inject_output_protocol` | `on_turn_start`（`NORMAL + 1`） | `prompts` 的 `output_protocol` 段，内容是 `data/output_protocol.md` 全文 |
 
-三个节点都必须排在 `build_client`（`NORMAL`）之前 —— `inject_model_info` 是它的输入，两个提示词节点则是为了让 `prompt_builder` 在 `on_before_request` 拼装时能读到人格与输出协议。
+两个节点都挂 `on_turn_start`，比 `prompt_builder` 的 `on_before_request` 早一个事件，所以它们写的段一定赶在拼装之前就位。
 
 ## 人格资产
 
@@ -45,7 +44,7 @@ miaoli_bot_adapter/
 ├── consts/                     # SHARE_STORE 键（PLUGIN_CONFIG / RAW_CONFIG / WORKSPACE）
 ├── data/                       # 人格资产（SOUL.md / output_protocol.md）
 ├── models/                     # PluginConfig
-└── nodes/                      # inject_model_info / inject_soul / inject_output_protocol
+└── nodes/                      # inject_soul / inject_output_protocol
 ```
 
 ## 配置

@@ -5,7 +5,7 @@ from miaoli_bot.api		import get_handler_registry
 from .nodes	import inject_current_time
 
 
-class CurrentTimeInjector(PluginProtocol):
+class TimeInjector(PluginProtocol):
 	
 	"""每轮把当前时间注入 prompts.current_time"""
 	

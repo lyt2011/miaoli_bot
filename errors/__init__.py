@@ -1,14 +1,21 @@
-from .base_bot_error				import BaseBotError
-from .pipeline_stop_dispatch		import PipelineStopDispatch
-from .session_manager_closing_error	import SessionManagerClosingError
+from .base_bot_error		import BaseBotError
+from .model_not_found		import ModelNotFound
+from .client_not_found		import ClientNotFound
+from .provider_not_found	import ProviderNotFound
 
 
 __all__ = [
 
-	# base
+	# base_bot_error
 	"BaseBotError",
-	
-	"SessionManagerClosingError",
-	"PipelineStopDispatch",
+
+	# client_not_found
+	"ClientNotFound",
+
+	# model_not_found
+	"ModelNotFound",
+
+	# provider_not_found
+	"ProviderNotFound",
 
 ]

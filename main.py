@@ -1,16 +1,14 @@
 from langgraph.checkpoint.base	import BaseCheckpointSaver
 
-from ncatbot.core		import registrar
-from ncatbot.plugin		import NcatBotPlugin
-from ncatbot.event.qq	import MessageEvent
+from ncatbot.core	import registrar
+from ncatbot.plugin	import NcatBotPlugin
 
-from .core							import EventBuffer
 from .core							import AgentAborted
 from .core							import GraphPipeline
+from .utils							import inject_workspace
 from .models						import GraphRuntimeContext, GraphState, PluginConfig
-from .utils							import easier_send, inject_workspace, concatenate_id
-from .core							import ToolRegistry, Loader, HandlerRegistry, SHARE_STORE
 from .core.check_pointer_adapters	import BaseCheckpointerSaverAdapter as BCSA
+from .core							import ToolRegistry, Loader, HandlerRegistry, ChannelRegistry, SHARE_STORE
 from .core.check_pointer_adapters	import (
 	InMemoryAdapter,
 	SQLiteAdapter,
@@ -26,15 +24,14 @@ from .consts	import (
 	HANDLER_REGISTRY,
 	WORKSPACE_DIR,
 	GRAPH_EVENTS,
-	INVOKE_LOCKS,
-	EVENT_BUFFER,
+	INVOKE_LOCK,
+	CHANNEL_REGISTRY,
+	MAIN_READY,
 )
 
-from pathlib		import Path
-from collections	import defaultdict
-from typing			import Optional, Dict
+from pathlib	import Path
+from typing		import Optional
 
-import random
 import asyncio
 
 
@@ -51,9 +48,8 @@ class MiaoLiBot(NcatBotPlugin):
 	def __init__(self, *args, **kwargs) -> None:
 		super().__init__(*args, **kwargs)
 		
-		self.plugin_loader	: Optional[Loader]			= None
-		self.cpa			: Optional[BCSA]			= None
-		self.invoke_locks	: Dict[str, asyncio.Lock]	= defaultdict(asyncio.Lock)
+		self.plugin_loader	: Optional[Loader]	= None
+		self.cpa			: Optional[BCSA]	= None
 	
 	@staticmethod
 	def _build_graph(checkpointer: BaseCheckpointSaver) -> GraphPipeline:
@@ -65,6 +61,9 @@ class MiaoLiBot(NcatBotPlugin):
 		return graph_pipeline
 	
 	async def on_load(self) -> None:
+		
+		# 重置插件状态
+		SHARE_STORE.set(MAIN_READY, asyncio.Event())
 		
 		# 加载并注入插件目录
 		p_path	= Path(__file__).resolve().parent
@@ -79,7 +78,7 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		# ncatbot api/执行锁
 		SHARE_STORE.set(NCATBOT_API, self.api)
-		SHARE_STORE.set(INVOKE_LOCKS, self.invoke_locks)
+		SHARE_STORE.set(INVOKE_LOCK, asyncio.Lock())
 		
 		# pydantic插件配置/原生配置
 		SHARE_STORE.set(PLUGIN_CONFIG, config)
@@ -96,14 +95,10 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.set(TOOL_REGISTRY, tool_registry)
 		SHARE_STORE.set(GRAPH_PIPELINE, graph_pipeline)
 		SHARE_STORE.set(HANDLER_REGISTRY, HandlerRegistry())
-				
-		# OB11 缓冲区
-		SHARE_STORE.set(EVENT_BUFFER, EventBuffer(size=config.buffer.size))
+		SHARE_STORE.set(CHANNEL_REGISTRY, ChannelRegistry())
 		
+		# 插件加载器
 		self.plugin_loader = Loader(config.sub_plugin.load_from)
-		
-		self.plugin_loader.prepare_plugins()
-		await self.plugin_loader.load_plugins()
 		
 		self.logger.info(f"{PLUGIN_NAME} 已加载")
 		
@@ -124,86 +119,40 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.drop(TOOL_REGISTRY)
 		SHARE_STORE.drop(GRAPH_PIPELINE)
 		SHARE_STORE.drop(HANDLER_REGISTRY)
-		SHARE_STORE.drop(INVOKE_LOCKS)
+		SHARE_STORE.drop(CHANNEL_REGISTRY)
+		SHARE_STORE.drop(INVOKE_LOCK)
 		
-		SHARE_STORE.drop(EVENT_BUFFER)
-				
 		if not SHARE_STORE.is_empty():
 			self.logger.warning(f"共享容器可能存在资源泄露: {list(SHARE_STORE.keys())}")
+		
+		self.logger.info(f"{PLUGIN_NAME} 已卸载")
+	
+	@registrar.on_startup()
+	async def on_startup(self) -> None:
+		
+		# 准备并加载插件
+		self.plugin_loader.prepare_plugins()
+		await self.plugin_loader.load_plugins()
 		
 		if self.plugin_loader.erred:
 			self.logger.warning(f"有 {len(self.plugin_loader.erred)} 个子插件加载时出现错误: "
 				f"{[p.package_name for p in self.plugin_loader.erred]}")
 		
-		self.logger.info(f"{PLUGIN_NAME} 已卸载")
+		SHARE_STORE.recall(MAIN_READY).set()
 	
-	@registrar.on_message(priority=-100)
-	async def on_message(self, event: MessageEvent) -> None:
+	async def test_drain(self) -> None:
 		
-		# 获取 event 信息
-		is_group	= event.is_group_msg()
-		chat_id		= event.group_id if is_group else event.sender.user_id
-		session_id	= concatenate_id(chat_id, is_group=is_group)
+		channel_registry	= SHARE_STORE.recall(CHANNEL_REGISTRY)
+		channel_surface		= channel_registry.to_surface()
+		drain_results		= await channel_surface.batch_drain(atimeout=30) # HACK: 硬编码测试逻辑
 		
-		# 获取图以及根配置和工具配置
-		graph_pipeline	= SHARE_STORE.recall(GRAPH_PIPELINE)
-		plugin_cfg		= SHARE_STORE.recall(PLUGIN_CONFIG)
-		tool_registry	= SHARE_STORE.recall(TOOL_REGISTRY)
+		# 重建数据
+		for name, messages in tuple(drain_results.items()):
+			
+			if isinstance(messages, Exception):
+				self.logger.exception(f"通道 '{name}' 获取信息出错: {messages}")
+				continue
+			
+			drain_results[name] = [message.to_text() for message in messages]
 		
-		if is_group and not event.message.is_at(plugin_cfg.account.bot_id, all_except=True):
-			self.logger.warning("群消息无@ 已跳过")
-			return
-		
-		# 保证并发顺序
-		async with self.invoke_locks[session_id]:
-		
-			# 调用模型产生回复
-			try:
-				
-				final_state = await graph_pipeline.ainvoke(
-					{"event": event._data.model_dump()},
-					thread_id	= session_id,
-					context		= {"tool_surface": tool_registry.to_surface(), "custom_status": ["main"]}
-				)
-			
-			except AgentAborted as e:
-				await event.reply(f"agent 被内部中断: {e.reason}")
-				return
-			
-			except Exception as e:
-				await event.reply(f"agent 内部出错: {type(e).__name__}: {e}")
-				return
-			
-			# 根据实际情况给内容分块
-			if plugin_cfg.split.enable:
-				content_parts = final_state["final_answer"].split(plugin_cfg.split.delimiter)
-			
-			else:
-				content_parts = [final_state["final_answer"]]
-			
-			# 遍历内容块并发送
-			for index, content_part in enumerate(content_parts):
-				
-				# 先格式化内容块
-				content_part = content_part.strip()
-				
-				# 若打字配置被启用则计算打字时间并等待
-				if plugin_cfg.typing.enable:
-					
-					max_speed = plugin_cfg.typing.base_speed + plugin_cfg.typing.speed_offset
-					min_speed = plugin_cfg.typing.base_speed - plugin_cfg.typing.speed_offset
-					ram_speed = random.uniform(min_speed, max_speed)
-					tol_speed = len(content_part) * ram_speed
-					
-					await asyncio.sleep(tol_speed)
-				
-				if index == 0 and is_group: # reply 在私聊看太jb丑了
-					await event.reply(content_part)
-					continue
-				
-				await easier_send(self.api, chat_id, content_part, to_group=is_group)
-	
-	@registrar.on_message()
-	async def record_anything(self, event: MessageEvent) -> None:
-		"""私聊 event 和群聊 event 都记录"""
-		SHARE_STORE.recall(EVENT_BUFFER).record(event)
+		print(drain_results)

@@ -9,13 +9,13 @@
 	from miaoli_bot.core	import Handler
 	from miaoli_bot.core	import AgentAborted
 
-子包可直接访问：`actions` / `channels` / `runtime`。
+子包可直接访问：`actions` / `channels` / `runtimes`。
 """
 
 from ...errors					import AgentAborted
-from .runtime.handler			import Handler
+from .runtimes.handler			import Handler
 from .graph_pipeline			import GraphPipeline
-from .							import actions, channels, runtime
+from .							import actions, channels, runtimes
 from .channels.section_patch	import SectionPatch
 from .actions					import Goto, Continue, Abort, BaseNodeAction
 
@@ -35,6 +35,6 @@ __all__ = [
 	# 子包
 	"actions",
 	"channels",
-	"runtime",
+	"runtimes",
 
 ]

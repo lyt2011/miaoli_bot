@@ -1,9 +1,9 @@
-from .ob11_buffer		import EventBuffer
 from ._share_store		import SHARE_STORE
 from .plugin			import Loader, PluginProtocol
 from .handler_registry	import HandlerRegistry
 from .tool				import ToolRegistry, ToolSurface
 from .scheduler			import BaseTimer, Every, Job, Once
+from .notice_channel	import ChannelRegistry, ChannelSurface
 from .graph_pipeline	import (
 	GraphPipeline,
 	Goto,
@@ -23,6 +23,10 @@ __all__ = [
 	# handler_registry
 	"HandlerRegistry",
 
+	# notice_channel
+	"ChannelRegistry",
+	"ChannelSurface",
+
 	# tool
 	"ToolRegistry",
 	"ToolSurface",
@@ -36,9 +40,6 @@ __all__ = [
 	"Every",
 	"Job",
 	"Once",
-
-	# ob11_buffer
-	"EventBuffer",
 
 	# graph_pipeline
 	"GraphPipeline",

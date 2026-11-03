@@ -35,7 +35,7 @@ A self-built graph pipeline feeds QQ conversations to any OpenAI-compatible endp
 - 🧹 **Import blocks and alignment**: the imports at the top of a module are grouped as `__future__` → third-party `from` (one block per top-level package) → cross-package self references `miaoli_bot.x` → same-package relative imports `.` / `..` → stdlib `from` → plain `import`, with a blank line between blocks and shorter statements first inside a block. Columns are aligned to the next multiple of 4 after the longest prefix in the group (tab stop = 4), and **a multi-line import closes its group** — it aligns with the lines above it, while the lines below start a new group. Sub-plugins import from exactly one layer of the main package (`miaoli_bot.api` / `core` / `models` / `consts` / `utils`).
 - 📡 **Messages arrive through channels (WIP)**: the main package registers no `@registrar.on_message` at all — the separate `miaoli_buffer` plugin (a sibling directory) records events into a ring buffer and registers it as a `BaseChannel` in `ChannelRegistry`; `main.py` takes a read-only snapshot via `registry.to_surface()` and `batch_drain(atimeout)` drains every channel concurrently, with per-channel exceptions and timeouts contained to that channel. The `wake()` entry is not wired up yet, so there is no automatic reply path.
 - 🎭 **Persona and output protocol live outside the core**: the main package no longer holds any prompt assets — the `data/prompts/` directory, the root config's `prompt_file`, and `miaoli_bot.api`'s `get_prompt` are all removed. The persona (`plugins/miaoli_bot_adapter/data/SOUL.md`) and the output protocol (`plugins/miaoli_bot_adapter/data/output_protocol.md`) are assets of the `miaoli_bot_adapter` sub-plugin, read from disk every turn by `inject_soul` / `inject_output_protocol` into the `soul` / `output-protocol` sections of `prompts`; `account_injector`'s `inject_account` only handles admin/bot QQ numbers and nicknames and never touches the persona.
-- 🧪 **Local tests (to be rewritten)**: the cases in `tests/` (gitignored, not committed) targeted the old pi bridge layer and were invalidated wholesale by the 0.8.0 refactor.
+- 🧪 **Local tests**: `tests/` is committed; `pytest.ini` sets `pythonpath = ..` so `plugins/` lands on `sys.path` (both `miaoli_bot` and its sibling `miaoli_buffer` import directly) and `asyncio_mode = auto` so `async def test_*` needs no marker. Currently covers the pure functions in `utils/`; the rest is still to be written.
 
 ## Architecture
 
@@ -166,7 +166,7 @@ miaoli_bot/
 │   ├── node_action.py             #   BaseNodeAction (common base of Continue / Goto / Abort)
 │   ├── plugin.py                  #   PluginProtocol (on_load / on_close lifecycle)
 │   └── timer.py                   #   BaseTimer (scheduling protocol)
-├── tests/                         # local pytest cases (gitignored, not committed; pending rewrite)
+├── tests/                         # pytest cases (committed)
 └── utils/                         # helpers
     ├── easier_sender.py           #   convenience wrappers for private / group sends
     └── sugar.py                   #   concatenate_id (session key group- / private- prefix)
@@ -267,7 +267,7 @@ cd <parent of the plugin>   # plugins/
 <venv>/bin/python -m pytest miaoli_bot/tests/ -v
 ```
 
-> Note: the cases in `tests/` still target the old pi bridge layer and were invalidated by the 0.8.0 refactor; they await a rewrite.
+> `pytest.ini` lives at the plugin root: `pythonpath = ..` puts `plugins/` on `sys.path` (`miaoli_bot` and `miaoli_buffer` are two sibling packages), and `asyncio_mode = auto` lets async cases run directly. No `sys.path.insert` needed inside the tests.
 
 ## Dependencies
 

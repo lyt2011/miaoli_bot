@@ -34,7 +34,7 @@
 - 🧹 **导入分块与对齐**：模块顶部的导入按「`__future__` → 第三方 `from`（按顶层包名各成一块）→ 跨包自引用 `miaoli_bot.x` → 同包相对导入 `.` / `..` → 内置 `from` → 普通 `import`」排列，块与块之间空一行，块内按语句字符数从短到长；列对齐到组内最长前缀的下一个 4 的倍数（tab stop = 4），**换行导入是组尾** —— 它可以跟上面的行对齐，它下面的行另起一组。子插件只从主包的一层导入（`miaoli_bot.api` / `core` / `models` / `consts` / `utils`）。
 - 📡 **消息入口改为通道（重构中）**：主包不再挂任何 `@registrar.on_message` —— 事件由独立插件 `miaoli_buffer`（与本仓库同级目录）记录进环形缓冲，再以 `BaseChannel` 的形式注册进 `ChannelRegistry`；`main.py` 用 `registry.to_surface()` 取一份只读快照，`batch_drain(atimeout)` 并发取空各通道未读、单通道异常或超时只落在自己那一路。唤醒入口 `wake()` 尚未接线，因此现在没有「消息驱动」的自动回复。
 - 🎭 **人格与输出协议外置**：主包不再持有任何提示词资产 —— `data/prompts/` 目录、根配置的 `prompt_file` 与 `miaoli_bot.api` 的 `get_prompt` 都已删除。人格（`plugins/miaoli_bot_adapter/data/SOUL.md`）与输出协议（`plugins/miaoli_bot_adapter/data/output_protocol.md`）都是 `miaoli_bot_adapter` 子插件的资产，由 `inject_soul` / `inject_output_protocol` 每轮读盘写进 `prompts` 的 `soul` / `output-protocol` 段；`account_injector` 的 `inject_account` 只管管理员 / 机器人的 QQ 号与昵称，不碰人格。
-- 🧪 **本地测试（待重写）**：`tests/` 目录（gitignore，不随仓库提交）里的用例针对的是 pi 桥接层，随 0.8.0 重构整体失效。
+- 🧪 **本地测试**：`tests/` 随仓库提交，`pytest.ini` 用 `pythonpath = ..` 把 `plugins/` 加进 `sys.path`（`miaoli_bot` 与同级的 `miaoli_buffer` 都能直接 import）、`asyncio_mode = auto` 让 `async def test_*` 不用加标记。当前覆盖 `utils/` 的纯函数，其余待补。
 
 ## 架构设计
 
@@ -166,7 +166,7 @@ miaoli_bot/
 │   ├── node_action.py             #   BaseNodeAction（Continue / Goto / Abort 的共同基类）
 │   ├── plugin.py                  #   PluginProtocol（on_load / on_close 两个生命周期方法）
 │   └── timer.py                   #   BaseTimer（调度器的计时协议）
-├── tests/                         # 本地 pytest 用例（gitignore，不提交；当前待重写）
+├── tests/                         # pytest 用例（随仓库提交）
 └── utils/                         # 工具函数
     ├── easier_sender.py           #   private / group 便捷发送封装
     └── sugar.py                   #   concatenate_id（会话键加 group- / private- 前缀）
@@ -267,7 +267,7 @@ cd <插件父目录>          # plugins/
 <venv>/bin/python -m pytest miaoli_bot/tests/ -v
 ```
 
-> 注：`tests/` 里的用例仍是针对 pi 桥接层写的，随 0.8.0 重构整体失效，待重写。
+> `pytest.ini` 在插件根目录：`pythonpath = ..` 负责把 `plugins/` 放进 `sys.path`（`miaoli_bot` 与 `miaoli_buffer` 是两个同级包），`asyncio_mode = auto` 负责让异步用例直接可跑。不需要在用例里写 `sys.path.insert`。
 
 ## 依赖
 

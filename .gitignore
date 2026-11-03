@@ -8,9 +8,6 @@ venv/
 .DS_Store
 *.log
 
-# pytest 测试目录（本地验证用，不提交）
-tests/
-
 # 本地备份（带时间戳）
 *.bak.*
 

@@ -1,6 +1,6 @@
 from langgraph.checkpoint.sqlite.aio	import AsyncSqliteSaver
 
-from .protocols	import BaseCheckpointerSaverAdapter
+from ...protocols	import BaseCheckpointerSaverAdapter
 
 from typing	import Self
 

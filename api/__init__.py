@@ -1,12 +1,10 @@
+from .tool_ops		import register_tool
 from .lock_ops		import get_invoke_lock
 from .pipeline_ops	import get_pipeline
 from .config_ops	import get_root_config
 from .platform_ops	import get_ncatbot_api
-from .registry_ops	import (
-	get_handler_registry,
-	get_tool_registry,
-)
-from .llm_ops	import (
+from .registry_ops	import get_handler_registry
+from .llm_ops		import (
 	build_client,
 	get_model_info,
 	get_provider_info,
@@ -58,7 +56,9 @@ __all__ = [
 
 	# registry_ops
 	"get_handler_registry",
-	"get_tool_registry",
+
+	# tool_ops
+	"register_tool",
 
 	# store_ops
 	"store_recall",

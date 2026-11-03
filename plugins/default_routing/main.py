@@ -1,6 +1,6 @@
-from miaoli_bot.consts	import MINIMUM
 from miaoli_bot.core	import PluginProtocol
 from miaoli_bot.api		import get_handler_registry
+from miaoli_bot.consts	import MINIMUM, ON_AGENT_START, ON_TURN_START, ON_BEFORE_COMPACT, ON_COMPACT, ON_AFTER_COMPACT, ON_BEFORE_REQUEST, ON_REQUEST, ON_AFTER_REQUEST, ON_TOOL_CALLING, ON_TURN_END, ON_AGENT_END
 
 from .models	import PluginConfig
 from .nodes		import (
@@ -33,34 +33,26 @@ class DefaultRouting(PluginProtocol):
 		
 		registry = get_handler_registry()
 		
+		self.undo_list = []  # 关闭时 on_close 也要能遍历
 		# 不启用直接跳过节点注册
 		if not config.enable:
 			return None
 		
-		registry.on_agent_start(on_agent_start, priority=MINIMUM)
-		registry.on_turn_start(on_turn_start, priority=MINIMUM)
-		registry.on_before_compact(on_before_compact, priority=MINIMUM)
-		registry.on_compact(on_compact, priority=MINIMUM)
-		registry.on_after_compact(on_after_compact, priority=MINIMUM)
-		registry.on_before_request(on_before_request, priority=MINIMUM)
-		registry.on_request(on_request, priority=MINIMUM)
-		registry.on_after_request(on_after_request, priority=MINIMUM)
-		registry.on_tool_call(on_tool_calling, priority=MINIMUM)
-		registry.on_turn_end(on_turn_end, priority=MINIMUM)
-		registry.on_agent_end(on_agent_end, priority=MINIMUM)
+		self.undo_list = [
+			registry.on(ON_AGENT_START, on_agent_start, priority=MINIMUM),
+			registry.on(ON_TURN_START, on_turn_start, priority=MINIMUM),
+			registry.on(ON_BEFORE_COMPACT, on_before_compact, priority=MINIMUM),
+			registry.on(ON_COMPACT, on_compact, priority=MINIMUM),
+			registry.on(ON_AFTER_COMPACT, on_after_compact, priority=MINIMUM),
+			registry.on(ON_BEFORE_REQUEST, on_before_request, priority=MINIMUM),
+			registry.on(ON_REQUEST, on_request, priority=MINIMUM),
+			registry.on(ON_AFTER_REQUEST, on_after_request, priority=MINIMUM),
+			registry.on(ON_TOOL_CALLING, on_tool_calling, priority=MINIMUM),
+			registry.on(ON_TURN_END, on_turn_end, priority=MINIMUM),
+			registry.on(ON_AGENT_END, on_agent_end, priority=MINIMUM),
+		]
 	
 	async def on_close(self) -> None:
 		
-		registry = get_handler_registry()
-		
-		registry.remove_agent_start(on_agent_start)
-		registry.remove_turn_start(on_turn_start)
-		registry.remove_before_compact(on_before_compact)
-		registry.remove_compact(on_compact)
-		registry.remove_after_compact(on_after_compact)
-		registry.remove_before_request(on_before_request)
-		registry.remove_request(on_request)
-		registry.remove_after_request(on_after_request)
-		registry.remove_tool_call(on_tool_calling)
-		registry.remove_turn_end(on_turn_end)
-		registry.remove_agent_end(on_agent_end)
+		for undo in self.undo_list:
+			undo()

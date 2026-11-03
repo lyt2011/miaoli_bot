@@ -1,8 +1,8 @@
-from .plugin	import Plugin
-from .loader	import Loader
-from .protocols	import PluginProtocol
-from .models	import Dependence, Specifier, PluginMetadata
-from .errors	import (
+from .plugin		import Plugin
+from .loader		import Loader
+from ...protocols	import PluginProtocol
+from .models		import Dependence, Specifier, PluginMetadata
+from ...errors		import (
 	BasePluginError,
 	EntryClassNotFound,
 	MetadataMissingError,

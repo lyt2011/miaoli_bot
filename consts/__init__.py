@@ -23,6 +23,7 @@ from .share_store_keys	import (
 	TOOL_REGISTRY,
 	HANDLER_REGISTRY,
 	INVOKE_LOCKS,
+	EVENT_BUFFER,
 )
 from .graph_events	import (
 	ON_AGENT_START,
@@ -52,6 +53,7 @@ __all__ = [
 	"TOOL_REGISTRY",
 	"HANDLER_REGISTRY",
 	"INVOKE_LOCKS",
+	"EVENT_BUFFER",
 	
 	# id_prefix
 	"PRIVATE_PREFIX",

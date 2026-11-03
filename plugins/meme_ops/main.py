@@ -1,6 +1,6 @@
-from miaoli_bot.consts	import NORMAL
 from miaoli_bot.core	import PluginProtocol
-from miaoli_bot.api		import store_drop, store_set, get_handler_registry, get_tool_registry
+from miaoli_bot.consts	import NORMAL, ON_AGENT_START
+from miaoli_bot.api		import store_drop, store_set, register_tool, get_handler_registry
 
 from .models	import PluginConfig
 from .nodes		import inject_doc, inject_memes
@@ -22,30 +22,23 @@ class MemeOps(PluginProtocol):
 		store_set(PLUGIN_CONFIG, plugin_config)
 	
 		handler_registry	= get_handler_registry()
-		tool_registry		= get_tool_registry()
+		self.undo_list		= []
 		
 		# 关闭时不注册任何工具与节点
 		if not plugin_config.enable:
 			return
 		
-		tool_registry.register(archive_meme)
-		tool_registry.register(send_meme_to_qq)
-		tool_registry.register(remove_meme_by_hash)
+		self.undo_list.append(register_tool(archive_meme))
+		self.undo_list.append(register_tool(send_meme_to_qq))
+		self.undo_list.append(register_tool(remove_meme_by_hash))
 		
-		handler_registry.on_agent_start(inject_doc, priority=NORMAL)
-		handler_registry.on_agent_start(inject_memes, priority=NORMAL)
+		self.undo_list.append(handler_registry.on(ON_AGENT_START, inject_doc, priority=NORMAL))
+		self.undo_list.append(handler_registry.on(ON_AGENT_START, inject_memes, priority=NORMAL))
 
 	async def on_close(self) -> None:
 		
-		handler_registry	= get_handler_registry()
-		tool_registry		= get_tool_registry()
-		
-		tool_registry.remove(archive_meme.name, ignore_error=True)
-		tool_registry.remove(send_meme_to_qq.name, ignore_error=True)
-		tool_registry.remove(remove_meme_by_hash.name, ignore_error=True)
-		
-		handler_registry.remove_agent_start(inject_doc)
-		handler_registry.remove_agent_start(inject_memes)
+		for undo in self.undo_list:
+			undo()
 		
 		store_drop(RAW_CONFIG)
 		store_drop(PLUGIN_CONFIG)

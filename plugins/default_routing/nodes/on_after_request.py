@@ -2,8 +2,7 @@ from langchain_core.messages	import BaseMessage
 
 from langgraph.runtime	import Runtime
 
-from miaoli_pipeline.actions	import Goto
-
+from miaoli_bot.core	import Goto
 from miaoli_bot.consts	import ON_TOOL_CALLING, ON_TURN_END
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
 

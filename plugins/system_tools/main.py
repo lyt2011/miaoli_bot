@@ -1,5 +1,5 @@
 from miaoli_bot.core	import PluginProtocol
-from miaoli_bot.api		import store_drop, store_set, get_tool_registry
+from miaoli_bot.api		import store_drop, store_set, register_tool
 
 from .models	import PluginConfig
 from .consts	import PLUGIN_CONFIG, RAW_CONFIG
@@ -12,26 +12,21 @@ class SystemTools(PluginProtocol):
 
 	async def on_load(self) -> None:
 		
-		tool_registry = get_tool_registry()
-		
 		store_set(RAW_CONFIG, self.config)
 		store_set(PLUGIN_CONFIG, PluginConfig.model_validate(self.config))
 
-		tool_registry.register(write)
-		tool_registry.register(replace)
-		tool_registry.register(read_image)
-		tool_registry.register(read_file)
-		tool_registry.register(bash)
+		self.undo_list = [
+			register_tool(write),
+			register_tool(replace),
+			register_tool(read_image),
+			register_tool(read_file),
+			register_tool(bash),
+		]
 	
 	async def on_close(self) -> None:
 		
-		tool_registry = get_tool_registry()
-		
-		tool_registry.remove(write.name, ignore_error=True)
-		tool_registry.remove(replace.name, ignore_error=True)
-		tool_registry.remove(read_image.name, ignore_error=True)
-		tool_registry.remove(read_file.name, ignore_error=True)
-		tool_registry.remove(bash.name, ignore_error=True)
+		for undo in self.undo_list:
+			undo()
 		
 		store_drop(RAW_CONFIG)
 		store_drop(PLUGIN_CONFIG)

@@ -1,4 +1,4 @@
-from .protocols.timer	import BaseTimer
+from ...protocols.timer	import BaseTimer
 
 from datetime			import datetime
 from logging			import getLogger

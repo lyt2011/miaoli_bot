@@ -1,6 +1,6 @@
 from langgraph.checkpoint.memory	import InMemorySaver
 
-from .protocols	import BaseCheckpointerSaverAdapter
+from ...protocols	import BaseCheckpointerSaverAdapter
 
 from typing	import Self
 

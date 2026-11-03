@@ -1,7 +1,7 @@
 from pydantic	import BaseModel, Field, model_validator
 
 from .dependence	import Dependence
-from ..errors		import RepeatDependenceError
+from ....errors		import RepeatDependenceError
 
 from typing	import List, Self
 

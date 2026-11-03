@@ -1,5 +1,5 @@
-from miaoli_bot.consts	import NORMAL
 from miaoli_bot.core	import PluginProtocol
+from miaoli_bot.consts	import NORMAL, ON_BEFORE_REQUEST
 from miaoli_bot.api		import store_drop, store_set, get_handler_registry
 
 from .models	import PluginConfig
@@ -20,18 +20,20 @@ class IntentRecognition(PluginProtocol):
 		store_set(PLUGIN_CONFIG, config)
 		store_set(RAW_CONFIG, self.config)
 		
+		self.undo_list = []  # 关闭时 on_close 也要能遍历
 		# 不启用直接跳过节点注册
 		if not config.enable:
 			return None
 		
 		# 必须早于 prompt_builder 的 NORMAL + 1（数值大者先跑），否则拼装时读不到本轮增删的段
-		registry.on_before_request(recognize_intent, priority=NORMAL + 2)
+		self.undo_list = [
+			registry.on(ON_BEFORE_REQUEST, recognize_intent, priority=NORMAL + 2),
+		]
 	
 	async def on_close(self) -> None:
 		
-		registry = get_handler_registry()
-		
-		registry.remove_before_request(recognize_intent)
+		for undo in self.undo_list:
+			undo()
 		
 		store_drop(PLUGIN_CONFIG)
 		store_drop(RAW_CONFIG)

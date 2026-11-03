@@ -5,7 +5,7 @@ from psycopg.rows	import DictRow, RowMaker, dict_row
 
 from psycopg_pool	import AsyncConnectionPool
 
-from .protocols	import BaseCheckpointerSaverAdapter
+from ...protocols	import BaseCheckpointerSaverAdapter
 
 from typing	import Self
 

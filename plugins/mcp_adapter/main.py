@@ -1,17 +1,13 @@
 from langchain_mcp_adapters.client	import MultiServerMCPClient
 
-from miaoli_bot.consts	import MEDIUM
 from miaoli_bot.core	import PluginProtocol
+from miaoli_bot.consts	import MEDIUM, ON_AGENT_START
 from miaoli_bot.api		import store_drop, store_set, get_handler_registry
 
 from .models	import PluginConfig
 from .core		import MCPClientRegistry
 from .nodes		import recall_mcp_tools
 from .consts	import PLUGIN_CONFIG, RAW_CONFIG, MCP_CLIENT_REGISTRY
-
-
-# 太长了弄个短点的名字
-MSMC = MultiServerMCPClient
 
 
 class MCPAdapter(PluginProtocol):
@@ -30,6 +26,7 @@ class MCPAdapter(PluginProtocol):
 		store_set(MCP_CLIENT_REGISTRY, client_registry)
 		
 		# 不启用直接跳过节点/工具注册
+		self.undo_list = []  # 关闭时 on_close 也要能遍历
 		if not config.enable:
 			return None
 		
@@ -37,17 +34,18 @@ class MCPAdapter(PluginProtocol):
 		for mcp in config.mcps:
 			
 			mcp_arg	= {mcp.name: mcp.transport.model_dump()}
-			client	= MSMC(mcp_arg, tool_name_prefix=config.tool_prefix)
+			client	= MultiServerMCPClient(mcp_arg, tool_name_prefix=config.tool_prefix)
 			
 			client_registry.register_client(client, reusable=mcp.reusable)
 		
-		handler_registry.on_before_request(recall_mcp_tools, priority=MEDIUM)
+		self.undo_list = [
+			handler_registry.on(ON_AGENT_START, recall_mcp_tools, priority=MEDIUM),
+		]
 	
 	async def on_close(self) -> None:
 		
-		handler_registry = get_handler_registry()
-		
-		handler_registry.remove_before_request(recall_mcp_tools)
+		for undo in self.undo_list:
+			undo()
 		
 		store_drop(PLUGIN_CONFIG)
 		store_drop(RAW_CONFIG)

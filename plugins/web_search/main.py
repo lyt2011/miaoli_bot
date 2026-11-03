@@ -1,5 +1,5 @@
 from miaoli_bot.core	import PluginProtocol
-from miaoli_bot.api		import store_drop, store_recall, store_set, get_tool_registry
+from miaoli_bot.api		import store_drop, store_recall, store_set, register_tool
 
 from .models	import PluginConfig
 from .tools		import deepseek_search, lang_search
@@ -22,7 +22,7 @@ class WebSearch(PluginProtocol):
 		
 		config = PluginConfig.model_validate(self.config)
 		
-		tool_registry = get_tool_registry()
+		self.undo_list = []
 		
 		store_set(PLUGIN_CONFIG, config)
 		store_set(RAW_CONFIG, self.config)
@@ -33,20 +33,17 @@ class WebSearch(PluginProtocol):
 			return None
 		
 		# 根据实际需求注册工具
-		tool_registry.register(TOOL_MAPPING[config.adapter])
+		self.undo_list.append(register_tool(TOOL_MAPPING[config.adapter]))
 	
 	async def on_close(self) -> None:
 		
-		tool_registry = get_tool_registry()
+		for undo in self.undo_list:
+			undo()
+		
 		config = PluginConfig.model_validate(self.config)
-		
-		tool_registry.remove(TOOL_MAPPING[config.adapter].name, ignore_error=True)
-		
 		client_session = store_recall(CLIENT_SESSION)
-		
 		store_drop(PLUGIN_CONFIG)
 		store_drop(RAW_CONFIG)
 		store_drop(CLIENT_SESSION)
-		
 		# 丢完再关闭 防止中途报错导致键残留
 		await client_session.close()

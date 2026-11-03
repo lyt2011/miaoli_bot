@@ -1,0 +1,4 @@
+name = "ob11_buffer"
+entry_class = "main.OB11BufferTools"
+description = "提供 get_qq_unread_messages 工具：读取缓冲区里还没被处理的 QQ 消息"
+dependences = []

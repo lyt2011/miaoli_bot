@@ -1,5 +1,5 @@
-from miaoli_bot.consts	import NORMAL
 from miaoli_bot.core	import PluginProtocol
+from miaoli_bot.consts	import NORMAL, ON_TOOL_CALLING
 from miaoli_bot.api		import store_drop, store_set, get_handler_registry
 
 from .models	import PluginConfig
@@ -19,17 +19,19 @@ class ToolAttachmentFixer(PluginProtocol):
 		store_set(PLUGIN_CONFIG, config)
 		store_set(RAW_CONFIG, self.config)
 		
+		self.undo_list = []  # 关闭时 on_close 也要能遍历
 		# 不启用直接跳过节点注册
 		if not config.enable:
 			return None
 		
-		registry.on_tool_call(fix_tool_attachment, priority=NORMAL-2)
+		self.undo_list = [
+			registry.on(ON_TOOL_CALLING, fix_tool_attachment, priority=NORMAL-2),
+		]
 	
 	async def on_close(self) -> None:
 		
-		registry = get_handler_registry()
-		
-		registry.remove_tool_call(fix_tool_attachment)
+		for undo in self.undo_list:
+			undo()
 		
 		store_drop(PLUGIN_CONFIG)
 		store_drop(RAW_CONFIG)

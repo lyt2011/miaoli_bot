@@ -1,6 +1,6 @@
-from miaoli_bot.consts	import NORMAL
 from miaoli_bot.core	import PluginProtocol
 from miaoli_bot.api		import get_handler_registry
+from miaoli_bot.consts	import NORMAL, ON_AGENT_START
 
 from .nodes	import inject_account
 
@@ -13,10 +13,11 @@ class AccountInjector(PluginProtocol):
 		
 		registry = get_handler_registry()
 		
-		registry.on_agent_start(inject_account, priority=NORMAL)
+		self.undo_list = [
+			registry.on(ON_AGENT_START, inject_account, priority=NORMAL),
+		]
 
 	async def on_close(self) -> None:
 		
-		registry = get_handler_registry()
-		
-		registry.remove_agent_start(inject_account)
+		for undo in self.undo_list:
+			undo()

@@ -1,5 +1,3 @@
-from langchain_core.tools	import BaseTool
-
 from langgraph.runtime	import Runtime
 
 from miaoli_bot.api		import get_admin_id, store_recall
@@ -8,9 +6,7 @@ from miaoli_bot.models	import GraphRuntimeContext, GraphState
 from ..consts				import PLUGIN_CONFIG
 from ..models.permission	import Permission
 
-from typing	import List
-
-import logging	
+import logging
 
 
 LOGGER = logging.getLogger("ToolPermissionManager")
@@ -45,10 +41,9 @@ async def pick_tools(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -
 	user_id			= str(state["event"]["sender"]["user_id"])
 	
 	permissions		= {p.tool_name: p for p in plugin_config.permissions}
+	tool_surface	= runtime.context["tool_surface"]
 	
-	final_tools: List[BaseTool] = []
-	
-	for tool in runtime.context["tools"]:
+	for tool in tool_surface.tools:
 		
 		# 对于未配置权限的工具 打印警告日志(仅调试模式)
 		if not (permission := permissions.get(tool.name)):
@@ -57,9 +52,8 @@ async def pick_tools(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -
 			if plugin_config.debug:
 				LOGGER.warning(f"{tool.name} 未配置权限 将隐藏该工具")
 			
+			tool_surface.delete(tool)
 			continue
 		
-		if is_allowed(permission, user_id, admin_id):
-			final_tools.append(tool)
-	
-	runtime.context["tools"] = final_tools
+		if not is_allowed(permission, user_id, admin_id):
+			tool_surface.delete(tool)

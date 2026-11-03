@@ -1,7 +1,5 @@
-from miaoli_pipeline.core	import GraphPipeline
-
-from ..core		import SHARE_STORE
 from ..consts	import GRAPH_PIPELINE
+from ..core		import SHARE_STORE, GraphPipeline
 
 
 def get_pipeline() -> GraphPipeline:

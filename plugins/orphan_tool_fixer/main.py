@@ -1,5 +1,5 @@
-from miaoli_bot.consts	import NORMAL
 from miaoli_bot.core	import PluginProtocol
+from miaoli_bot.consts	import NORMAL, ON_REQUEST
 from miaoli_bot.api		import get_handler_registry
 
 from .models	import PluginConfig
@@ -15,14 +15,16 @@ class OrphanToolFixer(PluginProtocol):
 		
 		registry = get_handler_registry()
 		
+		self.undo_list = []  # 关闭时 on_close 也要能遍历
 		# 不启用直接跳过节点注册
 		if not config.enable:
 			return None
 		
-		registry.on_request(fix_orphan_tool_message, priority=NORMAL+2)
+		self.undo_list = [
+			registry.on(ON_REQUEST, fix_orphan_tool_message, priority=NORMAL+2),
+		]
 	
 	async def on_close(self) -> None:
 		
-		registry = get_handler_registry()
-		
-		registry.remove_request(fix_orphan_tool_message)
+		for undo in self.undo_list:
+			undo()

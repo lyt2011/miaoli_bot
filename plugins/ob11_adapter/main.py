@@ -1,5 +1,5 @@
-from miaoli_bot.consts	import HIGH
 from miaoli_bot.core	import PluginProtocol
+from miaoli_bot.consts	import HIGH, ON_AGENT_START
 from miaoli_bot.api		import store_drop, store_set, get_handler_registry
 
 from .models	import PluginConfig
@@ -47,17 +47,17 @@ class OB11AdapterPlugin(PluginProtocol):
 		event_chain.register_parser(PrivateMessageEventParser())
 		event_chain.register_parser(GroupMessageEventParser())
 		
-		handler_registry.on_agent_start(event_adapter, priority=HIGH)
+		self.undo_list = [
+			handler_registry.on(ON_AGENT_START, event_adapter, priority=HIGH),
+		]
 	
 	async def on_close(self) -> None:
 		
-		handler_registry = get_handler_registry()
-		
-		handler_registry.remove_agent_start(event_adapter)
+		for undo in self.undo_list:
+			undo()
 		
 		store_drop(PLUGIN_CONFIG)
 		store_drop(RAW_CONFIG)
-		
 		store_drop(SEGMENT_PARSER)
 		store_drop(EVENT_PARSER)
 		store_drop(PARSER_REGISTRY)

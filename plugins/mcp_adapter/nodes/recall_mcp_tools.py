@@ -1,5 +1,3 @@
-from langchain_core.tools	import BaseTool
-
 from langgraph.runtime	import Runtime
 
 from miaoli_bot.api		import store_recall
@@ -7,7 +5,10 @@ from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
 from ..consts	import MCP_CLIENT_REGISTRY
 
-from typing	import Dict
+import logging
+
+
+LOGGER = logging.getLogger("MCPAdapter")
 
 
 async def recall_mcp_tools(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> None:
@@ -15,11 +16,12 @@ async def recall_mcp_tools(state: GraphState, runtime: Runtime[GraphRuntimeConte
 	"""召唤 mcp 工具"""
 	
 	client_registry = store_recall(MCP_CLIENT_REGISTRY)
+	tool_surface	= runtime.context["tool_surface"]
 	
-	# 获取工具
-	mcp_tools: Dict[str, BaseTool] = {tool.name: tool for tool in await client_registry.get_tools()}
-	raw_tools: Dict[str, BaseTool] = {tool.name: tool for tool in runtime.context.get("tools", [])}
-	
-	# FIXME: 这里只能实现去重但没法实现过滤下架的
-	raw_tools.update(mcp_tools)
-	runtime.context["tools"] = list(raw_tools.values())
+	for tool in await client_registry.get_tools():
+		
+		# 打一行 warning 不拦截
+		if tool_surface.contains(tool):
+			LOGGER.warning(f"mcp 工具 '{tool.name}' 已顶替同名工具")
+		
+		tool_surface.add(tool)

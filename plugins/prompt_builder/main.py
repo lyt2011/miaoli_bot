@@ -1,6 +1,6 @@
-from miaoli_bot.consts	import NORMAL
 from miaoli_bot.core	import PluginProtocol
 from miaoli_bot.api		import get_handler_registry
+from miaoli_bot.consts	import NORMAL, ON_BEFORE_REQUEST
 
 from .nodes	import build_prompt
 
@@ -13,10 +13,11 @@ class PromptBuilder(PluginProtocol):
 		
 		registry = get_handler_registry()
 		
-		registry.on_before_request(build_prompt, priority=NORMAL + 1)
+		self.undo_list = [
+			registry.on(ON_BEFORE_REQUEST, build_prompt, priority=NORMAL + 1),
+		]
 	
 	async def on_close(self) -> None:
 		
-		registry = get_handler_registry()
-		
-		registry.remove_before_request(build_prompt)
+		for undo in self.undo_list:
+			undo()

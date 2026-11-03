@@ -13,14 +13,14 @@ import logging
 
 
 LOGGER	= logging.getLogger()
-GUIDE	= "以下本轮的意图识别注入内容，不会保留；对于有关信息必须读取 (from <file>) 提到的文件持久化进上下文。"
+GUIDE	= "以下本轮的意图识别注入内容。"
 
 
 async def recognize_intent(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Optional[Dict[str, Any]]:
 	
 	"""识别本轮意图 并据此增提示词段"""
 	
-	plugin_cfg = store_recall(PLUGIN_CONFIG)
+	config = store_recall(PLUGIN_CONFIG)
 	
 	# 稳定使用用户原始请求
 	human_message = get_latest_human(state.get("messages", []))
@@ -30,7 +30,7 @@ async def recognize_intent(state: GraphState, runtime: Runtime[GraphRuntimeConte
 	human_content	= get_content(human_message)
 	field_prompts	= {}
 	
-	for matcher in plugin_cfg.matchers:
+	for matcher in config.matchers:
 		
 		# 防止炸节点
 		try:

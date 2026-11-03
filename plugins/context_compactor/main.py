@@ -1,5 +1,5 @@
-from miaoli_bot.consts	import NORMAL
 from miaoli_bot.core	import PluginProtocol
+from miaoli_bot.consts	import NORMAL, ON_BEFORE_COMPACT, ON_COMPACT
 from miaoli_bot.api		import store_drop, store_set, get_handler_registry
 
 from .models	import PluginConfig
@@ -20,19 +20,20 @@ class ContextCompactor(PluginProtocol):
 		store_set(PLUGIN_CONFIG, config)
 		store_set(RAW_CONFIG, self.config)
 		
+		self.undo_list = []  # 关闭时 on_close 也要能遍历
 		# 不启用直接跳过节点注册
 		if not config.enable:
 			return None
 		
-		registry.on_before_compact(should_compact, priority=NORMAL)
-		registry.on_compact(compact, priority=NORMAL)
+		self.undo_list = [
+			registry.on(ON_BEFORE_COMPACT, should_compact, priority=NORMAL),
+			registry.on(ON_COMPACT, compact, priority=NORMAL),
+		]
 	
 	async def on_close(self) -> None:
 		
-		registry = get_handler_registry()
-		
-		registry.remove_before_compact(should_compact)
-		registry.remove_compact(compact)
+		for undo in self.undo_list:
+			undo()
 		
 		store_drop(PLUGIN_CONFIG)
 		store_drop(RAW_CONFIG)

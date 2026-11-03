@@ -1,5 +1,5 @@
+from miaoli_bot.api		import register_tool
 from miaoli_bot.core	import PluginProtocol
-from miaoli_bot.api		import get_tool_registry
 
 from .tools	import (
 	send_file_to_qq,
@@ -17,22 +17,16 @@ class QQPlatformTools(PluginProtocol):
 	
 	async def on_load(self) -> None:
 		
-		tool_registry = get_tool_registry()
-		
-		tool_registry.register(send_file_to_qq)
-		tool_registry.register(download_qq_file)
-		tool_registry.register(send_message_to_qq)
-		tool_registry.register(delete_qq_message)
-		tool_registry.register(query_qq_message_id)
-		tool_registry.register(send_poke)
+		self.undo_list = [
+			register_tool(send_file_to_qq),
+			register_tool(download_qq_file),
+			register_tool(send_message_to_qq),
+			register_tool(delete_qq_message),
+			register_tool(query_qq_message_id),
+			register_tool(send_poke),
+		]
 	
 	async def on_close(self) -> None:
 		
-		tool_registry = get_tool_registry()
-		
-		tool_registry.remove(send_file_to_qq.name, ignore_error=True)
-		tool_registry.remove(download_qq_file.name, ignore_error=True)
-		tool_registry.remove(send_message_to_qq.name, ignore_error=True)
-		tool_registry.remove(delete_qq_message.name, ignore_error=True)
-		tool_registry.remove(query_qq_message_id.name, ignore_error=True)
-		tool_registry.remove(send_poke.name, ignore_error=True)
+		for undo in self.undo_list:
+			undo()

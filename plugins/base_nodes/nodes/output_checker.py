@@ -2,8 +2,7 @@ from langchain_core.messages	import AIMessage, ToolMessage, HumanMessage
 
 from langgraph.runtime	import Runtime
 
-from miaoli_pipeline.actions	import Abort, BaseNodeAction
-
+from miaoli_bot.core	import Abort, BaseNodeAction
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
 from typing	import Optional

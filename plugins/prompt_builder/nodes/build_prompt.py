@@ -7,6 +7,12 @@ from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
 from typing	import Any, Dict, List, Optional
 
+import hashlib
+import logging
+
+
+LOGGER = logging.getLogger("PromptBuilder")
+
 
 async def build_prompt(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Optional[Dict[str, Any]]:
 	
@@ -24,6 +30,13 @@ async def build_prompt(state: GraphState, runtime: Runtime[GraphRuntimeContext])
 	# 稳定排序后再拼接提示词
 	prompt_array	= sorted(prompt_array)
 	prompt_string	= "\n\n".join(prompt_array)
+	
+	# 系统提示词一变 前缀缓存就从那里断开
+	LOGGER.info(
+		f"系统提示词 {len(prompt_string)} 字符 "
+		f"指纹={hashlib.md5(prompt_string.encode()).hexdigest()[:8]} "
+		f"段顺序={sorted(state.get('prompts', {}))}"
+	)
 	
 	# 空内容跳过
 	if not prompt_string.strip():

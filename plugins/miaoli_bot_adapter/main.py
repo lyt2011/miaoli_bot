@@ -1,5 +1,5 @@
-from miaoli_bot.consts	import NORMAL
 from miaoli_bot.core	import PluginProtocol
+from miaoli_bot.consts	import NORMAL, ON_TURN_START
 from miaoli_bot.api		import store_drop, store_set, get_handler_registry
 
 from .models	import PluginConfig
@@ -22,18 +22,19 @@ class MiaoliBotAdapter(PluginProtocol):
 		store_set(WORKSPACE, self.workspace)
 		
 		# 不启用直接跳过节点与工具注册
+		self.undo_list = []  # 关闭时 on_close 也要能遍历
 		if not config.enable:
 			return None
 		
-		registry.on_turn_start(inject_soul, priority=NORMAL + 1)
-		registry.on_turn_start(inject_output_protocol, priority=NORMAL + 1)
+		self.undo_list = [
+			registry.on(ON_TURN_START, inject_soul, priority=NORMAL + 1),
+			registry.on(ON_TURN_START, inject_output_protocol, priority=NORMAL + 1),
+		]
 	
 	async def on_close(self) -> None:
 		
-		registry = get_handler_registry()
-		
-		registry.remove_turn_start(inject_soul)
-		registry.remove_turn_start(inject_output_protocol)
+		for undo in self.undo_list:
+			undo()
 		
 		store_drop(RAW_CONFIG)
 		store_drop(PLUGIN_CONFIG)

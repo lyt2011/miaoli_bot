@@ -1,12 +1,12 @@
 from langgraph.checkpoint.base	import BaseCheckpointSaver
 
-from miaoli_pipeline.core	import GraphPipeline
-from miaoli_pipeline.errors	import AgentAborted
-
 from ncatbot.core		import registrar
 from ncatbot.plugin		import NcatBotPlugin
 from ncatbot.event.qq	import MessageEvent
 
+from .core							import EventBuffer
+from .core							import AgentAborted
+from .core							import GraphPipeline
 from .models						import GraphRuntimeContext, GraphState, PluginConfig
 from .utils							import easier_send, inject_workspace, concatenate_id
 from .core							import ToolRegistry, Loader, HandlerRegistry, SHARE_STORE
@@ -27,6 +27,7 @@ from .consts	import (
 	WORKSPACE_DIR,
 	GRAPH_EVENTS,
 	INVOKE_LOCKS,
+	EVENT_BUFFER,
 )
 
 from pathlib		import Path
@@ -70,26 +71,34 @@ class MiaoLiBot(NcatBotPlugin):
 		config	= inject_workspace(self.config, str(p_path))
 		config	= PluginConfig.model_validate(config)
 		
+		# 从配置构建 checkpointer adapter
 		database	= config.checkpointer.database
 		connect_to	= config.checkpointer.connect_to
 		extra		= config.checkpointer.extra
 		self.cpa	= await CPA_MAPPING[database].connect(connect_to, **extra)
 		
+		# ncatbot api/执行锁
 		SHARE_STORE.set(NCATBOT_API, self.api)
 		SHARE_STORE.set(INVOKE_LOCKS, self.invoke_locks)
 		
+		# pydantic插件配置/原生配置
 		SHARE_STORE.set(PLUGIN_CONFIG, config)
 		SHARE_STORE.set(RAW_CONFIG, self.config)
 		
+		# miaoli_bot 插件目录/ncatbot 提供的工作目录
 		SHARE_STORE.set(PLUGIN_DIR, p_path)
 		SHARE_STORE.set(WORKSPACE_DIR, self.workspace)
 		
 		tool_registry	= ToolRegistry()
 		graph_pipeline	= self._build_graph(checkpointer=self.cpa)
 		
+		# 工具注册器/图管线/处理器注册器
 		SHARE_STORE.set(TOOL_REGISTRY, tool_registry)
 		SHARE_STORE.set(GRAPH_PIPELINE, graph_pipeline)
 		SHARE_STORE.set(HANDLER_REGISTRY, HandlerRegistry())
+				
+		# OB11 缓冲区
+		SHARE_STORE.set(EVENT_BUFFER, EventBuffer(size=config.buffer.size))
 		
 		self.plugin_loader = Loader(config.sub_plugin.load_from)
 		
@@ -116,6 +125,8 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.drop(GRAPH_PIPELINE)
 		SHARE_STORE.drop(HANDLER_REGISTRY)
 		SHARE_STORE.drop(INVOKE_LOCKS)
+		
+		SHARE_STORE.drop(EVENT_BUFFER)
 				
 		if not SHARE_STORE.is_empty():
 			self.logger.warning(f"共享容器可能存在资源泄露: {list(SHARE_STORE.keys())}")
@@ -152,7 +163,7 @@ class MiaoLiBot(NcatBotPlugin):
 				final_state = await graph_pipeline.ainvoke(
 					{"event": event._data.model_dump()},
 					thread_id	= session_id,
-					context		= {"tools": tool_registry.tools, "custom_status": ["main"]}
+					context		= {"tool_surface": tool_registry.to_surface(), "custom_status": ["main"]}
 				)
 			
 			except AgentAborted as e:
@@ -191,3 +202,8 @@ class MiaoLiBot(NcatBotPlugin):
 					continue
 				
 				await easier_send(self.api, chat_id, content_part, to_group=is_group)
+	
+	@registrar.on_message()
+	async def record_anything(self, event: MessageEvent) -> None:
+		"""私聊 event 和群聊 event 都记录"""
+		SHARE_STORE.recall(EVENT_BUFFER).record(event)

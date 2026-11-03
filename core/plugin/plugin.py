@@ -1,7 +1,7 @@
-from .protocols	import PluginProtocol
-from ...utils	import inject_workspace
-from .models	import PluginMetadata, Dependence
-from .errors	import EntryClassNotFound, MetadataMissingError, NotAPackageError
+from ...utils		import inject_workspace
+from ...protocols	import PluginProtocol
+from .models		import PluginMetadata, Dependence
+from ...errors		import EntryClassNotFound, MetadataMissingError, NotAPackageError
 
 from pathlib	import Path
 from types		import ModuleType

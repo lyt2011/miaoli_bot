@@ -1,10 +1,9 @@
 from langgraph.runtime	import Runtime
 
-from miaoli_bot.api		import get_admin_id, store_recall
+from miaoli_bot.api		import store_recall
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
-from ..consts				import PLUGIN_CONFIG
-from ..models.permission	import Permission
+from ..consts	import PLUGIN_CONFIG
 
 import logging
 
@@ -12,48 +11,28 @@ import logging
 LOGGER = logging.getLogger("ToolPermissionManager")
 
 
-def is_allowed(permission: Permission, user_id: str, admin_id: str) -> bool:
-	
-	"""5种权限的统一判定"""
-	
-	if permission.permission == "admin":
-		return user_id == admin_id
-	
-	if permission.permission == "passerby":
-		return user_id != admin_id
-	
-	if permission.permission == "white_list":
-		return user_id in permission.white_list
-	
-	if permission.permission == "nobody":
-		return False
-	
-	# 这是 anyone
-	return True
-
-
 async def pick_tools(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> None:
 	
 	"""通过 config.yaml 的权限控制摘除工具"""
 	
-	plugin_config	= store_recall(PLUGIN_CONFIG)
-	admin_id		= str(get_admin_id())	# 管理员身份取自 miaoli_bot 根配置
-	user_id			= str(state["event"]["sender"]["user_id"])
+	config = store_recall(PLUGIN_CONFIG)
 	
-	permissions		= {p.tool_name: p for p in plugin_config.permissions}
+	# 拿 tool_surface 并构建工具名与权限的映射表
 	tool_surface	= runtime.context["tool_surface"]
-	
+	tp_mapping		= {p.name: p.mode for p in config.permissions} # 工具名与权限的映射表
+
 	for tool in tool_surface.tools:
 		
-		# 对于未配置权限的工具 打印警告日志(仅调试模式)
-		if not (permission := permissions.get(tool.name)):
-			
-			# 突然发现 debug = false 时全部工具都没有权限控制了😅 单独分支检查
-			if plugin_config.debug:
-				LOGGER.warning(f"{tool.name} 未配置权限 将隐藏该工具")
-			
-			tool_surface.delete(tool)
+		# 同意则跳过
+		if tp_mapping.get(tool.name) == "allow":
 			continue
 		
-		if not is_allowed(permission, user_id, admin_id):
-			tool_surface.delete(tool)
+		# 提醒没有配置权限则默认摘除
+		if tool.name not in tp_mapping:
+			if config.debug: # debug = True 才提醒
+				LOGGER.warning(f"{tool.name} 未配置权限 默认摘除")
+		
+		# 摘除工具
+		tool_surface.delete(tool)
+	
+	return None

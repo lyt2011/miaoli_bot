@@ -37,6 +37,6 @@ ON_TURN_START
 
 ## 注意事项
 
-- **图没有它跑不起来**：所有处理器都只返回增量 dict 时，节点就没有下一跳，langgraph 视为终点 —— 图在第一个事件后就静默结束，`final_answer` 缺失。特别是**某个事件一个处理器都没有**时（`wire()` 挂了节点但没人 `register`），那个节点会静默返回空 dict，图在那里就断了。
-- **`on_tool_calling` 回到 `ON_TURN_START` 而不是 `ON_BEFORE_REQUEST`**（旧静态边的走法）：每轮工具调用会重走一遍「轮开始」，`build_client` 会重建一次 `Chat[OI]`（幂等，代价是多一次对象构造与配置查找）。
+- **图没有它跑不起来**：所有处理器都只返回增量 dict 时，节点就没有下一跳，langgraph 视为终点 —— 图在第一个事件后就静默结束 —— 判断「跑完没有」要看 `messages` 末条是不是 `AIMessage`，而不是看某个专用字段。特别是**某个事件一个处理器都没有**时（`wire()` 挂了节点但没人 `register`），那个节点会静默返回空 dict，图在那里就断了。
+- **`on_tool_calling` 回到 `ON_TURN_START` 而不是 `ON_BEFORE_REQUEST`**（旧静态边的走法）：每轮工具调用会重走一遍「轮开始」，`build_client` 会重建一次 LLM 客户端（幂等，代价是多一次对象构造与配置查找）。
 - `config.yaml` 的 `enable` 为 `false` 时不注册任何节点，等同于图不可运行。

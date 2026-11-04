@@ -11,6 +11,11 @@ class IntentRecognition(PluginProtocol):
 	
 	"""识别用户意图，据此增删提示词段"""
 	
+	def __init__(self, *args, **kwargs) -> None:
+		super().__init__(*args, **kwargs)
+		
+		self.undo_list = []
+	
 	async def on_load(self) -> None:
 		
 		config = PluginConfig.model_validate(self.config)

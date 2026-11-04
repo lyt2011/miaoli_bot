@@ -11,6 +11,11 @@ class MiaoliBotAdapter(PluginProtocol):
 	
 	"""把 miaoli_bot 的内部数据适配成图节点可直接消费的形状"""
 	
+	def __init__(self, *args, **kwargs) -> None:
+		super().__init__(*args, **kwargs)
+		
+		self.undo_list = []
+	
 	async def on_load(self) -> None:
 		
 		config = PluginConfig.model_validate(self.config)

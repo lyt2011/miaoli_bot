@@ -15,6 +15,11 @@ class QQPlatformTools(PluginProtocol):
 	
 	"""QQ 平台工具"""
 	
+	def __init__(self, *args, **kwargs) -> None:
+		super().__init__(*args, **kwargs)
+		
+		self.undo_list = []
+	
 	async def on_load(self) -> None:
 		
 		self.undo_list = [

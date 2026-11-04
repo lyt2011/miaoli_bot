@@ -27,6 +27,11 @@ class DefaultRouting(PluginProtocol):
 	于是别的插件只要挂在更高优先级上 就能抢在默认跳转之前改道或叫停
 	"""
 	
+	def __init__(self, *args, **kwargs) -> None:
+		super().__init__(*args, **kwargs)
+		
+		self.undo_list = []
+	
 	async def on_load(self) -> None:
 		
 		config = PluginConfig.model_validate(self.config)

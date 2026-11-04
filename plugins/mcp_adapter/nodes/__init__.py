@@ -1,8 +1,8 @@
-from .recall_mcp_tools	import recall_mcp_tools
+from .inject_mcp_tools	import inject_mcp_tools
 
 
 __all__ = [
 
-	"recall_mcp_tools",
+	"inject_mcp_tools",
 
 ]

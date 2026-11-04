@@ -9,6 +9,11 @@ class AccountInjector(PluginProtocol):
 	
 	"""提供账号注入"""
 	
+	def __init__(self, *args, **kwargs) -> None:
+		super().__init__(*args, **kwargs)
+		
+		self.undo_list = []
+	
 	async def on_load(self) -> None:
 		
 		registry = get_handler_registry()

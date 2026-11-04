@@ -1,21 +1,21 @@
 # Prompt Builder
 
-把 `state["prompt"]` 里的各个段拼成一条 `SystemMessage`，放到 `messages` 的**第一个位置**。
+把 `state["prompts"]` 里的各个段拼成一条 `SystemMessage`，放到 `messages` 的**第一个位置**。
 
 ## 数据来源
 
-`GraphState.prompt` 是一个 `Dict[str, str]`，通道是 `miaoli_pipeline` 的 `SectionPatch`：
+`GraphState.prompts` 是一个 `Dict[str, str]`，通道是 `miaoli_bot.core` 的 `SectionPatch`：
 
 ```python
-prompt: Annotated[Dict[str, str], SectionPatch]
+prompts: Annotated[Dict[str, str], SectionPatch]
 ```
 
 各子插件往自己那段写，互不覆盖：
 
 ```python
-return {"prompt": {"account_info": "..."}}    # account_injector 写账号信息段
-return {"prompt": {"identity": "你是喵璃"}}    # 别的插件写人设段
-return {"prompt": {"style": None}}            # 删掉 style 段
+return {"prompts": {"account-info": "..."}}   # account_injector 写账号信息段
+return {"prompts": {"identity": "你是喵璃"}}   # 别的插件写人设段
+return {"prompts": {"style": None}}           # 删掉 style 段
 ```
 
 同一段重复写同一个值是幂等的 —— `SectionPatch.update()` 用结构化对比判定变更，内容没变就不 bump 版本、不产生新 checkpoint。
@@ -24,10 +24,11 @@ return {"prompt": {"style": None}}            # 删掉 style 段
 
 `build_prompt` 挂在 `on_before_request`（`priority=NORMAL + 1`）：
 
-1. **取段** —— 遍历 `state["prompt"]`，每段拼成 `<key>value</key>`
-2. **拼串** —— 段之间用 `\n\n` 连接
-3. **幂等判断** —— 若 `messages[0]` 已经是 `SystemMessage` 且内容与拼出来的串相同，返回 `None`（不写任何增量，省掉一次 `Overwrite`）
-4. **落位** —— 先滤掉历史里的 `SystemMessage`，再 `Overwrite([SystemMessage(串), *其余消息])`
+1. **取段** —— 遍历 `state["prompts"]`，每段渲染成 `<key>\nvalue\n</key>`
+2. **排序** —— 渲染好的段按字符串排序（内容以 `<key>` 开头，等价于按段名排序），保证同一组段每次拼出的串完全一致
+3. **拼串** —— 段之间用 `\n\n` 连接
+4. **幂等判断** —— 若 `messages[0]` 已经是 `SystemMessage` 且内容与拼出来的串相同，返回 `None`（不写任何增量，省掉一次 `Overwrite`）
+5. **落位** —— 先滤掉历史里的 `SystemMessage`，再 `Overwrite([SystemMessage(串), *其余消息])`
 
 ## 为什么必须用 Overwrite
 
@@ -55,12 +56,12 @@ ON_BEFORE_REQUEST → build_prompt（priority=NORMAL+1）→ 其余节点
 
 ## 与 account_injector 的分工
 
-`account_injector` 只负责**产出**（往 `prompt` 写 `account-info` 段），本插件只负责**组装与落位**。两者不再抢同一个字符串键。
+`account_injector` 只负责**产出**（往 `prompts` 写 `account-info` 段），本插件只负责**组装与落位**。两者不再抢同一个字符串键。
 
 ## 注册
 
 ```python
-self.registry.on_before_request(build_prompt, priority=NORMAL + 1)
+registry.on(ON_BEFORE_REQUEST, build_prompt, priority=NORMAL + 1)
 ```
 
 `register()` 内部是 `reverse=True` 排序，**priority 数值越大越先执行**。比 `NORMAL` 高一级，保证在 `pick_tools`（`priority=1`，同档按注册顺序）与 `default_routing` 的默认跳转（`MINIMUM`）之前跑完。

@@ -11,6 +11,11 @@ class ContextCompactor(PluginProtocol):
 	
 	"""上下文压缩"""
 	
+	def __init__(self, *args, **kwargs) -> None:
+		super().__init__(*args, **kwargs)
+		
+		self.undo_list = []
+	
 	async def on_load(self) -> None:
 		
 		config = PluginConfig.model_validate(self.config)

@@ -9,6 +9,11 @@ from .consts	import PLUGIN_CONFIG, RAW_CONFIG
 
 class ToolPermissionManager(PluginProtocol):
 	
+	def __init__(self, *args, **kwargs) -> None:
+		super().__init__(*args, **kwargs)
+		
+		self.undo_list = []
+	
 	async def on_load(self) -> None:
 		
 		config = PluginConfig.model_validate(self.config)
@@ -17,9 +22,7 @@ class ToolPermissionManager(PluginProtocol):
 		
 		store_set(PLUGIN_CONFIG, config)
 		store_set(RAW_CONFIG, self.config)
-		
-		self.undo_list = []  # 关闭时 on_close 也要能遍历
-		# 不启用直接跳过节点注册
+				
 		if not config.enable:
 			return None
 		

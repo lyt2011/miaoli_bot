@@ -11,9 +11,9 @@ import logging
 LOGGER = logging.getLogger("MCPAdapter")
 
 
-async def recall_mcp_tools(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> None:
+async def inject_mcp_tools(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> None:
 	
-	"""召唤 mcp 工具"""
+	"""把 MCP server 的工具追加进本轮 tool_surface"""
 	
 	client_registry = store_recall(MCP_CLIENT_REGISTRY)
 	tool_surface	= runtime.context["tool_surface"]

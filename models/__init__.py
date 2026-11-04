@@ -7,6 +7,7 @@ from .config				import (
 	PluginConfig,
 	Provider,
 	SubPluginConfig,
+	ChannelSetting,
 )
 
 
@@ -25,5 +26,6 @@ __all__ = [
 	"LLM",
 	"CheckpointerConfig",
 	"SubPluginConfig",
+	"ChannelSetting",
 
 ]

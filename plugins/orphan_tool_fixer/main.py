@@ -9,6 +9,11 @@ class OrphanToolFixer(PluginProtocol):
 	
 	"""修复孤儿工具返回"""
 	
+	def __init__(self, *args, **kwargs) -> None:
+		super().__init__(*args, **kwargs)
+		
+		self.undo_list = []
+	
 	async def on_load(self) -> None:
 		
 		config = PluginConfig.model_validate(self.config)

@@ -1,46 +1,59 @@
-# MCP Adapter Demo
+# MCP Adapter
 
-MCP 适配演示子插件：接入 [MCP（Model Context Protocol）](https://modelcontextprotocol.io/) server，
-把它暴露的工具**追加**进本项目的工具表，从而让模型能直接调用外部 MCP 工具。
+MCP 适配子插件：接入 [MCP（Model Context Protocol）](https://modelcontextprotocol.io/) server，
+把它暴露的工具**追加**进本轮请求的工具表，从而让模型能直接调用外部 MCP 工具。
 
 与其它子插件的区别：**本插件不注册任何自己的工具、也不参与事件接收**。
-它只做一件事 —— 在图跑到 `on_before_request` 时，把 MCP server 的工具拉一遍，
-塞进本次请求的 `runtime.context["tools"]`。
+它只做一件事 —— 在图跑到 `on_agent_start` 时，把 MCP server 的工具拉一遍，
+塞进本轮的 `runtime.context["tool_surface"]`。
 
 ## 工作流程
 
-`recall_mcp_tools` 节点挂在 `on_before_request`，`priority=MEDIUM`（=10）：
+`inject_mcp_tools` 节点挂在 `on_agent_start`，`priority=MEDIUM`（=10）。
 
-- 高于 `default_routing` 默认 `Goto` 的 `MINIMUM`，因此一定会被执行
-- 高于 `tool_permission_manager` 的 `pick_tools`（`priority=1`），**这一点是必须的** ——
-  `pick_tools` 会把「未配置权限的工具」从 `runtime.context["tools"]` 里摘掉，
-  如果 `recall_mcp_tools` 排在它后面，MCP 工具就会被追加回来，**绕过整套权限控制**
+### 为什么是 `on_agent_start`
 
-也就是说 **MCP 工具默认是被隐藏的**，需要在 `tool_permission_manager` 的 `config.yaml` 里
-为每个 MCP 工具显式写一条权限才能被模型看到。这与该插件「未配置即隐藏」的哲学一致。
+| 事件 | 本插件 | `tool_permission_manager` |
+|---|---|---|
+| `on_agent_start` | ✅ `inject_mcp_tools`（`MEDIUM` = 10） | — |
+| `on_before_request` | — | ✅ `pick_tools`（`priority=1`） |
 
-节点逻辑：
+`GRAPH_EVENTS` 里 `on_agent_start` 排在 `on_before_request` 之前，所以顺序天然是：
 
-1. 从 `SHARE_STORE` 取本插件的 `PluginConfig`
-2. 用 `mcps` 里每个 server 的 `transport.model_dump()` 拼出连接表，构造 `MultiServerMCPClient`
-3. `await client.get_tools()` 拿到 MCP 工具（已是 langchain 的 `BaseTool`）
-4. 把当前工具表和 MCP 工具**都按 `name` 建成字典**，`raw_tools.update(mcp_tools)` 后写回列表
+```
+inject_mcp_tools   →  把 MCP 工具加进工具表
+pick_tools         →  把没配 allow 的工具摘掉（包括刚加进来的 MCP 工具）
+```
 
-第 4 步是**按名字去重**，而不是直接 `extend`：
+**这个顺序是必须的**：`pick_tools` 的语义是「未配置即摘除」，如果 `inject_mcp_tools` 排在它后面，
+MCP 工具会被追加回来，**绕过整套权限控制**。
 
-- 同名时 MCP 工具**覆盖**原有条目，不会重复出现
-- 不同名的 MCP 工具追加在末尾
-- 于是每个请求看到的 MCP 工具都只有一份，**不会随 turn 数无界增长**
+也就是说 **MCP 工具默认是不可见的**，需要在 `tool_permission_manager` 的 `config.yaml` 里
+为每个 MCP 工具名显式写一条 `mode: "allow"` 才能被模型看到。
 
-> ⚠️ 目前只做到了「去重」，**没做到「下架」**：如果 MCP server 撤掉了某个工具，
-> 上一轮注入的旧条目仍会留在工具表里（因为字典里没有「上一轮注入了哪些」这个信息）。
-> 代码里已用 `FIXME` 标出。
+### 节点逻辑
 
-之所以挂 `on_before_request` 而不是 `on_agent_start`：`runtime.context` 是**每次请求独立**的字典，
-每次请求前重新拉一遍工具，服务端工具清单变了能立刻跟上，也不会跨请求累积。
+1. 从 `SHARE_STORE` 取本插件的 `MCPClientRegistry`
+2. `await client_registry.get_tools()` 拿到 MCP 工具（已是 langchain 的 `BaseTool`）
+3. 逐个 `tool_surface.add(tool)`
 
-> 注意 `runtime.context["tools"]` 来自 `ToolRegistry.tools` 这个 **property**（每次返回新 list），
-> 所以写回只影响本次请求，不会污染全局工具注册表。
+`ToolSurface.add` 是**按 `name` 幂等覆盖**的：
+
+- 同名时 MCP 工具**顶替**原有条目，不会重复出现（同时打一条 warning）
+- 不同名的 MCP 工具追加进表
+- 于是一次请求里每个工具名只有一份
+
+### 不做「下架」也没关系
+
+工具的落点是 `runtime.context["tool_surface"]`，而这个 surface 是**每轮新建**的
+（跑图入口每轮从 `ToolRegistry.to_surface()` 生成一份副本）。
+所以 MCP server 撤掉某个工具后，下一轮的表里自然就没有了 —— 不存在「旧条目残留」。
+同理，写进去的工具也不会污染全局 `ToolRegistry`。
+
+### 节点返回 `None`
+
+`inject_mcp_tools` 不往 `GraphState` 写任何东西，它改的是 `runtime.context` 里的对象。
+返回 `None` 在管线里被识别为「无操作」，不会产生 state 更新 —— 但 `tool_surface` 已经被就地改过了。
 
 ## 配置
 
@@ -142,21 +155,28 @@ mcp_adapter/
 ├── __init__.py
 ├── consts/
 │   ├── __init__.py
-│   └── share_store_keys.py         # PLUGIN_CONFIG / RAW_CONFIG
+│   └── share_store_keys.py         # PLUGIN_CONFIG / RAW_CONFIG / MCP_CLIENT_REGISTRY
 ├── core/
-│   └── mcp_adapter.py              # 占位，尚未使用
+│   ├── __init__.py
+│   └── mcp_client_registry.py      # MCPClientRegistry（注册 / 复用缓存 / get_tools）
 ├── models/
 │   ├── __init__.py
 │   ├── plugin_config.py            # PluginConfig（enable / tool_prefix / mcps）
-│   ├── mcp_server.py               # MCPServer（name + transport）
+│   ├── mcp_server.py               # MCPServer（name / reusable / transport）
+│   ├── runtimes/
+│   │   ├── __init__.py
+│   │   └── mcp_client.py           # MCPClient（reusable + client）
 │   └── transports/
 │       ├── __init__.py
 │       ├── base_transport.py       # BaseTransport
 │       ├── stdio.py                # StdioTransport
 │       └── streamable_http.py      # StreamableHttpTransport
+├── protocols/
+│   ├── __init__.py
+│   └── tool_obtainable.py          # ToolObtainanle（async get_tools）
 └── nodes/
     ├── __init__.py
-    └── recall_mcp_tools.py         # recall_mcp_tools 节点
+    └── inject_mcp_tools.py         # inject_mcp_tools 节点
 ```
 
 ## 已知取舍
@@ -164,6 +184,8 @@ mcp_adapter/
 - **`reusable: false` 的 server 每次请求都会重新 `list_tools()`。** 对 `streamable_http` 只是一次建连，代价可接受；
   对 `stdio` 则意味着**每个请求都会重新拉起一次子进程**。如果接的是启动开销大的 stdio server，
   把它的 `reusable` 设为 `true` 即可（工具进缓存、客户端从列表移除，不再重建）。
-- **工具名冲突**：MCP 工具按 `name` **覆盖**进工具表（`raw_tools.update(mcp_tools)`），同名时 MCP 工具顶掉原有条目、不会重复出现。
+- **工具名冲突**：`ToolSurface.add` 按 `name` 覆盖，同名时 MCP 工具顶掉原有条目并打 warning。
   开 `tool_prefix` 可以规避「本地工具被 MCP 工具顶掉」这种意外覆盖。
-- 本插件**不参与事件接收**：事件仍由 `ob11_adapter` 经 ncatbot 提供，本插件只扩展**工具**这一侧。
+- **权限默认关闭**：MCP 工具名是动态的，`tool_permission_manager` 的权限表里没有它们，
+  所以默认全部被摘除。要么给每个工具名写 `mode: "allow"`，要么接受「MCP 工具只能手工放行」这件事。
+- 本插件**不参与事件接收**：事件仍由通道（`miaoli_buffer` 的 `QQChannel`）提供，本插件只扩展**工具**这一侧。

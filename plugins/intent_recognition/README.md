@@ -1,4 +1,4 @@
-用配置里的规则匹配最后一轮消息，命中就把对应提示词文件的内容拼成一段注入 `state["prompt"]`。
+用配置里的规则匹配最后一轮消息，命中就把对应提示词文件的内容拼成一段注入 `state["prompts"]`。
 
 `recognize_intent` 挂在 `on_before_request`，比 `prompt_builder` 早一步执行 —— 它只负责产出 `intent_recognition` 这一段，拼成 `SystemMessage` 落到 `messages[0]` 是 `prompt_builder` 的事。
 
@@ -139,11 +139,13 @@ field_prompts[matcher.name] = prompt
 cr.join([f"<{o_o}>{T_T}</{o_o}>" for o_o, T_T in dt.items()])
 ```
 
-**所有命中项合成一个段**，段名固定为 `intent_recognition`：
+**所有命中项合成一个段**，段名固定为 `intent-recognition`（连字符），值前面还会加一行固定引导语：
 
 ```python
-return {"prompt": {"intent_recognition": build_prompt(field_prompts)}}
+return {"prompts": {"intent-recognition": f"{GUIDE}\n{build_prompt(field_prompts)}"}}
 ```
+
+`GUIDE` 是 `"以下本轮的意图识别注入内容。"`，和子标签一起构成这段的正文。
 
 所以提示词里长这样（两个 matcher 都命中时）：
 
@@ -188,17 +190,17 @@ except Exception as e:
 ## 优先级
 
 ```python
-self.registry.on_before_request(recognize_intent, priority=NORMAL + 2)
+registry.on(ON_BEFORE_REQUEST, recognize_intent, priority=NORMAL + 2)
 ```
 
 `register()` 内部是 `reverse=True` 排序，**priority 数值越大越先执行**。`prompt_builder` 的 `build_prompt` 挂的是 `NORMAL + 1`，本节点必须严格**大于**它，否则段写进去时 prompt 已经拼完了。
 
 ## 没命中时
 
-`field_prompts` 为空时 `build_prompt({})` 返回空串，节点仍然返回：
+`field_prompts` 为空时 `build_prompt({})` 返回空串，节点仍然返回这一段（内容是引导语加一个换行）：
 
 ```python
-{"prompt": {"intent_recognition": ""}}
+{"prompts": {"intent-recognition": f"{GUIDE}\n"}}
 ```
 
 也就是该段被置为空字符串而不是删除，`prompt_builder` 会渲染出一个空的 `<intent-recognition></intent-recognition>`。这样做的好处是上一轮命中的内容不会残留 —— 每轮都覆盖，不留陈旧段。

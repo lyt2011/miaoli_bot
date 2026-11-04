@@ -18,6 +18,11 @@ class WebSearch(PluginProtocol):
 	
 	"""联网搜索工具"""
 	
+	def __init__(self, *args, **kwargs) -> None:
+		super().__init__(*args, **kwargs)
+		
+		self.undo_list = []
+	
 	async def on_load(self) -> None:
 		
 		config = PluginConfig.model_validate(self.config)
@@ -40,7 +45,6 @@ class WebSearch(PluginProtocol):
 		for undo in self.undo_list:
 			undo()
 		
-		config = PluginConfig.model_validate(self.config)
 		client_session = store_recall(CLIENT_SESSION)
 		store_drop(PLUGIN_CONFIG)
 		store_drop(RAW_CONFIG)

@@ -1,4 +1,5 @@
 from ._share_store		import SHARE_STORE
+from .graph_runner		import safe_run_graph
 from .plugin			import Loader, PluginProtocol
 from .handler_registry	import HandlerRegistry
 from .tool				import ToolRegistry, ToolSurface
@@ -22,6 +23,9 @@ __all__ = [
 
 	# handler_registry
 	"HandlerRegistry",
+
+	# graph_runner
+	"safe_run_graph",
 
 	# notice_channel
 	"ChannelRegistry",

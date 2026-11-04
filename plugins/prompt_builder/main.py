@@ -9,6 +9,11 @@ class PromptBuilder(PluginProtocol):
 	
 	"""把 state 里的提示词段拼成一条系统消息，插到消息列表最前面"""
 	
+	def __init__(self, *args, **kwargs) -> None:
+		super().__init__(*args, **kwargs)
+		
+		self.undo_list = []
+	
 	async def on_load(self) -> None:
 		
 		registry = get_handler_registry()

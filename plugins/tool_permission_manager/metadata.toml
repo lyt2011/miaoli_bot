@@ -1,4 +1,4 @@
 name = "tool_permission_manager"
 entry_class = "main.ToolPermissionManager"
-description = "工具权限控制：按身份（admin / white_list / anyone / passerby / nobody）在请求前摘掉无权使用的工具"
+description = "工具权限控制：按 config.yaml 的 allow / refuse 表，在请求前摘掉未放行的工具"
 dependences = []

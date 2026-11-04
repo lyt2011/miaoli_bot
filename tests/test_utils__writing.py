@@ -2,11 +2,13 @@ def test_workspace_injector() -> None:
 	
 	"""测试工作目录注入器"""
 	
-	from miaoli_bot.utils import inject_workspace
+	from miaoli_bot.utils	import inject_workspace
 	
 	assert inject_workspace("$workspace/plugins", "a") == "a/plugins"
 	assert inject_workspace(["$workspace/plugins"], "a") == ["a/plugins"]
 	assert inject_workspace({"test": "$workspace/plugins"}, "a") == {"test": "a/plugins"}
+	assert inject_workspace({"$workspace": "$workspace/plugins"}, "a") == {"$workspace": "a/plugins"}
+	assert inject_workspace({"first": {"second": "$workspace/plugins"}}, "a") == {"first": {"second": "a/plugins"}}
 
 def test_id_concatenate() -> None:
 	
@@ -17,3 +19,4 @@ def test_id_concatenate() -> None:
 	
 	assert concatenate_id("123", is_group=True) == f"{GROUP_PREFIX}123"
 	assert concatenate_id("abc", is_group=False) == f"{PRIVATE_PREFIX}abc"
+

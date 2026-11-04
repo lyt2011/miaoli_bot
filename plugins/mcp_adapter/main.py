@@ -6,13 +6,18 @@ from miaoli_bot.api		import store_drop, store_set, get_handler_registry
 
 from .models	import PluginConfig
 from .core		import MCPClientRegistry
-from .nodes		import recall_mcp_tools
+from .nodes		import inject_mcp_tools
 from .consts	import PLUGIN_CONFIG, RAW_CONFIG, MCP_CLIENT_REGISTRY
 
 
 class MCPAdapter(PluginProtocol):
 	
 	"""MCP 适配 —— 接入 MCP server 并把其工具注册进工具表"""
+	
+	def __init__(self, *args, **kwargs) -> None:
+		super().__init__(*args, **kwargs)
+		
+		self.undo_list = []
 	
 	async def on_load(self) -> None:
 		
@@ -39,7 +44,7 @@ class MCPAdapter(PluginProtocol):
 			client_registry.register_client(client, reusable=mcp.reusable)
 		
 		self.undo_list = [
-			handler_registry.on(ON_AGENT_START, recall_mcp_tools, priority=MEDIUM),
+			handler_registry.on(ON_AGENT_START, inject_mcp_tools, priority=MEDIUM),
 		]
 	
 	async def on_close(self) -> None:

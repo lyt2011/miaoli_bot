@@ -1,7 +1,8 @@
-from pydantic	import BaseModel, Field, ConfigDict, model_validator
+from pydantic	import BaseModel, Field, model_validator
 
 from .account_config		import AccountConfig
 from .provider_config		import Provider, LLM
+from .channel_setting		import ChannelSetting
 from .sub_plugin_config		import SubPluginConfig
 from .checkpointer_config	import CheckpointerConfig
 
@@ -9,16 +10,15 @@ from typing	import Self, Dict, List
 
 
 class PluginConfig(BaseModel):
-	
-	model_config = ConfigDict(extra="allow")
-	
+		
 	provider	: str				= Field(..., description="将要使用的供应商")
 	model		: str				= Field(..., description="将要使用的模型")
-	providers	: List[Provider]	= Field(default_factory=list, description="供应商", min_length=1)
+	providers	: List[Provider]	= Field(..., description="供应商", min_length=1)
 	
-	account		: AccountConfig				= Field(..., description="账号信息配置")
+	account		: AccountConfig			= Field(..., description="账号信息配置")
 	checkpointer: CheckpointerConfig	= Field(default_factory=CheckpointerConfig, description="check_pointer 数据库配置")
 	sub_plugin	: SubPluginConfig		= Field(default_factory=SubPluginConfig, description="插件配置")
+	channel		: ChannelSetting		= Field(default_factory=ChannelSetting, description="渠道设置")
 	
 	@model_validator(mode="after")
 	def ensure_pm_exist(self) -> Self:

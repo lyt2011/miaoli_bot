@@ -306,4 +306,5 @@ cd <插件父目录>          # plugins/
 - **压缩没有「已压过」的短路判据**：`ON_AFTER_COMPACT` 跳回 `ON_TURN_START` 后守卫重新算 token，如果压缩结果仍超阈值就会再压一轮，最终由 `GraphRecursionError` 兜底
 - **压缩摘要是「摘要的摘要」**：第二次压缩吃的是第一次压缩的产物，压缩次数一多细节必然流失，会话越长越明显
 - **工具返回值不统一**：`system_tools` 的 `read_file` / `replace` / `write` / `read_image` 返回字符串，其余子插件的工具返回 `{"status": bool, ...}` 字典。模型侧要按工具名记忆两种格式，提示词里也没法笼统描述
+- **`intent_recognition` 的注入可以自己喂自己**：`recognize_intent` 挂在 `ON_TURN_START`，判据是 `messages[-1]`，而注入产物本身也是 `HumanMessage`。这个事件有三条入边 —— `on_agent_start`（有新用户输入）、`on_tool_calling` / `on_after_compact`（回流，没有新输入）。回流时末条可能正是刚注入的那条，或压缩后保留下来的那条，于是同一轮里会再命中、再注入；压缩的 `keep_recent` 又把注入消息留在尾部，两者互相喂，只受 langgraph 递归上限打断。工具执行失败（`_dispatch` 吞掉异常、没有 `ToolMessage` 产出）时则是每轮多一条，永久留在 checkpoint 里
 - **`intent_recognition` 是纯字符串匹配**：没有语义理解，判据只有末条消息的正文。「上一轮是不是我发的」「这张图算不算表情包」这类需要上下文或工具返回的条件，当前的 `is_hit(content)` 签名装不下

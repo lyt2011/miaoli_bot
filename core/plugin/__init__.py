@@ -1,5 +1,6 @@
 from .plugin		import Plugin
 from .loader		import Loader
+from .plugin_entity	import Status, PluginEntity
 from ...protocols	import PluginProtocol
 from .models		import Dependence, Specifier, PluginMetadata
 from ...errors		import (
@@ -18,6 +19,10 @@ __all__ = [
 
 	# plugin
 	"Plugin",
+
+	# plugin_entity
+	"Status",
+	"PluginEntity",
 
 	# protocols
 	"PluginProtocol",

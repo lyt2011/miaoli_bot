@@ -26,12 +26,6 @@ PLUGIN_CONFIG_ARGS: Dict[str, Any] = {
 			],
 		},
 	],
-	"account"		: {
-		"bot_id"			: "123",
-		"admin_id"			: "1234",
-		"bot_nickname"		: "bot",
-		"admin_nickname"	: "admin",
-	},
 	"checkpointer"	: {"database": "memory", "connect_to": None, "extra": {}},
 	"sub_plugin"	: {"enable": False, "load_from": []},
 	"channel"		: {"drain_timeout": 30.0},
@@ -95,11 +89,6 @@ def test_llm_config() -> None:
 	
 	# 测试正确数据构建
 	LLM.model_validate(llm)
-
-def test_account_config() -> None:
-	"""测试 AccountConfig 构建"""
-	from miaoli_bot.models	import AccountConfig
-	AccountConfig.model_validate(copy_plugin_config()["account"])
 
 def test_provider_config() -> None:
 	"""测试 Provider 构建"""

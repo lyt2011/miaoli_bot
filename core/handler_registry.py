@@ -2,7 +2,7 @@ from langgraph.runtime	import Runtime
 from langgraph.typing	import StateT, ContextT
 
 from ..consts		import GRAPH_PIPELINE
-from ._share_store	import SHARE_STORE
+from .share_store	import SHARE_STORE
 
 from typing	import Any, Awaitable, Callable, Dict
 

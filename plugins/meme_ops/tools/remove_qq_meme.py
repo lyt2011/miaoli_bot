@@ -15,7 +15,7 @@ class ToolSchema(BaseModel):
 
 
 @tool(args_schema=ToolSchema)
-async def remove_meme_by_hash(hash: str) -> Dict[str, Any]:
+async def remove_qq_meme_by_hash(hash: str) -> Dict[str, Any]:
 	
 	"""
 	通过 hash 删除一个已归档的表情包

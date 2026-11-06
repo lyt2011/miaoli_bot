@@ -14,7 +14,7 @@ class ChannelSurface:
 	def __init__(self, channels: List[BaseChannel]) -> None:
 		self._channels	= {c.name: c for c in channels} # 转为字典实现冻结
 	
-	async def batch_drain(self, atimeout: int) -> Dict[str, Union[List[ChannelMessage], Exception]]:
+	async def batch_drain(self, atimeout: int) -> Dict[str, Union[ChannelMessage, Exception]]:
 		
 		"""基于 asyncio.gather 并发获取新信息"""
 		

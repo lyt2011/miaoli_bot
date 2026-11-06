@@ -38,24 +38,21 @@ class DefaultRouting(PluginProtocol):
 		
 		registry = get_handler_registry()
 		
-		self.undo_list = []  # 关闭时 on_close 也要能遍历
 		# 不启用直接跳过节点注册
 		if not config.enable:
 			return None
 		
-		self.undo_list = [
-			registry.on(ON_AGENT_START, on_agent_start, priority=MINIMUM),
-			registry.on(ON_TURN_START, on_turn_start, priority=MINIMUM),
-			registry.on(ON_BEFORE_COMPACT, on_before_compact, priority=MINIMUM),
-			registry.on(ON_COMPACT, on_compact, priority=MINIMUM),
-			registry.on(ON_AFTER_COMPACT, on_after_compact, priority=MINIMUM),
-			registry.on(ON_BEFORE_REQUEST, on_before_request, priority=MINIMUM),
-			registry.on(ON_REQUEST, on_request, priority=MINIMUM),
-			registry.on(ON_AFTER_REQUEST, on_after_request, priority=MINIMUM),
-			registry.on(ON_TOOL_CALLING, on_tool_calling, priority=MINIMUM),
-			registry.on(ON_TURN_END, on_turn_end, priority=MINIMUM),
-			registry.on(ON_AGENT_END, on_agent_end, priority=MINIMUM),
-		]
+		self.undo_list.append(registry.on(ON_AGENT_START, on_agent_start, priority=MINIMUM))
+		self.undo_list.append(registry.on(ON_TURN_START, on_turn_start, priority=MINIMUM))
+		self.undo_list.append(registry.on(ON_BEFORE_COMPACT, on_before_compact, priority=MINIMUM))
+		self.undo_list.append(registry.on(ON_COMPACT, on_compact, priority=MINIMUM))
+		self.undo_list.append(registry.on(ON_AFTER_COMPACT, on_after_compact, priority=MINIMUM))
+		self.undo_list.append(registry.on(ON_BEFORE_REQUEST, on_before_request, priority=MINIMUM))
+		self.undo_list.append(registry.on(ON_REQUEST, on_request, priority=MINIMUM))
+		self.undo_list.append(registry.on(ON_AFTER_REQUEST, on_after_request, priority=MINIMUM))
+		self.undo_list.append(registry.on(ON_TOOL_CALLING, on_tool_calling, priority=MINIMUM))
+		self.undo_list.append(registry.on(ON_TURN_END, on_turn_end, priority=MINIMUM))
+		self.undo_list.append(registry.on(ON_AGENT_END, on_agent_end, priority=MINIMUM))
 	
 	async def on_close(self) -> None:
 		

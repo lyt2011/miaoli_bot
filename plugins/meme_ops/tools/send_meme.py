@@ -10,28 +10,31 @@ from miaoli_bot.api		import get_ncatbot_api, store_recall
 from ..core		import MemeSqlite
 from ..consts	import PLUGIN_CONFIG
 
-from typing	import Dict, Any
+from typing	import Dict, Any, Literal
+
+
+Mode = Literal["group", "private"]
 
 
 class ToolSchema(BaseModel):
 	hash	: str	= Field(..., description="表情包的 hash")
 	chat_id	: str	= Field(..., description="接收方ID")
-	to_group: bool	= Field(default=False, description="是否发送到群，布尔类型，默认私聊")
+	mode	: Mode	= Field(..., description="group 发往群聊 private 发往私聊")
 
 
 @tool(args_schema=ToolSchema)
 async def send_meme_to_qq(
 	hash	: str,
 	chat_id	: str,
-	to_group: bool,
+	mode	: Mode,
 ) -> Dict[str, Any]:
 	
 	"""
 	发送一个**已归档的**表情包到 QQ
 	
-	to_group 的值决定了 chat_id 的用途
-	true: chat_id 作为群聊ID，将信息发送到 chat_id 对应的群聊
-	false: chat_id 作为用户QQ号，将信息以私聊的方式发送到 chat_id 对应的用户
+	mode 的值决定了 chat_id 的用途
+	group: chat_id 作为群聊ID，将信息发送到 chat_id 对应的群聊
+	private: chat_id 作为用户QQ号，将信息以私聊的方式发送到 chat_id 对应的用户
 	"""
 		
 	try:
@@ -45,10 +48,10 @@ async def send_meme_to_qq(
 			base64_data	= meme_info["base64"].decode()
 		
 		send_result = await easier_send(
-			ncatbot_api	= get_ncatbot_api(),
-			chat_id		= chat_id,
-			to_group	= to_group,
-			message		= MessageArray([Image(file=f"base64://{base64_data}", sub_type=1)]),
+			mode			= mode,
+			chat_id			= chat_id,
+			ob11_message	= MessageArray([Image(file=f"base64://{base64_data}", sub_type=1)]).to_list(),
+			ncatbot_api		= get_ncatbot_api(),
 		)
 	
 	except Exception as e:

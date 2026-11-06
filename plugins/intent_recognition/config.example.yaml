@@ -12,20 +12,21 @@
 
 enable: false                   # 是否启用意图识别（模型默认 false，要用就得显式打开）
 
-matchers: []                    # 匹配器列表，为空等于不做事
+workflows: []                   # 工作流列表，为空等于不做事
 
 
 # ───────────────────────────────────────────────────────────────
 # 下面是一个完整示例。要用就整段取消注释，并把 file 换成真实路径。
-# 也可以只留其中一个 matcher —— 写了 matcher，rules 至少要有 1 条。
+# 也可以只留其中一个 workflow —— 写了 workflow，rules 至少要有 1 条。
 #
-# 一个 matcher 的多条 rule 是「与」关系：**全部命中**才算命中，
-# 命中后把 file 的内容以 name 为标签注入，多个 matcher 同时命中就都注入。
+# 一个 workflow 的多条 rule 是「与」关系：**全部命中**才算命中，
+# 命中后把 file 的内容以 name 为标签注入，多个 workflow 同时命中就都注入。
 # ───────────────────────────────────────────────────────────────
 #
-# matchers:
+# workflows:
 #
-#   - name: "meme"              # 标签名，注入后形如 <meme>...</meme>
+#   - mode: "file"              # 判别字段，必须显式写
+#     name: "meme"              # 标签名，注入后形如 <meme>...</meme>
 #     file: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins/intent_recognition/data/meme.md"
 #     encoding: "utf-8"         # 读取 file 用的编码，默认 utf-8
 #     rules:
@@ -47,7 +48,8 @@ matchers: []                    # 匹配器列表，为空等于不做事
 #       - mode: "regex"
 #         regex: "1[3-9]\\d{9}"
 #
-#   - name: "privacy"
+#   - mode: "file"
+#     name: "privacy"
 #     file: "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins/intent_recognition/data/privacy.md"
 #     rules:
 #       - mode: "single_keyword"

@@ -4,14 +4,14 @@ miaoli_bot 内部数据适配 —— `on_load` 把根配置解析成 `PluginConf
 
 此外，**人格与输出协议这两份提示词资产也归本插件持有**（`data/`），主包不再内置任何提示词、也不再提供 `prompt_file` / `get_prompt`。
 
-## 定位：与 `ob11_adapter` 对称
+## 定位：与平级插件 `miaoli_qq_channel` 对称
 
-| 插件 | 适配的对象 | 数据来源 |
+| 插件 | 负责的输入 | 产出 |
 | --- | --- | --- |
-| `ob11_adapter` | **信息**（QQ 事件 / 消息段） | ncatbot |
-| `miaoli_bot_adapter` | **miaoli_bot 内部数据**（根配置 → `SHARE_STORE`）+ **人格资产**（`SOUL.md` / `output_protocol.md`） | miaoli_bot / 本插件 `data/` |
+| `miaoli_qq_channel`（**平级插件**，与本包同级目录，不是本包的子插件） | **信息**：QQ 事件 / 消息段（ncatbot 的 `MessageEvent`） | **结构化输入**：它自带的 `QQChannel`（`name = "qq"`，经 `miaoli_bot.api.register_channel()` 进 `ChannelRegistry`），`drain()` 给出 `QQChannelMessage`，`to_structured()` 交出每条事件序列化后的 JSON |
+| `miaoli_bot_adapter`（本插件） | **miaoli_bot 内部数据**：根配置 + 人格资产（`SOUL.md` / `output_protocol.md`） | 根配置 → `SHARE_STORE`；人格资产 → `prompts` 的 `soul` / `output-protocol` 段 |
 
-`ob11_adapter` 让图节点不必依赖 ncatbot 的类，本插件让图节点不必依赖 miaoli_bot 的根配置结构。
+`miaoli_qq_channel` 让图节点不必依赖 ncatbot 的事件类（它的消息段模型在 `plugins/qq_platform_tools/models/messages/`，入库结构是 `core/channel/qq_channel_message.py`），本插件让图节点不必依赖 miaoli_bot 的根配置结构。
 
 ## 节点
 

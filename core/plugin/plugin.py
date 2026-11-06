@@ -4,8 +4,7 @@ from .models		import PluginMetadata, Dependence
 from ...errors		import EntryClassNotFound, MetadataMissingError, NotAPackageError
 
 from pathlib	import Path
-from types		import ModuleType
-from typing		import Any, Dict, List, Optional, Self
+from typing		import Any, Dict, List, Self, Union
 
 import sys
 import yaml
@@ -20,9 +19,8 @@ class Plugin:
 		self.path		= path
 		self.metadata	= metadata
 		
-		self._instance	: Optional[PluginProtocol]	= None
-		self._module	: Optional[ModuleType]		= None
-		self._config	: Optional[Dict[str, Any]]	= None
+		self._instance	: Union[PluginProtocol, None]	= None
+		self._config	: Union[Dict[str, Any], None]	= None
 	
 	@classmethod
 	def from_path(cls, path: Path) -> Self:
@@ -48,7 +46,7 @@ class Plugin:
 	def is_package(self) -> bool:
 		return Path(self.path / "__init__.py").is_file()
 	
-	def load(self) -> None:
+	async def load(self) -> None:
 		
 		"""Plugin 实例生命周期 加载"""
 		
@@ -59,18 +57,23 @@ class Plugin:
 		self._build_package()
 		self._instantiate_plugin()
 		self._inject_data()
-	
-	async def activate(self) -> None:
-		"""插件实例 on_load 方法转发"""
+		
 		await self._instance.on_load()
 	
-	async def deactivate(self) -> None:
-		"""插件实例 on_close 方法转发"""
-		await self._instance.on_close()
-	
-	def unload(self) -> None:
+	async def unload(self) -> None:
+		
 		"""Plugin 实例生命周期 卸载"""
-		unregister_module(self.package_name)
+		
+		# 卸载包
+		for module_name in list(sys.modules):
+			if module_name.startswith(f"{self.package_name}.") or module_name == self.package_name:
+				del sys.modules[module_name]
+		
+		# 加载的时候挂了可能还没有赋值
+		if self._instance is not None:
+			await self._instance.on_close()
+		
+		self._instance = None
 	
 	def _prepare_config(self) -> None:
 		
@@ -90,12 +93,7 @@ class Plugin:
 	def _build_package(self) -> None:
 		
 		"""
-		不能把
-		  importlib.util.spec_from_file_location
-		  importlib.util.module_from_spec
-		  register_module
-		  specification.loader.exec_module
-		分开
+		不能把这四个步骤分开
 		
 		如果分开了的话封装的意义就不存在了
 		不能为了解耦而乱分函数
@@ -109,11 +107,13 @@ class Plugin:
 		)
 		
 		# 造 module 实例
-		self._module = importlib.util.module_from_spec(specification)
-		# 注册包
-		register_module(name=self.package_name, module=self._module)
+		module = importlib.util.module_from_spec(specification)
+		
+		# 注册包 self.package_name 作为包名
+		sys.modules[self.package_name] = module
+		
 		# 执行 module 的代码
-		specification.loader.exec_module(self._module)
+		specification.loader.exec_module(module)
 	
 	def _instantiate_plugin(self) -> None:
 		
@@ -141,17 +141,3 @@ class Plugin:
 		setattr(self._instance, "workspace", self.path)
 		setattr(self._instance, "metadata", self.metadata)
 		setattr(self._instance, "config", self._config)
-
-
-def register_module(name: str, module: ModuleType) -> None:
-	"""注册模块"""
-	sys.modules[name] = module
-
-def unregister_module(name: str) -> None:
-	
-	"""批量清理模块 "name."开头与 "name" 本身都会被删"""
-	
-	for module_name in list(sys.modules.keys()):
-		if module_name.startswith(f"{name}.") or module_name == name:
-			del sys.modules[module_name]
-

@@ -10,8 +10,7 @@
 
 ## 索引
 
-- [v0.38.0](CHANGELOG/v0.38.0.md) — 2026-11-03 — 🚧 重构中（未发布）：消息入口从 `on_message` 迁到通道，缓冲搬进独立插件 `miaoli_buffer`，新增 `ChannelRegistry` / `ChannelSurface` / `BaseChannel` / `ChannelMessage`，执行锁改单例，`api/lock_ops` → `api/sync_ops`（破坏性）
-- [v0.37.0](CHANGELOG/v0.37.0.md) — 2026-11-03 — `miaoli_pipeline` 并回主包，`core/` 重新分层，子插件注册改为 `on(event, func, priority)` 返回注销函数，新增 `EventBuffer` 与 `buffer` 配置段（破坏性）
+- [v0.39.0](CHANGELOG/v0.39.0.md) — 2026-11-06 — 🧱 消息入口改成可插拔的通道，QQ 侧拆成平级插件 `miaoli_qq_channel`，`miaoli_pipeline` 并回主包、`core/` 重新分层，注册一律返回注销函数（破坏性）
 - [v0.36.0](CHANGELOG/v0.36.0.md) — 2026-11-02 — 压缩提示词内置进代码且计入阈值判定，`prompts` 段名统一为连字符（破坏性）
 - [v0.35.2](CHANGELOG/v0.35.2.md) — 2026-11-02 — 压缩合并内容时正确读取 `additional_kwargs` 里的思维链
 - [v0.35.1](CHANGELOG/v0.35.1.md) — 2026-11-02 — `get_model_info` / `get_provider_info` 恢复返回 dict，`model` 校验补上 `raise`，`build_prompt` 空提示词不注入且段排序稳定

@@ -2,12 +2,12 @@
 #
 # 用法：
 #   1. cp config.example.yaml config.yaml
-#   2. 把 api_key 换成真实密钥，account 换成真实账号
+#   2. 把 api_key 换成真实密钥
 #
 # 注意：config.yaml 已加入 .gitignore，不会被提交（内含密钥）。
 #       本文件是入库的模板，不要在这里填真实密钥。
 #
-# 配置键名与 models/config/plugin.py 的 PluginConfig 字段一一对应。
+# 配置键名对应 models/config/plugin_config.py 的 PluginConfig 字段。
 # 插件加载时（on_load）会做一次校验：必填缺失 / 路径不存在 / 类型不符都会抛 ValidationError。
 
 provider: "deepseek"                          # 使用的供应商（providers 里某个 name）
@@ -27,28 +27,14 @@ providers:
           - "text"                              #   image / video / text / audio
           - "image"
 
-# 账号信息（四项全必填）：account_injector 子插件的 inject_account 节点用它拼管理员/机器人的 QQ 号与昵称提示词块
-account:
-  bot_id: "机器人QQ号"
-  admin_id: "管理员QQ号"
-  bot_nickname: "喵璃"
-  admin_nickname: "主人"
-
-# split：回复切块（on_message 消费）
-split:
-  enable: true                  # 是否启用切块
-  delimiter: "\n\n"             # 分隔符；enable=true 时必须非空
-
-# typing：打字延迟（on_message 消费）
-typing:
-  enable: true                  # 是否启用打字延迟（base_speed=0 等价于关）
-  base_speed: 0.06              # 每个字的打字时间（秒）
-  speed_offset: 0.02            # 每字速度偏移（须 < base_speed，否则每字时间可为负）
-
 sub_plugin:                    # 子插件加载（load_from 是列表，缺省为空 → 不加载任何子插件）
   enable: false                # 当前未被消费（Loader 无条件加载 load_from 下全部子目录）
   load_from:                   # 内置子插件所在目录（可写多个，随本仓库提交）
     - "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins"
+
+# channel：通道设置（可整段省略，用默认值）
+# channel:
+#   drain_timeout: 30.0        # 收集通道消息的超时时间（秒）
 
 # checkpointer：checkpoint 数据库（0.8.4 起已接线，on_load 按 database 选适配器）
 #   memory     进程内内存，重启即丢（默认，不需要 connect_to）

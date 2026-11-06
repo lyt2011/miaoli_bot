@@ -188,4 +188,4 @@ mcp_adapter/
   开 `tool_prefix` 可以规避「本地工具被 MCP 工具顶掉」这种意外覆盖。
 - **权限默认关闭**：MCP 工具名是动态的，`tool_permission_manager` 的权限表里没有它们，
   所以默认全部被摘除。要么给每个工具名写 `mode: "allow"`，要么接受「MCP 工具只能手工放行」这件事。
-- 本插件**不参与事件接收**：事件仍由通道（`miaoli_buffer` 的 `QQChannel`）提供，本插件只扩展**工具**这一侧。
+- 本插件**不参与事件接收**：QQ 事件由**平级插件** `miaoli_qq_channel`（与本包同级目录，不是本包的子插件）记录，再由它自带的 `QQChannel` 经 `miaoli_bot.api.register_channel()` 注册成消息通道交给主包；本插件只扩展**工具**这一侧。

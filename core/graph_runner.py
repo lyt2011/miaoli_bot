@@ -1,4 +1,4 @@
-from ._share_store	import SHARE_STORE
+from .share_store	import SHARE_STORE
 from ..consts		import INVOKE_LOCK, GRAPH_PIPELINE
 
 from typing	import Any, Dict, Union

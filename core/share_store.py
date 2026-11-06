@@ -1,13 +1,15 @@
-from dataclasses	import dataclass, field
 from typing			import Dict, Any, Iterator
 
 
 _UNSET = object()
 
 
-@dataclass # 全局共享容器
-class _ShareStore:
-	_store: Dict[str, Any] = field(default_factory=dict)
+class ShareStore:
+	
+	__slots__ = ("_store")
+	
+	def __init__(self) -> None:
+		self._store: Dict[str, Any] = {}
 	
 	def set(self, key: str, value: Any) -> None:
 		"""为 key 设置 value"""
@@ -42,4 +44,4 @@ class _ShareStore:
 		return self._store.values()
 
 
-SHARE_STORE = _ShareStore()
+SHARE_STORE = ShareStore()

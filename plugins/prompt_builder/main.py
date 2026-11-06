@@ -18,9 +18,7 @@ class PromptBuilder(PluginProtocol):
 		
 		registry = get_handler_registry()
 		
-		self.undo_list = [
-			registry.on(ON_BEFORE_REQUEST, build_prompt, priority=NORMAL + 1),
-		]
+		self.undo_list.append(registry.on(ON_BEFORE_REQUEST, build_prompt, priority=NORMAL + 1))
 	
 	async def on_close(self) -> None:
 		

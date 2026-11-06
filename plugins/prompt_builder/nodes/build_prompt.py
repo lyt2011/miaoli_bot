@@ -1,13 +1,14 @@
-from langchain_core.messages	import BaseMessage, SystemMessage
+from langchain_core.messages	import SystemMessage
 
 from langgraph.runtime	import Runtime
 from langgraph.types	import Overwrite
 
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
-from typing	import Any, Dict, List, Optional
+from ..utils	import to_xml_prompt
 
-import hashlib
+from typing	import Any, Dict, Optional
+
 import logging
 
 
@@ -21,25 +22,16 @@ async def build_prompt(state: GraphState, runtime: Runtime[GraphRuntimeContext])
 	并回填到 messages
 	"""
 	
-	messages	: List[BaseMessage]	= state.get("messages", [])
-	prompt_array: List[str]			= []
+	messages	= state.get("messages", [])
+	prompts		= state.get("prompts", {})
 	
-	for prompt_key, prompt_content in state.get("prompts", {}).items():
-		prompt_array.append(f"<{prompt_key}>\n{prompt_content}\n</{prompt_key}>")
-	
-	# 稳定排序后再拼接提示词
-	prompt_array	= sorted(prompt_array)
-	prompt_string	= "\n\n".join(prompt_array)
-	
-	# 系统提示词一变 前缀缓存就从那里断开
-	LOGGER.info(
-		f"系统提示词 {len(prompt_string)} 字符 "
-		f"指纹={hashlib.md5(prompt_string.encode()).hexdigest()[:8]} "
-		f"段顺序={sorted(state.get('prompts', {}))}"
-	)
+	# 构建提示词数组 按照长度排序(越长放越前面) 拼接提示词
+	prompt_array	= [to_xml_prompt(key, value) for key, value in prompts.items()]
+	prompt_array	= sorted(prompt_array, key=lambda s: len(s), reverse=True)
+	prompt_string	= "\n\n".join(prompt_array).strip()
 	
 	# 空内容跳过
-	if not prompt_string.strip():
+	if not prompt_string:
 		return None
 	
 	# 空内容/内容一样则跳过注入

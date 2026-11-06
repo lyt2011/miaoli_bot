@@ -23,12 +23,10 @@ class BaseNodes(PluginProtocol):
 		
 		registry = get_handler_registry()
 		
-		self.undo_list = [
-			registry.on(ON_TURN_START, build_client, priority=NORMAL),
-			registry.on(ON_REQUEST, call_llm, priority=NORMAL),
-			registry.on(ON_TOOL_CALLING, invoke_tools, priority=NORMAL),
-			registry.on(ON_AGENT_END, output_checker, priority=LOWEST),
-		]
+		self.undo_list.append(registry.on(ON_TURN_START, build_client, priority=NORMAL))
+		self.undo_list.append(registry.on(ON_REQUEST, call_llm, priority=NORMAL))
+		self.undo_list.append(registry.on(ON_TOOL_CALLING, invoke_tools, priority=NORMAL))
+		self.undo_list.append(registry.on(ON_AGENT_END, output_checker, priority=LOWEST))
 
 	async def on_close(self) -> None:
 		

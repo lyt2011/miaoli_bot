@@ -1,10 +1,8 @@
-from .sugar			import concatenate_id
-from .config_ops	import inject_workspace
-from .easier_sender	import (
-	private_easier_send,
-	group_easier_send,
+from .sugar			import (
+	concatenate_id,
 	easier_send,
 )
+from .config_ops	import inject_workspace
 from .pipeline_helper	import (
 	ActionResult,
 	apply_deltas,
@@ -17,16 +15,12 @@ from .pipeline_helper	import (
 
 __all__ = [
 
-	# easier_sender
-	"private_easier_send",
-	"group_easier_send",
-	"easier_send",
-	
-	# config_ops
-	"inject_workspace",
-
 	# sugar
 	"concatenate_id",
+	"easier_send",
+
+	# config_ops
+	"inject_workspace",
 
 	# pipeline_helper
 	"ActionResult",

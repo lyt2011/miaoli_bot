@@ -20,7 +20,7 @@ class ToolSchema(BaseModel):
 
 
 @tool(args_schema=ToolSchema)
-async def archive_meme(meme_path: str, description: str, tags: List[str]) -> Dict[str, Any]:
+async def archive_qq_meme(meme_path: str, description: str, tags: List[str]) -> Dict[str, Any]:
 	
 	"""归档表情包"""
 		

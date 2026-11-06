@@ -1,11 +1,12 @@
-from .match_		import Match
 from .plugin_config	import PluginConfig
 from .rules			import AnyKeywordsRule, MinKeywordsRule, RegexRule, SingleKeywordRule
+from .workflows		import FileWorkflow, Workflow
 
 
 __all__ = [
 
-	"Match",
+	"FileWorkflow",
+	"Workflow",
 	"AnyKeywordsRule",
 	"MinKeywordsRule",
 	"RegexRule",

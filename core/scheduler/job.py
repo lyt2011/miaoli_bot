@@ -44,7 +44,7 @@ class Job:
 			
 			# 不幂等启动 直接报错
 			if not idempotent:
-				raise RuntimeError(f"不能重复启动一个 job")
+				raise RuntimeError("不能重复启动一个 job")
 			
 			# 幂等启动
 			return None
@@ -58,7 +58,7 @@ class Job:
 		if not self.is_running:
 			
 			if not idempotent:
-				raise RuntimeError(f"不能停止一个没有运行的 job")
+				raise RuntimeError("不能停止一个没有运行的 job")
 			
 			return None
 		

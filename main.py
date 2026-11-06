@@ -5,18 +5,40 @@ from langgraph.checkpoint.base	import BaseCheckpointSaver
 from ncatbot.core	import registrar
 from ncatbot.plugin	import NcatBotPlugin
 
-from .core							import Job, Every
-from .core							import AgentAborted
-from .core							import GraphPipeline
-from .core							import safe_run_graph
-from .utils							import inject_workspace
-from .models						import GraphRuntimeContext, GraphState, PluginConfig
-from .core.check_pointer_adapters	import BaseCheckpointerSaverAdapter as BCSA
-from .core							import ToolRegistry, Loader, HandlerRegistry, ChannelRegistry, SHARE_STORE
-from .core.check_pointer_adapters	import (
+from .utils		import inject_workspace
+from .models	import GraphRuntimeContext, GraphState, PluginConfig
+from .core		import (
+	# share_store
+	SHARE_STORE,
+
+	# graph_runner
+	safe_run_graph,
+
+	# plugin
+	Loader,
+
+	# handler_registry
+	HandlerRegistry,
+
+	# tool
+	ToolRegistry,
+
+	# scheduler
+	Every,
+	Job,
+
+	# notice_channel
+	ChannelRegistry,
+
+	# graph_pipeline
+	GraphPipeline,
+	AgentAborted,
+
+	# check_pointer_adapters
 	InMemoryAdapter,
 	SQLiteAdapter,
 	PostgresqlAdapter,
+	BaseCheckpointerSaverAdapter as BCSA,
 )
 from .consts	import (
 	NCATBOT_API,
@@ -35,7 +57,7 @@ from .consts	import (
 
 from pathlib	import Path
 from datetime	import timedelta
-from typing		import Dict, List, Union
+from typing		import Dict, Union
 
 import json
 import asyncio
@@ -149,11 +171,6 @@ class MiaoLiBot(NcatBotPlugin):
 		self.plugin_loader.prepare_plugins()
 		await self.plugin_loader.load_plugins()
 		
-		# 批量打错误日志
-		if self.plugin_loader.erred:
-			self.logger.warning(f"有 {len(self.plugin_loader.erred)} 个子插件加载时出现错误: "
-				f"{[p.package_name for p in self.plugin_loader.erred]}")
-		
 		# 启动自动唤醒
 		self.auto_waker.launch()
 		
@@ -173,7 +190,7 @@ class MiaoLiBot(NcatBotPlugin):
 		channel_messages	= {k: v for k, v in tuple(channel_messages.items()) if v} # 过滤空信息渠道
 		
 		if not channel_messages:
-			self.logger.info(f"没有任何渠道有新信息 跳过")
+			self.logger.info("没有任何渠道有新信息 跳过")
 			return None
 		
 		raw_input	= json.dumps(channel_messages, indent=2, ensure_ascii=False)
@@ -199,7 +216,7 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		return None
 	
-	async def drain_channel_messages(self) -> Dict[str, List[str]]:
+	async def drain_channel_messages(self) -> Dict[str, Union[str, list, dict]]:
 		
 		"""
 		收集渠道信息
@@ -215,16 +232,8 @@ class MiaoLiBot(NcatBotPlugin):
 		drain_results	= await channel_surface.batch_drain(atimeout=config.channel.drain_timeout)
 		
 		# 过滤 错误与真实数据
-		exceptions = [
-			(name, result)
-			for name, result in drain_results.items()
-			if isinstance(result, Exception)
-		]
-		real_data = {
-			name: [msg.to_text() for msg in result]
-			for name, result in drain_results.items()
-			if not isinstance(result, Exception)
-		}
+		exceptions	= [(name, result) for name, result in drain_results.items() if isinstance(result, Exception)]
+		real_data	= {name: result.to_structured() for name, result in drain_results.items() if not isinstance(result, Exception)}
 		
 		# 为错误打日志
 		for name, exception in exceptions:

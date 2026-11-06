@@ -1,4 +1,4 @@
-from ._share_store		import SHARE_STORE
+from .share_store		import SHARE_STORE
 from .graph_runner		import safe_run_graph
 from .plugin			import Loader, PluginProtocol
 from .handler_registry	import HandlerRegistry
@@ -15,10 +15,16 @@ from .graph_pipeline	import (
 	Handler,
 	AgentAborted,
 )
+from .check_pointer_adapters	import (
+	InMemoryAdapter,
+	SQLiteAdapter,
+	PostgresqlAdapter,
+	BaseCheckpointerSaverAdapter,
+)
 
 __all__ = [
 
-	# _share_store
+	# share_store
 	"SHARE_STORE",
 
 	# handler_registry
@@ -54,5 +60,11 @@ __all__ = [
 	"SectionPatch",
 	"Handler",
 	"AgentAborted",
+
+	# check_pointer_adapters
+	"InMemoryAdapter",
+	"SQLiteAdapter",
+	"PostgresqlAdapter",
+	"BaseCheckpointerSaverAdapter",
 
 ]

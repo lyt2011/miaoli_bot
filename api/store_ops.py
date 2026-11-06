@@ -6,8 +6,12 @@ SHARE_STORE 的便捷 api
 
 from ..core	import SHARE_STORE
 
-from typing	import Any
+import logging
 
+from typing	import Any, Callable
+
+
+LOGGER = logging.getLogger("StoreOps")
 
 _UNSET = object()
 
@@ -24,27 +28,22 @@ def store_recall(key: str, *, default: Any = _UNSET) -> Any:
 	
 	return SHARE_STORE.recall(key, default=default)
 
-def store_drop(key: str) -> None:
-	"""SHARE_STORE 的便捷 drop 转发 api"""
-	SHARE_STORE.drop(key)
+def store_set(key: str, value: Any) -> Callable[[], None]:
 
-def store_update(key: str, value: Any) -> None:
+	"""为全局容器赋值 返回 disposer"""
 	
-	"""更新不能新建不存在的键"""
-	
-	if not SHARE_STORE.contains(key):
-		raise KeyError(f"容器中没有 {key} 不可更新")
-	
-	SHARE_STORE.set(key, value)
-
-def store_set(key: str, value: Any) -> None:
-
-	"""设置不能覆盖已经存在的键"""
-	
+	# 打日志但不报错
 	if SHARE_STORE.contains(key):
-		raise KeyError(f"容器中已有 {key} 不可覆盖")
+		LOGGER.warning(f"共享容器的 {key} 被重复设置")
 	
 	SHARE_STORE.set(key, value)
+	
+	def undo() -> None:
+		"""判实例是否相同 通过日志能正确追踪覆盖点"""
+		if SHARE_STORE.recall(key, default=_UNSET) is value: 
+			SHARE_STORE.drop(key)
+	
+	return undo
 
 def store_contains(key: str) -> bool:
 	"""判断 key 是否已经存在"""

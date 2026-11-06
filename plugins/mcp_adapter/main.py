@@ -2,7 +2,7 @@ from langchain_mcp_adapters.client	import MultiServerMCPClient
 
 from miaoli_bot.core	import PluginProtocol
 from miaoli_bot.consts	import MEDIUM, ON_AGENT_START
-from miaoli_bot.api		import store_drop, store_set, get_handler_registry
+from miaoli_bot.api		import store_set, get_handler_registry
 
 from .models	import PluginConfig
 from .core		import MCPClientRegistry
@@ -26,12 +26,12 @@ class MCPAdapter(PluginProtocol):
 		
 		client_registry = MCPClientRegistry()
 		
-		store_set(PLUGIN_CONFIG, config)
-		store_set(RAW_CONFIG, self.config)
-		store_set(MCP_CLIENT_REGISTRY, client_registry)
+		
+		self.undo_list.append(store_set(PLUGIN_CONFIG, config))
+		self.undo_list.append(store_set(RAW_CONFIG, self.config))
+		self.undo_list.append(store_set(MCP_CLIENT_REGISTRY, client_registry))
 		
 		# 不启用直接跳过节点/工具注册
-		self.undo_list = []  # 关闭时 on_close 也要能遍历
 		if not config.enable:
 			return None
 		
@@ -43,15 +43,9 @@ class MCPAdapter(PluginProtocol):
 			
 			client_registry.register_client(client, reusable=mcp.reusable)
 		
-		self.undo_list = [
-			handler_registry.on(ON_AGENT_START, inject_mcp_tools, priority=MEDIUM),
-		]
+		self.undo_list.append(handler_registry.on(ON_AGENT_START, inject_mcp_tools, priority=MEDIUM))
 	
 	async def on_close(self) -> None:
 		
 		for undo in self.undo_list:
 			undo()
-		
-		store_drop(PLUGIN_CONFIG)
-		store_drop(RAW_CONFIG)
-		store_drop(MCP_CLIENT_REGISTRY)

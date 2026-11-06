@@ -1,6 +1,6 @@
 from miaoli_bot.core	import PluginProtocol
 from miaoli_bot.consts	import NORMAL, ON_REQUEST
-from miaoli_bot.api		import store_drop, store_set, get_handler_registry
+from miaoli_bot.api		import store_set, get_handler_registry
 
 from .models	import PluginConfig
 from .nodes		import fix_pending_tool_call
@@ -22,23 +22,18 @@ class PendingToolFixer(PluginProtocol):
 		
 		registry = get_handler_registry()
 		
-		store_set(PLUGIN_CONFIG, config)
-		store_set(RAW_CONFIG, self.config)
 		
-		self.undo_list = []  # 关闭时 on_close 也要能遍历
+		self.undo_list.append(store_set(PLUGIN_CONFIG, config))
+		self.undo_list.append(store_set(RAW_CONFIG, self.config))
+		
 		# 不启用直接跳过节点注册
 		if not config.enable:
 			return None
 		
 		# 优先级高于 call_llm(0) 保证在请求模型之前修好
-		self.undo_list = [
-			registry.on(ON_REQUEST, fix_pending_tool_call, priority=NORMAL+2),
-		]
+		self.undo_list.append(registry.on(ON_REQUEST, fix_pending_tool_call, priority=NORMAL+2))
 	
 	async def on_close(self) -> None:
 		
 		for undo in self.undo_list:
 			undo()
-		
-		store_drop(PLUGIN_CONFIG)
-		store_drop(RAW_CONFIG)

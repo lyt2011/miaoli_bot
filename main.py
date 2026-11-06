@@ -128,7 +128,7 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		# 插件加载器 自动唤醒器
 		self.plugin_loader	= Loader(config.sub_plugin.load_from)
-		self.auto_waker		= Job(self.run_graph, Every(timedelta(seconds=60)), job_id="auto_wake")
+		self.auto_waker		= Job(self.run_graph, Every(timedelta(seconds=60)), job_id="auto_wake") # HACK: 快速测试留的硬编码时间
 		
 		self.logger.info(f"{PLUGIN_NAME} 已加载")
 		

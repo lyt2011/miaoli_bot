@@ -1,6 +1,6 @@
 用配置里的规则匹配本轮最后一条消息，命中就把对应工作流文件的内容拼成一条 `HumanMessage` 追加进 `messages`。
 
-`recognize_intent` 挂在 `on_before_request`。它**只往 `messages` 里加一条消息**，不碰 `state["prompts"]`，所以系统提示词的内容和长度每轮完全一致 —— 前缀缓存不会因为意图命中而失效。
+`recognize_intent` 挂在 `on_turn_start`（`NORMAL`）。它**只往 `messages` 里加一条消息**，不碰 `state["prompts"]`，所以系统提示词的内容和长度每轮完全一致 —— 前缀缓存不会因为意图命中而失效。
 
 ## 目录结构
 
@@ -196,14 +196,14 @@ Workflow = Annotated[Union[FileWorkflow], Field(discriminator="mode")]
 ## 优先级
 
 ```python
-registry.on(ON_BEFORE_REQUEST, recognize_intent, priority=NORMAL + 2)
+registry.on(ON_TURN_START, recognize_intent, priority=NORMAL)
 ```
 
-`register()` 内部是 `reverse=True` 排序，**priority 数值越大越先执行**。
+`register()` 内部是 `reverse=True` 排序，**priority 数值越大越先执行**；但 priority 只在**同一个图节点内**给处理器排序，跨节点先后由图里的边决定。
 
-`NORMAL + 2` 让本节点跑在 `prompt_builder`（`NORMAL + 1`）之前。这个顺序现在仍然需要：`build_prompt` 会用 `Overwrite([SystemMessage, *messages])` 整个替换 `messages`，它读到的是**那一刻**的 `messages` 视图。先注入再拼装，注入的消息才会进到被重建的列表里；反过来则要依赖 `Overwrite` 和 `add_messages` 在同一步内的合并顺序，不该赌。
+`prompt_builder` 挂在 `ON_BEFORE_REQUEST`（`NORMAL + 1`），和本节点不是同一个事件，两边的 priority 没有可比性。注入能赶在拼装之前靠的是流程顺序：`ON_TURN_START` 之后先到 `ON_BEFORE_COMPACT`，再到 `ON_BEFORE_REQUEST`（`default_routing` 的 `on_turn_start` → `ON_BEFORE_COMPACT`）。`build_prompt` 会用 `Overwrite([SystemMessage, *messages])` 整个替换 `messages`，先注入的消息因此会进到重建后的列表里。
 
-`main.py` 里那行注释写的是「否则拼装时读不到本轮增删的段」—— 那是它改写成 `prompts` 之前的理由，现在已经不适用了。
+`main.py` 里那行注释写的是「必须早于 `prompt_builder` 的 `NORMAL + 1`（数值大者先跑），否则拼装时读不到本轮增删的段」—— 跨事件比 priority 和「增删段」都是改写前的说法，注释没跟着改，实际行为以本节为准。
 
 ## 没命中时
 
@@ -214,4 +214,4 @@ if not segments:
 	return None
 ```
 
-这一步是必需的。`messages` 走 `add_messages`，追加进历史的 `HumanMessage` **会永久留在对话里**（还有 checkpoint）。如果未命中时也照样注入，每一轮都会留下一条只剩标签和引导语的空壳，越攒越多。改版前这段落在 `prompts` 里，每轮被覆盖，空掉等于删除，所以不需要这个判断 —— 换成 `messages` 之后就必须有。
+这一步是必需的。`messages` 走 `add_messages`，追加进历史的 `HumanMessage` **会永久留在对话里**（还有 checkpoint）。如果未命中时也照样注入，每一轮都会留下一条只剩标签和引导语的空壳，越攒越多。改版前这段落在 `prompts` 里，节点每轮都会把同名段整个覆写一遍，所以不需要这个判断 —— 换成 `messages` 之后就必须有。

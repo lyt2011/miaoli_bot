@@ -21,7 +21,7 @@
 
 摘要以 `<abstract>...</abstract>` 包裹后作为 `HumanMessage` 落在 `messages[0]`；`compact.recall_system_prompt` 为真且原 `messages[0]` 是 `SystemMessage` 时，提示词会被回填到 `messages[0]`，摘要落到 `messages[1]`。
 
-压缩完由 `default_routing` 的 `on_after_compact` 跳回 `ON_TURN_START`，重走一轮 —— 这一轮守卫命中 `<abstract>` 标志后 `Abort`，本轮结束（见下方「二次压缩靠 HACK 拦截」）。
+压缩完由 `default_routing` 的 `on_after_compact` 跳回 `ON_TURN_START`，重走一轮 —— 新一轮重新进守卫、重算 token，按同一个阈值再判一次压不压。
 
 ## 为什么拆成两个事件
 
@@ -31,11 +31,7 @@
 - 压缩成为图上**有名字的环节**，而不是某个节点内部的隐式分支
 - 提示词拼装（`prompt_builder`）可以确定地排在压缩**之后**，不必依赖优先级去猜 —— 压缩的 `Overwrite` 会整体替换 `messages`，若拼装在前，刚插进去的 `SystemMessage` 会被冲掉
 
-> ⚠️ **二次压缩靠 HACK 拦截**：`on_after_compact` 跳回 `ON_TURN_START` 会再进一次守卫。守卫先滤掉所有 `SystemMessage` 得到 `nop_messages`，再看 `nop_messages[0]` 里有没有 `<abstract>` 标志 —— 命中就 `Abort(reason="图尝试二次压缩上下文 被拦截")`，避免「压缩后 token 仍超限 → 无限循环到 `GraphRecursionError`」。
->
-> 之所以先滤 `SystemMessage`：摘要的位置随 `compact.recall_system_prompt` 变化（`true` 时在 `messages[1]`，`false` 时在 `messages[0]`），过滤后必然落在 `[0]`，判据就不用猜位置。**不能看 `messages[-1]`** —— `keep_recent_messages` 保留的是尾部，摘要永远在头部，早期版本写成 `messages[-1]` 导致这个拦截从未生效过。
->
-> 这个判据**不可靠**：别的节点若在压缩之后写一条含该标志的 `HumanMessage` 并跳回 `ON_TURN_START`，会被误拦。之所以够用，是因为当前只有 `compact` 会产出这种消息。
+**没有二次压缩保护**：守卫只按 token 判定，不看 `messages` 里是否已有 `<abstract>` 摘要，也不 `Abort`。压缩后经 `on_after_compact → ON_TURN_START → ON_BEFORE_COMPACT` 回到守卫，若重算的 `usage_tokens + max_tokens` 仍不小于 `context_window`，就会再进一次 `compact` 重新压缩。
 
 ## 配置
 

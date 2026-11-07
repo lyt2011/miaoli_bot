@@ -158,6 +158,7 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.drop(HANDLER_REGISTRY)
 		SHARE_STORE.drop(CHANNEL_REGISTRY)
 		SHARE_STORE.drop(INVOKE_LOCK)
+		SHARE_STORE.drop(MAIN_READY)
 		
 		if not SHARE_STORE.is_empty():
 			self.logger.warning(f"共享容器可能存在资源泄露: {list(SHARE_STORE.keys())}")

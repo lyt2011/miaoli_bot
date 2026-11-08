@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.40.0](CHANGELOG/v0.40.0.md) — 2026-11-08 — 🧱 模型侧配置收进 `llm` 段（`LLMConfig`），新增 `thinking` / `thinking_efforts`（破坏性）
 - [v0.39.2](CHANGELOG/v0.39.2.md) — 2026-11-08 — 🧱 `store_set()` 加 `overwrite` 开关，有意覆盖不再打撞键告警
 - [v0.39.1](CHANGELOG/v0.39.1.md) — 2026-11-07 — 🧱 修掉 `on_close` 漏丢 `MAIN_READY`，输出协议重写成「闸门已放行」视角、人设补三条说法
 - [v0.39.0](CHANGELOG/v0.39.0.md) — 2026-11-06 — 🧱 消息入口改成可插拔的通道，QQ 侧拆成平级插件 `miaoli_qq_channel`，`miaoli_pipeline` 并回主包、`core/` 重新分层，注册一律返回注销函数（破坏性）

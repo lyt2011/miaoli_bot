@@ -1,20 +1,22 @@
 from pydantic	import BaseModel, Field
 
-from typing	import List, Literal
+from typing	import Dict, List, Literal
 
 
-Vision	= Literal["image", "video", "text", "audio"]
-Client	= Literal["openai", "deepseek", "anthropic"]
+Vision			= Literal["image", "video", "text", "audio"]
+Client			= Literal["openai", "deepseek", "anthropic"]
+ThinkingEffort	= Literal["off", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
 
 
 class LLM(BaseModel):
 	
 	"""大模型信息配置"""
 	
-	name			: str			= Field(..., description="模型名称")
-	context_window	: int			= Field(..., description="上下文窗口", ge=65535)
-	max_tokens		: int			= Field(..., description="最大输出", ge=2048)
-	support_visions	: List[Vision]	= Field(..., description="模型支持的模态输入", min_length=1)
+	name			: str						= Field(..., description="模型名称")
+	context_window	: int						= Field(..., description="上下文窗口", ge=65535)
+	max_tokens		: int						= Field(..., description="最大输出", ge=2048)
+	support_visions	: List[Vision]				= Field(..., description="模型支持的模态输入", min_length=1)
+	thinking_efforts: Dict[ThinkingEffort, str]	= Field(..., description="支持的思考强度", min_length=1)
 
 class Provider(BaseModel):
 	

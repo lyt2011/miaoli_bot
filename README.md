@@ -2,11 +2,11 @@
 
 [English](README/en.md) | **简体中文**
 
-- **版本**：0.39.2
+- **版本**：0.40.0
 - **定位**：一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把通道收到的对话交给 LLM，让模型思考、回复并调用工具
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
-- **LLM 客户端**：`providers[].client` 选 `ChatOpenAI`（`langchain-openai`）/ `ChatDeepSeek`（`langchain-deepseek`）/ `ChatAnthropic`（`langchain-anthropic`），统一经 `miaoli_bot.api.build_client()` 构建
+- **LLM 客户端**：`llm.providers[].client` 选 `ChatOpenAI`（`langchain-openai`）/ `ChatDeepSeek`（`langchain-deepseek`）/ `ChatAnthropic`（`langchain-anthropic`），统一经 `miaoli_bot.api.build_client()` 构建
 - **消息通道**：主包**不自挂** `@registrar.on_message`，只认「通道」这个抽象 —— QQ 事件入口与消息段解析由平级插件 `miaoli_qq_channel`（独立仓库）提供，主包用 `miaoli_bot.api.register_channel()` 把它的通道收进 `ChannelRegistry`
 - **默认跳转**：edgeless 拓扑下「下一个事件是谁」由处理器主动声明，`default_routing` 子插件提供默认顺序（**一个事件一个节点文件**，每个只返回一条 `Goto`），并承担 `ON_AFTER_REQUEST` 的分支判断（末条有 `tool_calls` → 工具循环，否则 → 收尾），以及压缩三段的默认路径（`ON_BEFORE_COMPACT` 默认不压缩直接去 `ON_BEFORE_REQUEST`，`ON_AFTER_COMPACT` 跳回 `ON_TURN_START`）。它注册在**最低优先级** `MINIMUM`，任何子插件挂在任何更高档位都能抢在它之前改道或叫停
 
@@ -15,11 +15,11 @@
 - 🧩 **事件管线（edgeless 拓扑）**：`GraphPipeline` 在本仓库的 `core/graph_pipeline/` 里（泛型 `GraphPipeline[StateT, ContextT, InputT, OutputT]`，四个 TypeVar 取自 `langgraph.typing`）。事件名与注册门面在 `consts/graph_events.py` —— 11 个图事件常量集中在该文件，节点经 `HandlerRegistry.on(event, func, priority=0)` **显式**挂载（转发到 `GraphPipeline.register_handler`；同一事件可挂多个，按 `priority` 降序执行，`priority` 大者先跑；档位常量是 `consts/node_priorities.py` 的九档阶梯 `MAXIMUM`(9999) / `HIGHEST`(1000) / `HIGH`(100) / `MEDIUM`(10) / `NORMAL`(0) / `LOW`(-10) / `LOWEST`(-100) / `TRIVIAL`(-1000) / `MINIMUM`(-9999)）。`wire(GRAPH_EVENTS)` **不定义任何事件顺序**，只按声明顺序挂事件节点 + 一条入口边（`START → ON_AGENT_START`）；「下一个事件是谁」由处理器**主动返回跳转指令**决定：`return {...}` 累积增量并继续本事件剩余处理器、`Continue(updates=…)` 停止本事件剩余处理器、`Goto(goto=…, updates=…)` 跳到指定事件、`Abort(reason=…, updates=…)` 中止整轮图（`AgentAborted` 冒到 `ainvoke` 调用处）。**谁挂在哪个事件上、谁跳向哪里，都由子插件注册时声明**。
 - 📡 **消息入口是通道**：主包不注册任何消息处理器，`on_message` 挂在平级插件 `miaoli_qq_channel` 上 —— 它把 QQ 事件记进环形缓冲，暴露成 `BaseChannel`（`name` + `drain()`）与 `ChannelMessage`（`raw` + `to_structured()`），再用 `api.register_channel()` 注册进主包的 `ChannelRegistry`。主包侧 `main.py` 用 `Job(run_graph, Every(60s))` 定时唤醒：`ChannelRegistry.to_surface()` 取一份只读快照，`batch_drain(atimeout=channel.drain_timeout)` 并发 `drain()` 各通道（单通道异常或超时只落在自己那一路），过滤掉空通道后 `json.dumps` 成一份 `raw_input` 送进图。
 - 🔌 **子插件系统**：`core.Loader` 读 `sub_plugin.load_from`（`List[DirectoryPath]`，可给多个目录）下每个子目录的 `metadata.toml`，登记成 `PluginEntity`（缺元数据直接抛错、非包目录跳过），再按 `topology_sort_plugins()` 的依赖序逐个 `load()`：「注册成 Python 包 → 实例化 `entry_class` → 注入 `workspace` / `metadata` / `config` → `on_load()`」；单个插件失败只回滚 `unload()` 并标记 `erred`、打日志，依赖它失败的插件跳过。卸载走 `unload()`（清 `sys.modules` + 转发 `on_close`），按倒拓扑序执行。子插件用 `api.get_handler_registry().on(event, func, priority)` 挂图节点、`api.register_tool()` 注册工具 —— 两者都**返回一个注销函数**（`store_set` 同样返回），子插件把它收进 `self.undo_list`，`on_close` 里逐个调用即可摘干净（不摘就会在下一次加载时重复挂载）。
-- 🧠 **LLM 接入**：`main.py` 只把通道内容写进 `state["raw_input"]` 并追加一条内容相同的 `HumanMessage`；`miaoli_bot_adapter` 子插件的 `inject_soul` / `inject_output_protocol` 节点（`ON_TURN_START`，`priority=NORMAL+1`）分别读自己目录下的 `data/SOUL.md` 与 `data/output_protocol.md`，写进 `prompts` 的 `soul` / `output-protocol` 段，随后 `base_nodes` 的 `build_client` 节点（`ON_TURN_START`，`priority=NORMAL`）调 `api.build_client()` 从根配置直接建客户端（具体类由 `providers[].client` 选）写进 `runtime.context["client"]`（**刻意不在建实例时绑工具** —— 工具表每轮都会变）；`call_llm` 节点用 `runtime.context["tool_surface"].tools`（`ToolRegistry.to_surface()` 的快照）`bind_tools` 后请求模型，并把 token 用量打进日志；工具循环由 `default_routing` 的 `on_after_request` 节点分流 —— 末条消息有 `tool_calls` 就跳 `ON_TOOL_CALLING` 执行工具、再回到 `ON_TURN_START` 重走一轮；没有就跳 `ON_TURN_END` 收尾。
+- 🧠 **LLM 接入**：`main.py` 只把通道内容写进 `state["raw_input"]` 并追加一条内容相同的 `HumanMessage`；`miaoli_bot_adapter` 子插件的 `inject_soul` / `inject_output_protocol` 节点（`ON_TURN_START`，`priority=NORMAL+1`）分别读自己目录下的 `data/SOUL.md` 与 `data/output_protocol.md`，写进 `prompts` 的 `soul` / `output-protocol` 段，随后 `base_nodes` 的 `build_client` 节点（`ON_TURN_START`，`priority=NORMAL`）调 `api.build_client()` 从根配置直接建客户端（具体类由 `llm.providers[].client` 选）写进 `runtime.context["client"]`（**刻意不在建实例时绑工具** —— 工具表每轮都会变）；`call_llm` 节点用 `runtime.context["tool_surface"].tools`（`ToolRegistry.to_surface()` 的快照）`bind_tools` 后请求模型，并把 token 用量打进日志；工具循环由 `default_routing` 的 `on_after_request` 节点分流 —— 末条消息有 `tool_calls` 就跳 `ON_TOOL_CALLING` 执行工具、再回到 `ON_TURN_START` 重走一轮；没有就跳 `ON_TURN_END` 收尾。
 - 🗜️ **上下文压缩（三段事件）**：压缩不再是藏在 `on_before_request` 里的一个 `if`，而是图上三个有名字的事件 —— `ON_BEFORE_COMPACT` 挂**守卫** `should_compact`（`context_compactor` 子插件，`priority=NORMAL`）算 token 判阈值，需要压就 `Goto(ON_COMPACT)`、不需要就 `Goto(ON_BEFORE_REQUEST)`；`ON_COMPACT` 挂**压缩** `compact`，把历史压成一条 `<abstract>` 摘要并用 `Overwrite` 整体替换（`compact.recall_system_prompt` 为真时把原 `messages[0]` 的 `SystemMessage` 回填到首位）；`ON_AFTER_COMPACT` 的默认跳转**回到 `ON_TURN_START`**，于是压缩完重新走一轮，这一轮守卫重新算一遍 token 决定是压还是往下走。阈值按模型真实 `context_window` / `max_tokens` 算（为输出预留空间），保留条数 / 提示词 / 是否回填系统提示词 / 计数方式（`base` 粗估或 `tiktoken` 精确）全部配置化；压缩提示词内置在 `plugins/context_compactor/utils/prompt_ops.py` 的 `DEFAULT_PROMPT`，`compact.prompt_file` 可覆盖，且守卫估算 token 时会把这段提示词一并计入。
 - 📝 **提示词分段拼装**：`prompts` 不是一整个字符串，而是 `Dict[str, str]` —— 各子插件写各自的段（`{"identity": …}` / `{"style": …}`），写入 `None` 表示删除该段。`prompt_builder` 子插件的 `build_prompt` 节点（`ON_BEFORE_REQUEST`，`priority=NORMAL+1`）把全部段渲染成 `<key>` 换行 `value` 换行 `</key>`，按渲染后长度降序排序、用空行连接，再**滤掉已有的 `SystemMessage`** 后用 `Overwrite` 把拼好的系统提示放到 `messages[0]`；拼出来是空串、或与现有首条 `SystemMessage` 完全相同时返回 `None`，不白写一次 `Overwrite`。
 - 📜 **状态与运行时分离**：`models.GraphState`（会话状态：`messages` 用 `add_messages`、`prompts` 用 `SectionPatch`，两者**进 checkpoint**；`raw_input` 用 `Annotated[str, UntrackedValue]` —— 单次 `ainvoke` 内可见、**不落盘**）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖：`tool_surface` 必填，`client` / `custom_status` / `custom_mapping` 可选）分离 —— `context` 不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`（放 state 会因 msgpack 无法序列化而当场崩）。
-- 🎛️ **配置模型化**：`PluginConfig` 含 `providers`（`List[Provider]`，每项用 `name` 字段标识 —— `Provider` 有 `name` / `base_url` / `api_key` / `client`（`openai` / `deepseek` / `anthropic`）/ `models`，而 `models` 是 `List[LLM]`、`LLM` 有 `name` / `context_window` / `max_tokens` / `support_visions`）、`provider` / `model`（两个名字，由 `model_validator` 校验确实存在于 `providers` 里）、`checkpointer`、`sub_plugin` 与 `channel`（`drain_timeout`，默认 30 秒）。
+- 🎛️ **配置模型化**：`PluginConfig` 含 `llm`（`LLMConfig`：`provider` / `model`（两个名字，由 `model_validator` 校验确实存在于 `providers` 里）/ `thinking`（本项目的思考强度档位）/ `providers`（`List[Provider]`，每项用 `name` 字段标识 —— `Provider` 有 `name` / `base_url` / `api_key` / `client`（`openai` / `deepseek` / `anthropic`）/ `models`，而 `models` 是 `List[LLM]`、`LLM` 有 `name` / `context_window` / `max_tokens` / `support_visions` / `thinking_efforts`））、`checkpointer`、`sub_plugin` 与 `channel`（`drain_timeout`，默认 30 秒）。
 - 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolSurface` 给出本轮副本、由 `ToolNode` 执行。返回值目前**不统一**：`system_tools` 的读写工具返回纯字符串（失败时 `[..]` 包裹），meme / 联网 / MCP 工具仍是 `{"status": bool, ...}` 字典。主包不内置任何工具，系统 / meme / 联网搜索工具全部由内置子插件注册，外部 MCP server 的工具由 `mcp_adapter` 每轮追加；`tool_permission_manager` 子插件在 `ON_BEFORE_REQUEST` 按 `config.yaml` 的 `allow` / `refuse` 白名单摘工具（**未配置即摘除**，`debug` 只影响日志）。
 - 🔍 **联网搜索**：`web_search` 子插件注册一个 `web_search` 工具（**工具名与后端无关**），`adapter` 选后端 —— 请求地址取自子插件 `config.yaml` 的 `api_url`（模板里 `langsearch` 为 `https://api.langsearch.com/v1/web-search`，另一个后端是 `deepseek`），原始响应整体交给模型。`adapter` 只影响工具的入参 schema 与返回数据形状，不影响工具名。实测**英文检索质量明显优于中文**（技术 / 包名类相关率约 65% vs 30%），工具 docstring 已要求模型优先用英文搜。
 - 🔧 **协议先行**：抽象集中在顶层 `protocols/`，不跟实现走 —— `plugin.py`（`PluginProtocol`：`on_load` / `on_close`）、`timer.py`（`BaseTimer`）、`node_action.py`（`BaseNodeAction`，`Continue` / `Goto` / `Abort` 的共同基类）、`checkpointer_adapter.py`（`BaseCheckpointerSaverAdapter`）、`channel/`（`BaseChannel` / `ChannelMessage`）。子插件与各层都从这里取协议，不依赖具体实现。
@@ -39,7 +39,7 @@ QQ / NapCat (OneBot 11)
 miaoli_qq_channel（平级插件，独立仓库）
         │  @registrar.on_message → 环形缓冲 → QQChannel / QQChannelMessage
         ▼  api.register_channel()
-main.py  MiaoLiBot(NcatBotPlugin)      ← config.yaml → models.PluginConfig（providers / provider / model / checkpointer / sub_plugin / channel）
+main.py  MiaoLiBot(NcatBotPlugin)      ← config.yaml → models.PluginConfig（llm / checkpointer / sub_plugin / channel）
         │   ① Job(run_graph, Every(60s)) 定时唤醒
         │   ② ChannelSurface.batch_drain(atimeout=channel.drain_timeout) 并发取空各通道
         │   ③ 过滤空通道 → json.dumps → {"raw_input": …, "messages": [HumanMessage(…)]}
@@ -148,7 +148,7 @@ miaoli_bot/
 ├── models/                        # 数据模型
 │   ├── graph_state.py             #   GraphState（messages / prompts 进 checkpoint，raw_input 不落盘）
 │   ├── graph_runtime_context.py   #   GraphRuntimeContext（tool_surface 必填，client / custom_* 可选）
-│   └── config/                    #   PluginConfig / Provider / LLM / CheckpointerConfig / SubPluginConfig / ChannelSetting
+│   └── config/                    #   PluginConfig / LLMConfig / Provider / LLM / ThinkingEffort / CheckpointerConfig / SubPluginConfig / ChannelSetting
 ├── plugins/                       # 13 个内置子插件（加载目录由 sub_plugin.load_from 指定）
 ├── protocols/                     # 抽象基类集中层（子插件依赖这里，不依赖具体实现）
 │   ├── plugin.py                  #   PluginProtocol（on_load / on_close）
@@ -214,7 +214,7 @@ miaoli_bot/
    - `ncatbot5`（`>=5.5.8`，导入名 `ncatbot`）
    - `langgraph`（`>=1.2.12`）
    - `langchain-core`（`>=1.6.5`）：`@tool` 工具定义 / `BaseMessage` / `BaseChatModel` 等基础类型
-   - `langchain-openai`（`>=1.6.6`）/ `langchain-deepseek`（`>=1.1.1`）/ `langchain-anthropic`（`>=1.0.0`）：三个客户端实现，按 `providers[].client` 选用
+   - `langchain-openai`（`>=1.6.6`）/ `langchain-deepseek`（`>=1.1.1`）/ `langchain-anthropic`（`>=1.0.0`）：三个客户端实现，按 `llm.providers[].client` 选用
    - `langgraph-checkpoint-sqlite`（`>=3.1.1`，`database: sqlite` 时用到）
    - `langgraph-checkpoint-postgres`（`>=3.1.2`，`database: postgresql` 时用到）
    - `aiosqlite`（`>=0.22.1`）/ `psycopg`（`>=3.3.6`）/ `psycopg-pool`（`>=3.3.3`）：直接 import 的驱动与连接池（`SQLiteAdapter` / `PostgresqlAdapter` / `MemeSqlite`）
@@ -233,17 +233,20 @@ miaoli_bot/
 
 | 键 | 默认 / 必填 | 用途 |
 |---|---|---|
-| `provider` / `model` | **必填** | 要用哪个供应商、哪个模型 —— 两个名字，`model_validator` 会校验它们在 `providers` 里确实存在 |
-| `providers` | **必填** | `List[Provider]`，至少一项；每项用 `name` 字段标识供应商名 |
-| `providers[].name` | **必填** | 供应商名（`provider` 字段的取值） |
-| `providers[].base_url` | **必填** | 请求地址（**不会拼路径**，填到 `/v1` 这一层） |
-| `providers[].api_key` | **必填** | 鉴权密钥 |
-| `providers[].client` | **必填** | 用哪家的客户端实现：`openai`（`ChatOpenAI`）/ `deepseek`（`ChatDeepSeek`，带 `reasoning_content`）/ `anthropic`（`ChatAnthropic`） |
-| `providers[].models` | `[]` | `List[LLM]`；每项用 `name` 字段标识模型名（`provider` / `model` 的校验会要求所选模型确实在这里） |
-| `providers[].models[].name` | **必填** | 模型名（`model` 字段的取值） |
-| `providers[].models[].context_window` | **必填**（`>=65535`） | 上下文窗口 |
-| `providers[].models[].max_tokens` | **必填**（`>=2048`） | 最大输出 |
-| `providers[].models[].support_visions` | **必填** | 模型支持的模态输入，至少一项：`image` / `video` / `text` / `audio` |
+| `llm` | **必填** | `LLMConfig`，模型侧的全部配置 —— 下面六行都是它的子键 |
+| `llm.provider` / `llm.model` | **必填** | 要用哪个供应商、哪个模型 —— 两个名字，`model_validator` 会校验它们在 `llm.providers` 里确实存在 |
+| `llm.thinking` | **必填** | 本项目的思考强度档位，取值 `off` / `minimal` / `low` / `medium` / `high` / `xhigh` / `max` / `ultra`，且必须是被选模型 `thinking_efforts` 的某个键。**当前不消费**：`build_client()` 尚未把它传给客户端 |
+| `llm.providers` | **必填** | `List[Provider]`，至少一项；每项用 `name` 字段标识供应商名 |
+| `llm.providers[].name` | **必填** | 供应商名（`llm.provider` 字段的取值） |
+| `llm.providers[].base_url` | **必填** | 请求地址（**不会拼路径**，填到 `/v1` 这一层） |
+| `llm.providers[].api_key` | **必填** | 鉴权密钥 |
+| `llm.providers[].client` | **必填** | 用哪家的客户端实现：`openai`（`ChatOpenAI`）/ `deepseek`（`ChatDeepSeek`，带 `reasoning_content`）/ `anthropic`（`ChatAnthropic`） |
+| `llm.providers[].models` | `[]` | `List[LLM]`；每项用 `name` 字段标识模型名（`llm.provider` / `llm.model` 的校验会要求所选模型确实在这里） |
+| `llm.providers[].models[].name` | **必填** | 模型名（`llm.model` 字段的取值） |
+| `llm.providers[].models[].context_window` | **必填**（`>=65535`） | 上下文窗口 |
+| `llm.providers[].models[].max_tokens` | **必填**（`>=2048`） | 最大输出 |
+| `llm.providers[].models[].support_visions` | **必填** | 模型支持的模态输入，至少一项：`image` / `video` / `text` / `audio` |
+| `llm.providers[].models[].thinking_efforts` | **必填** | `Dict[ThinkingEffort, str]`，至少一项。**「本项目档位 → 该供应商实际档位」的翻译表**：键只能取上面那八个合法档位，值是自由字符串（不同供应商喊法不同：DeepSeek 官方认 `minimal` / `low` / `medium` / `high` / `xhigh` / `max` / `ultra`，OpenAI 只认 `minimal` / `low` / `medium` / `high`）。**当前不消费**。注意 YAML 里 `off` 这种键必须加引号 —— YAML 1.1 会把裸的 `off` / `on` / `yes` / `no` 解析成布尔值 |
 | `checkpointer` | `CheckpointerConfig()` | `database`（`memory` / `sqlite` / `postgresql`，默认 `memory`）/ `connect_to`（数据库地址，**非 `memory` 必填**）/ `extra`（额外参数，透传给适配器的 `connect(**kwargs)`；postgresql 认 `max_size` 默认 8 / `min_size` 默认 4 / `autocommit` 默认 `true` / `row_factory` 默认 `dict_row`）—— `on_load` 按 `database` 从 `CPA_MAPPING` 取适配器并 `connect`，`on_close` 调 `close()` |
 | `channel` | `ChannelSetting()` | `drain_timeout`（默认 `30.0`）：`ChannelSurface.batch_drain` 对每个通道 `drain()` 的超时秒数 |
 | `sub_plugin` | `SubPluginConfig()` | `enable`（默认 `false`，**当前未消费**）/ `load_from`（`List[DirectoryPath]`，默认空列表；目录不存在时 `PluginConfig.model_validate` 直接报 `path_not_directory`）；`core.Loader` 依次 `prepare_plugins()`（读 `metadata.toml` + 过滤非包目录）→ `load_plugins()`（拓扑序逐个加载）→ `unload_plugins()` |
@@ -295,7 +298,7 @@ cd <插件父目录>          # plugins/
 - 业务全部由 **13 个**子插件提供（见[内置子插件](#内置子插件)）。每个子插件自带 `README.md`，读配置的还带入库的 `config.example.yaml`，真实 `config.yaml` 一律 gitignore，部署时从模板复制
 - QQ 侧由**平级插件** `miaoli_qq_channel`（独立仓库）提供：事件入口、消息段解析、两个子插件（`account_injector` / `qq_platform_tools`）都在那边；主包只认 `BaseChannel` / `ChannelMessage`
 - 链路形态是「定时收割」：`auto_waker` 每 60 秒取空所有通道一次，把内容合成一份 `raw_input` 跑图，`thread_id` 固定为 `"main"`；上下文压缩、工具权限、MCP 接入、联网搜索、表情包、意图识别都已接入，各自能独立开关（`enable`）
-- LLM 客户端可在 `openai` / `deepseek` / `anthropic` 之间切换（`providers[].client`），统一由 `miaoli_bot.api.build_client()` 构建；`Provider` 只描述「连哪儿、用哪家的实现」，客户端实例由 `build_client` 节点每轮现建
+- LLM 客户端可在 `openai` / `deepseek` / `anthropic` 之间切换（`llm.providers[].client`），统一由 `miaoli_bot.api.build_client()` 构建；`Provider` 只描述「连哪儿、用哪家的实现」，客户端实例由 `build_client` 节点每轮现建
 
 **已知短板**
 

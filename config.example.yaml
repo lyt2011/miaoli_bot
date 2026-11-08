@@ -10,22 +10,37 @@
 # 配置键名对应 models/config/plugin_config.py 的 PluginConfig 字段。
 # 插件加载时（on_load）会做一次校验：必填缺失 / 路径不存在 / 类型不符都会抛 ValidationError。
 
-provider: "deepseek"                          # 使用的供应商（providers 里某个 name）
-model: "deepseek-flash"                       # 使用的模型（该供应商 models 里某个 name）
+llm:
+  provider: "deepseek"                        # 使用的供应商（providers 里某个 name）
+  model: "deepseek-flash"                     # 使用的模型（该供应商 models 里某个 name）
+  thinking: "medium"                          # 思考强度，必须是下面 thinking_efforts 的某个键
+                                              #   这是个「本项目档位 → 供应商实际档位」的翻译表，
+                                              #   因为不同供应商喊法不一样：DeepSeek 官方是 minimal/low/
+                                              #   medium/high/xhigh/max/ultra，OpenAI 只有 minimal/low/
+                                              #   medium/high。表里只写自己要用的档位就行。
 
-# providers 是列表，每项用 name 标识；models 也是列表，每项用 name 标识
-providers:
-  - name: "deepseek"                            # 供应商名（provider 字段的取值）
-    base_url: "https://api.deepseek.com/v1"     # 请求地址，填到 /v1 这一层，不要带 /chat/completions
-    api_key: "YOUR_API_KEY_HERE"
-    client: "deepseek"                          # 客户端实现 openai / deepseek / anthropic
-    models:
-      - name: "deepseek-flash"                  # 模型名（model 字段的取值）
-        context_window: 128000                  # 上下文窗口
-        max_tokens: 4096                        # 最大输出
-        support_visions:                        # 模型支持的模态输入，至少一项
-          - "text"                              #   image / video / text / audio
-          - "image"
+  # providers 是列表，每项用 name 标识；models 也是列表，每项用 name 标识
+  providers:
+    - name: "deepseek"                          # 供应商名（provider 字段的取值）
+      base_url: "https://api.deepseek.com/v1"   # 请求地址，填到 /v1 这一层，不要带 /chat/completions
+      api_key: "YOUR_API_KEY_HERE"
+      client: "deepseek"                        # 客户端实现 openai / deepseek / anthropic
+      models:
+        - name: "deepseek-flash"                # 模型名（model 字段的取值）
+          context_window: 128000                # 上下文窗口，最小 65535
+          max_tokens: 4096                      # 最大输出，最小 2048
+          support_visions:                      # 模型支持的模态输入，至少一项
+            - "text"                            #   image / video / text / audio
+            - "image"
+          thinking_efforts:                     # 档位翻译表，至少一项；thinking 只能取这里的键
+            "off": "off"                         #   左边=本项目档位，右边=该供应商实际档位
+            minimal: "low"                        #   合法档位：off / minimal / low / medium / high /
+            low: "low"                            #   xhigh / max / ultra
+            medium: "high"                        #   注意：off 这种键必须加引号 —— YAML 1.1 会把
+            high: "high"                          #   裸的 off/on/yes/no 解析成布尔值
+            xhigh: "high"
+            max: "max"
+            ultra: "max"
 
 sub_plugin:                    # 子插件加载（load_from 是列表，缺省为空 → 不加载任何子插件）
   enable: false                # 当前未被消费（Loader 无条件加载 load_from 下全部子目录）

@@ -8,24 +8,28 @@ import pydantic
 # 一份完整且合法的 PluginConfig 参数 所有用例的基准
 # 全用纯 dict / list 表示 方便 deepcopy 与局部覆盖 不要在用例里直接改它
 PLUGIN_CONFIG_ARGS: Dict[str, Any] = {
-	"provider"		: "the provider",
-	"model"			: "the model",
-	"providers"		: [
-		{
-			"name"		: "the provider",
-			"base_url"	: "http://a.com/v1",
-			"api_key"	: "sk-abc",
-			"client"	: "deepseek",
-			"models"	: [
-				{
-					"name"				: "the model",
-					"context_window"	: 128000,
-					"max_tokens"		: 4096,
-					"support_visions"	: ["text"],
-				},
-			],
-		},
-	],
+	"llm"			: {
+		"provider"		: "the provider",
+		"model"			: "the model",
+		"thinking"		: "medium",
+		"providers"		: [
+			{
+				"name"		: "the provider",
+				"base_url"	: "http://a.com/v1",
+				"api_key"	: "sk-abc",
+				"client"	: "deepseek",
+				"models"	: [
+					{
+						"name"				: "the model",
+						"context_window"	: 128000,
+						"max_tokens"		: 4096,
+						"support_visions"	: ["text"],
+						"thinking_efforts"	: {"off": "off", "low": "low", "medium": "medium", "high": "high"},
+					},
+				],
+			},
+		],
+	},
 	"checkpointer"	: {"database": "memory", "connect_to": None, "extra": {}},
 	"sub_plugin"	: {"enable": False, "load_from": []},
 	"channel"		: {"drain_timeout": 30.0},
@@ -69,7 +73,7 @@ def test_llm_config() -> None:
 	from miaoli_bot.models	import LLM
 	
 	config	= copy_plugin_config()
-	llm		= config["providers"][0]["models"][0]
+	llm		= config["llm"]["providers"][0]["models"][0]
 	
 	# 测试错误上下文长度
 	with pytest.raises(pydantic.ValidationError):
@@ -93,7 +97,7 @@ def test_llm_config() -> None:
 def test_provider_config() -> None:
 	"""测试 Provider 构建"""
 	from miaoli_bot.models	import Provider
-	Provider.model_validate(copy_plugin_config()["providers"][0])
+	Provider.model_validate(copy_plugin_config()["llm"]["providers"][0])
 
 def test_plugin_config() -> None:
 	
@@ -108,15 +112,15 @@ def test_plugin_config() -> None:
 	
 	# 测试空 providers
 	with pytest.raises(pydantic.ValidationError):
-		PluginConfig.model_validate({**config, "providers": []})
+		PluginConfig.model_validate({**config, "llm": {**config["llm"], "providers": []}})
 	
 	# 测试不存在的 provider
 	with pytest.raises(pydantic.ValidationError):
-		PluginConfig.model_validate({**config, "provider": "invalid provider"})
+		PluginConfig.model_validate({**config, "llm": {**config["llm"], "provider": "invalid provider"}})
 	
 	# 测不存在的 model
 	with pytest.raises(pydantic.ValidationError):
-		PluginConfig.model_validate({**config, "model": "invalid model"})
+		PluginConfig.model_validate({**config, "llm": {**config["llm"], "model": "invalid model"}})
 	
 	# 完整构建测试
 	PluginConfig.model_validate(config)

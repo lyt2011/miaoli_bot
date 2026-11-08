@@ -28,14 +28,14 @@ def get_model_info() -> Dict[str, Any]:
 	config = SHARE_STORE.recall(PLUGIN_CONFIG)
 	
 	# PluginConfig 保证他们同时存在
-	provider	= _get_provider(config.provider)
-	model		= _get_model(config.model, provider)
+	provider	= _get_provider(config.llm.provider)
+	model		= _get_model(config.llm.model, provider)
 	
 	return model.model_dump()
 
 def get_provider_info() -> Dict[str, Any]:
 	"""获取当前使用的供应商信息"""
-	return _get_provider(SHARE_STORE.recall(PLUGIN_CONFIG).provider).model_dump()
+	return _get_provider(SHARE_STORE.recall(PLUGIN_CONFIG).llm.provider).model_dump()
 
 def build_client(
 	provider_name	: Optional[str] = None,
@@ -47,8 +47,8 @@ def build_client(
 	config = SHARE_STORE.recall(PLUGIN_CONFIG)
 	
 	# 参数不传则 plugin_config 定义的
-	provider_name	= provider_name or config.provider
-	model_name		= model_name or config.model
+	provider_name	= provider_name or config.llm.provider
+	model_name		= model_name or config.llm.model
 	
 	# 拿 provider 对象
 	if (provider := _get_provider(provider_name)) is None:
@@ -79,7 +79,7 @@ def _get_provider(name: str) -> Union[Provider, None]:
 	
 	config	= SHARE_STORE.recall(PLUGIN_CONFIG)
 	
-	providers_mapping	= {pv.name: pv for pv in config.providers}
+	providers_mapping	= {pv.name: pv for pv in config.llm.providers}
 	provider			= providers_mapping.get(name, None)
 	
 	return provider

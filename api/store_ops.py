@@ -28,18 +28,17 @@ def store_recall(key: str, *, default: Any = _UNSET) -> Any:
 	
 	return SHARE_STORE.recall(key, default=default)
 
-def store_set(key: str, value: Any) -> Callable[[], None]:
+def store_set(key: str, value: Any, *, overwrite: bool = False) -> Callable[[], None]:
 
 	"""为全局容器赋值 返回 disposer"""
 	
-	# 打日志但不报错
-	if SHARE_STORE.contains(key):
+	# 对于重复设置而且调用点不传 overwrite 打日志但不拦截
+	if SHARE_STORE.contains(key) and not overwrite:
 		LOGGER.warning(f"共享容器的 {key} 被重复设置")
 	
 	SHARE_STORE.set(key, value)
 	
 	def undo() -> None:
-		"""判实例是否相同 通过日志能正确追踪覆盖点"""
 		if SHARE_STORE.recall(key, default=_UNSET) is value: 
 			SHARE_STORE.drop(key)
 	

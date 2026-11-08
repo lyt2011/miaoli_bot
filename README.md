@@ -2,7 +2,7 @@
 
 [English](README/en.md) | **简体中文**
 
-- **版本**：0.39.1
+- **版本**：0.39.2
 - **定位**：一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把通道收到的对话交给 LLM，让模型思考、回复并调用工具
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
@@ -24,7 +24,7 @@
 - 🔍 **联网搜索**：`web_search` 子插件注册一个 `web_search` 工具（**工具名与后端无关**），`adapter` 选后端 —— 请求地址取自子插件 `config.yaml` 的 `api_url`（模板里 `langsearch` 为 `https://api.langsearch.com/v1/web-search`，另一个后端是 `deepseek`），原始响应整体交给模型。`adapter` 只影响工具的入参 schema 与返回数据形状，不影响工具名。实测**英文检索质量明显优于中文**（技术 / 包名类相关率约 65% vs 30%），工具 docstring 已要求模型优先用英文搜。
 - 🔧 **协议先行**：抽象集中在顶层 `protocols/`，不跟实现走 —— `plugin.py`（`PluginProtocol`：`on_load` / `on_close`）、`timer.py`（`BaseTimer`）、`node_action.py`（`BaseNodeAction`，`Continue` / `Goto` / `Abort` 的共同基类）、`checkpointer_adapter.py`（`BaseCheckpointerSaverAdapter`）、`channel/`（`BaseChannel` / `ChannelMessage`）。子插件与各层都从这里取协议，不依赖具体实现。
 - 🗄️ **checkpointer 适配层**：`checkpointer.database` 在 `memory` / `sqlite` / `postgresql` 之间切换 checkpoint 存储 —— `core/check_pointer_adapters/` 的三个适配器把 `InMemorySaver` / `AsyncSqliteSaver` / `AsyncPostgresSaver` 收拢成同一门面（1:1 转发 `BaseCheckpointSaver` 的同步 / 异步协议方法，`connect(connect_to, **extra)` 建连、`close()` 释放），`main.py` 的 `CPA_MAPPING` 按 `database` 取类，`on_load` 注入图、`on_close` 统一关闭。
-- 💾 **共享存储**：`core/share_store.py` 的 `SHARE_STORE` 是全局共享容器（`ShareStore` 的唯一实例）；core 的键在 `consts/share_store_keys.py`（`NCATBOT_API` / `RAW_CONFIG` / `PLUGIN_CONFIG` / `PLUGIN_DIR` / `GRAPH_PIPELINE` / `WORKSPACE_DIR` / `TOOL_REGISTRY` / `HANDLER_REGISTRY` / `INVOKE_LOCK` / `CHANNEL_REGISTRY` / `MAIN_READY`，共 11 个），子插件用自带命名空间键（如 `miaoli_bot_adapter` 的 `WORKSPACE`、`mcp_adapter` 的 `MCP_CLIENT_REGISTRY`）。子插件不直接操作它，一律走 `miaoli_bot.api`。
+- 💾 **共享存储**：`core/share_store.py` 的 `SHARE_STORE` 是全局共享容器（`ShareStore` 的唯一实例）；core 的键在 `consts/share_store_keys.py`（`NCATBOT_API` / `RAW_CONFIG` / `PLUGIN_CONFIG` / `PLUGIN_DIR` / `GRAPH_PIPELINE` / `WORKSPACE_DIR` / `TOOL_REGISTRY` / `HANDLER_REGISTRY` / `INVOKE_LOCK` / `CHANNEL_REGISTRY` / `MAIN_READY`，共 11 个），子插件用自带命名空间键（如 `miaoli_bot_adapter` 的 `WORKSPACE`、`mcp_adapter` 的 `MCP_CLIENT_REGISTRY`）。子插件不直接操作它，一律走 `miaoli_bot.api`。`api.store_set()` 在键已存在时打一行 warning —— 这是为了揪「两个子插件撞键」；确实要按轮改写同一个键的调用方传 `overwrite=True`，就不会再报。
 - 🚪 **`api/` 门面层**：子插件只从 `miaoli_bot.api` 取东西 —— 一个模块一类事：`channel_ops`（`register_channel`）、`config_ops`（`get_root_config`）、`llm_ops`（`build_client` / `get_model_info` / `get_provider_info`）、`pipeline_ops`（`get_pipeline` / `safe_run_graph`）、`platform_ops`（`get_ncatbot_api`）、`registry_ops`（`get_handler_registry`）、`store_ops`（`store_recall` / `store_set` / `store_contains`）、`sync_ops`（`get_invoke_lock` / `wait_main_ready`）、`tool_ops`（`register_tool`），发送封装 `easier_send` 从 `utils/sugar.py` 转出。`__all__` 共 16 项，「键名 + 取值路径 + 类型」这些内部细节锁在门面层里，子插件只依赖函数签名。
 - 🧹 **导入分块与对齐**：模块顶部的导入按「`__future__` → 第三方 `from`（按顶层包名各成一块）→ 跨包自引用 `miaoli_bot.x` → 同包相对导入 `.` / `..` → 内置 `from` → 普通 `import`」排列，块与块之间空一行，块内按语句字符数从短到长；列对齐到组内最长前缀的下一个 4 的倍数（tab stop = 4），**换行导入是组尾** —— 它可以跟上面的行对齐，它下面的行另起一组。子插件只从主包的一层导入（`miaoli_bot.api` / `core` / `models` / `consts` / `protocols` / `utils`）。
 - 🎭 **人格与输出协议外置**：主包不持有任何提示词资产 —— 人格（`plugins/miaoli_bot_adapter/data/SOUL.md`）与输出协议（`plugins/miaoli_bot_adapter/data/output_protocol.md`）都是 `miaoli_bot_adapter` 子插件的资产，由 `inject_soul` / `inject_output_protocol` 每轮读盘写进 `prompts` 的 `soul` / `output-protocol` 段；该子插件 `enable: false` 时这两个节点不注册。根 `data/` 只留 `intent_prompts/`（意图识别的本地私有文案，已 gitignore）。

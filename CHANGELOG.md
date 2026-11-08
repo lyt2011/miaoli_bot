@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.39.2](CHANGELOG/v0.39.2.md) — 2026-11-08 — 🧱 `store_set()` 加 `overwrite` 开关，有意覆盖不再打撞键告警
 - [v0.39.1](CHANGELOG/v0.39.1.md) — 2026-11-07 — 🧱 修掉 `on_close` 漏丢 `MAIN_READY`，输出协议重写成「闸门已放行」视角、人设补三条说法
 - [v0.39.0](CHANGELOG/v0.39.0.md) — 2026-11-06 — 🧱 消息入口改成可插拔的通道，QQ 侧拆成平级插件 `miaoli_qq_channel`，`miaoli_pipeline` 并回主包、`core/` 重新分层，注册一律返回注销函数（破坏性）
 - [v0.36.0](CHANGELOG/v0.36.0.md) — 2026-11-02 — 压缩提示词内置进代码且计入阈值判定，`prompts` 段名统一为连字符（破坏性）

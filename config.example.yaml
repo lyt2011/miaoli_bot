@@ -13,7 +13,7 @@
 llm:
   provider: "deepseek"                        # 使用的供应商（providers 里某个 name）
   model: "deepseek-flash"                     # 使用的模型（该供应商 models 里某个 name）
-  thinking: "medium"                          # 思考强度，必须是下面 thinking_efforts 的某个键
+  thinking_effort: "medium"                   # 思考强度，必须是下面 thinking_efforts 的某个键
                                               #   这是个「本项目档位 → 供应商实际档位」的翻译表，
                                               #   因为不同供应商喊法不一样：DeepSeek 官方是 minimal/low/
                                               #   medium/high/xhigh/max/ultra，OpenAI 只有 minimal/low/
@@ -47,9 +47,17 @@ sub_plugin:                    # 子插件加载（load_from 是列表，缺省�
   load_from:                   # 内置子插件所在目录（可写多个，随本仓库提交）
     - "/sdcard/Ncatbot_QQ/plugins/miaoli_bot/plugins"
 
+tick:                          # 主动唤醒（可整段省略，用默认值）
+  interval: 60.0               # 兜底唤醒间隔（秒）；收到 please_run_graph() 会提前唤醒
+                               # 必须大于 0 —— 0 或负数会变成忙循环
+
 # channel：通道设置（可整段省略，用默认值）
 # channel:
-#   drain_timeout: 30.0        # 收集通道消息的超时时间（秒）
+#   atimeout: 30.0             # 收集通道消息的超时时间（秒）
+
+# graph：跑图设置（可整段省略，用默认值）
+# graph:
+#   atimeout: 60.0             # 单次跑图的超时时间（秒）
 
 # checkpointer：checkpoint 数据库（0.8.4 起已接线，on_load 按 database 选适配器）
 #   memory     进程内内存，重启即丢（默认，不需要 connect_to）

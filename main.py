@@ -7,7 +7,23 @@ from ncatbot.plugin	import NcatBotPlugin
 
 from .utils		import inject_workspace
 from .models	import GraphRuntimeContext, GraphState, PluginConfig
-from .core		import (
+from .protocols	import BaseChannel, BaseChannelMessage
+from .consts	import (
+	NCATBOT_API,
+	PLUGIN_CONFIG,
+	RAW_CONFIG,
+	PLUGIN_DIR,
+	GRAPH_PIPELINE,
+	TOOL_REGISTRY,
+	HANDLER_REGISTRY,
+	WORKSPACE_DIR,
+	GRAPH_EVENTS,
+	INVOKE_LOCKS,
+	RUN_REQUESTED,
+	CHANNEL_REGISTRY,
+	MAIN_READY,
+)
+from .core	import (
 	# share_store
 	SHARE_STORE,
 
@@ -23,10 +39,6 @@ from .core		import (
 	# tool
 	ToolRegistry,
 
-	# scheduler
-	Every,
-	Job,
-
 	# notice_channel
 	ChannelRegistry,
 
@@ -40,26 +52,13 @@ from .core		import (
 	PostgresqlAdapter,
 	BaseCheckpointerSaverAdapter as BCSA,
 )
-from .consts	import (
-	NCATBOT_API,
-	PLUGIN_CONFIG,
-	RAW_CONFIG,
-	PLUGIN_DIR,
-	GRAPH_PIPELINE,
-	TOOL_REGISTRY,
-	HANDLER_REGISTRY,
-	WORKSPACE_DIR,
-	GRAPH_EVENTS,
-	INVOKE_LOCK,
-	CHANNEL_REGISTRY,
-	MAIN_READY,
-)
 
-from pathlib	import Path
-from datetime	import timedelta
-from typing		import Dict, Union
+from collections	import defaultdict
+from pathlib		import Path
+from contextlib		import suppress
+from typing			import Union
+from asyncio		import wait_for as await_for
 
-import json
 import asyncio
 
 
@@ -76,9 +75,9 @@ class MiaoLiBot(NcatBotPlugin):
 	def __init__(self, *args, **kwargs) -> None:
 		super().__init__(*args, **kwargs)
 		
-		self.plugin_loader	: Union[Loader, None]	= None
-		self.auto_waker		: Union[Job, None]		= None
-		self.cpa			: Union[BCSA, None]		= None
+		self.plugin_loader	: Union[Loader, None]		= None
+		self.cpa			: Union[BCSA, None]			= None
+		self.tick_task		: Union[asyncio.Task, None]	= None
 	
 	@staticmethod
 	def _build_graph(checkpointer: BaseCheckpointSaver) -> GraphPipeline:
@@ -107,7 +106,10 @@ class MiaoLiBot(NcatBotPlugin):
 		
 		# ncatbot api/执行锁
 		SHARE_STORE.set(NCATBOT_API, self.api)
-		SHARE_STORE.set(INVOKE_LOCK, asyncio.Lock())
+		SHARE_STORE.set(INVOKE_LOCKS, defaultdict(asyncio.Lock))
+		
+		# 跑图请求标记
+		SHARE_STORE.set(RUN_REQUESTED, asyncio.Event())
 		
 		# pydantic插件配置/原生配置
 		SHARE_STORE.set(PLUGIN_CONFIG, config)
@@ -125,22 +127,26 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.set(GRAPH_PIPELINE, graph_pipeline)
 		SHARE_STORE.set(HANDLER_REGISTRY, HandlerRegistry())
 		SHARE_STORE.set(CHANNEL_REGISTRY, ChannelRegistry())
-		
-		# 插件加载器 自动唤醒器
-		self.plugin_loader	= Loader(config.sub_plugin.load_from)
-		self.auto_waker		= Job(self.run_graph, Every(timedelta(seconds=60)), job_id="auto_wake") # HACK: 快速测试留的硬编码时间
-		
-		self.logger.info(f"{PLUGIN_NAME} 已加载")
+				
+		self.logger.info(f"{PLUGIN_NAME} 初始化完成")
 		
 	async def on_close(self) -> None:
 		
 		"""幂等关闭 有啥关啥"""
 		
+		# 先把完成标志清理掉 完整生命周期
+		if flag := SHARE_STORE.recall(MAIN_READY, default=None):
+			flag.clear()
+		
+		if self.tick_task:
+			
+			self.tick_task.cancel()
+			
+			with suppress(asyncio.CancelledError):
+				await self.tick_task
+		
 		if self.plugin_loader:
 			await self.plugin_loader.unload_plugins()
-		
-		if self.auto_waker:
-			self.auto_waker.stop()
 		
 		if self.cpa:
 			await self.cpa.close()
@@ -157,7 +163,8 @@ class MiaoLiBot(NcatBotPlugin):
 		SHARE_STORE.drop(GRAPH_PIPELINE)
 		SHARE_STORE.drop(HANDLER_REGISTRY)
 		SHARE_STORE.drop(CHANNEL_REGISTRY)
-		SHARE_STORE.drop(INVOKE_LOCK)
+		SHARE_STORE.drop(INVOKE_LOCKS)
+		SHARE_STORE.drop(RUN_REQUESTED)
 		SHARE_STORE.drop(MAIN_READY)
 		
 		if not SHARE_STORE.is_empty():
@@ -168,77 +175,123 @@ class MiaoLiBot(NcatBotPlugin):
 	@registrar.on_startup()
 	async def on_startup(self) -> None:
 		
-		# 准备并加载插件
+		config = SHARE_STORE.recall(PLUGIN_CONFIG)
+		
+		# 实例化 准备并加载插件
+		self.plugin_loader = Loader(config.sub_plugin.load_from)
 		self.plugin_loader.prepare_plugins()
 		await self.plugin_loader.load_plugins()
 		
-		# 启动自动唤醒
-		self.auto_waker.launch()
+		# 启动tick任务并严肃制作回调
+		def _reset_task(task: asyncio.Task) -> None:
+			
+			# 对于未准备/正在关闭状态直接 return
+			flag = SHARE_STORE.recall(MAIN_READY, default=None)
+			if flag is None or not flag.is_set():
+				return None
+			
+			# 取消不重启
+			if task.cancelled():
+				return None
+			
+			# 对错误打日志
+			if (exception := task.exception()):
+				self.logger.error(f"tick 任务异常: {type(exception).__name__}: {exception}", exc_info=exception)
+			
+			# 重启任务并添加自己作为回调
+			self.tick_task = asyncio.create_task(self.tick(config.tick.interval))
+			self.tick_task.add_done_callback(_reset_task)
 		
+		# 启动任务并将 _reset_task 作为回调
+		self.tick_task = asyncio.create_task(self.tick(config.tick.interval))
+		self.tick_task.add_done_callback(_reset_task)
+		
+		# 完成标志
 		SHARE_STORE.recall(MAIN_READY).set()
+		
+		# 完全完成加载的日志
+		self.logger.info(f"{PLUGIN_NAME} 完全启动完成")
 	
-	async def run_graph(self) -> None:
-		
-		"""收集渠道信息并跑图"""
-		
-		# 等待插件完全加载
-		await SHARE_STORE.recall(MAIN_READY).wait()
-		
-		# 拿工具注册器 拉信息（图管线由 safe_run_graph 自己取）
-		tool_registry	= SHARE_STORE.recall(TOOL_REGISTRY)
-		
-		channel_messages	= await self.drain_channel_messages()
-		channel_messages	= {k: v for k, v in tuple(channel_messages.items()) if v} # 过滤空信息渠道
-		
-		if not channel_messages:
-			self.logger.info("没有任何渠道有新信息 跳过")
-			return None
-		
-		raw_input	= json.dumps(channel_messages, indent=2, ensure_ascii=False)
-		graph_state	= await safe_run_graph(
-			{
-				"raw_input": raw_input,
-				"messages": [HumanMessage(raw_input)]
-			},
-			thread_id	= "main",
-			context		= {"tool_surface": tool_registry.to_surface()}
-		)
-		
-		# 注意顺序
-		if isinstance(graph_state, AgentAborted):
-			self.logger.warning(f"AGENT 被故意中断: {graph_state.reason}")
-		
-		elif isinstance(graph_state, Exception):
-			self.logger.error(f"AGENT 出现错误: {type(graph_state).__name__}: {graph_state}", exc_info=graph_state)
-		
-		else:
-			if (messages := graph_state.get("messages", [])) and isinstance(messages[-1], AIMessage):
-				self.logger.info(f"AI 输出: {messages[-1].content}")
-		
-		return None
-	
-	async def drain_channel_messages(self) -> Dict[str, Union[str, list, dict]]:
+	async def tick(self, tick_interval: float) -> None:
 		
 		"""
-		收集渠道信息
-		对于 Exception -> 过滤 + 打印堆栈日志
+		每 tick 的主动唤醒
+		会被 RUN_REQUESTED 标记影响提前跑图
 		"""
 		
-		# 拿配置 / 渠道注册器
 		config				= SHARE_STORE.recall(PLUGIN_CONFIG)
+		request_run_flag	= SHARE_STORE.recall(RUN_REQUESTED)
 		channel_registry	= SHARE_STORE.recall(CHANNEL_REGISTRY)
 		
-		# 将渠道转为只读的 surface 并收集数据
-		channel_surface	= channel_registry.to_surface()
-		drain_results	= await channel_surface.batch_drain(atimeout=config.channel.drain_timeout)
+		while True:
+			
+			with suppress(asyncio.TimeoutError):
+				await await_for(
+					request_run_flag.wait(), timeout=tick_interval)
+			
+			# 注意 释放后立马.clear 这样不会让别的请求被丢掉
+			request_run_flag.clear()
+			
+			# 收集渠道信息
+			channel_and_messages = await (
+				channel_registry
+					.to_surface()
+					.batch_drain(atimeout=config.channel.atimeout)
+			)
+			
+			# 制作成带超时的跑图协程参数
+			coros = []
+			for channel, message in channel_and_messages.items():
+				coros.append(await_for(
+					self._run_channel_graph(channel, message), timeout=config.graph.atimeout))
+			
+			# 并发跑图 带上错误方便统计
+			results = await asyncio.gather(*coros, return_exceptions=True)
+			for result in results:
+				if isinstance(result, Exception):
+					self.logger.error(f"并发跑图出现异常: "
+						f"{type(result).__name__}: {result}", exc_info=result)
+			
+			self.logger.debug("一轮 tick 运行完成")
+
+	async def _run_channel_graph(self, channel: BaseChannel, message: BaseChannelMessage) -> None:
 		
-		# 过滤 错误与真实数据
-		exceptions	= [(name, result) for name, result in drain_results.items() if isinstance(result, Exception)]
-		real_data	= {name: result.to_structured() for name, result in drain_results.items() if not isinstance(result, Exception)}
+		"""
+		专门服务于 tick 函数的辅助方法 直接当做外置逻辑即可 内部自动获取 tool_registry
+		通过 BaseChannel 和 BaseChannelMessage 进行跑图 没有返回值
+		若产生了回复 将直接通过 channel.reply 返回给通道
+		(channel.reply 抛出的异常会冒给调用方)
+		"""
 		
-		# 为错误打日志
-		for name, exception in exceptions:
-			self.logger.error(f"收集渠道 '{name}' 信息出现错误: {type(exception).__name__}: {exception}", exc_info=exception)
+		# 过滤空消息 不要瞎跑图
+		if not (text := message.to_text().strip()):
+			return None
+			
+		state = await safe_run_graph(
+			{
+				"messages": [HumanMessage(text)],
+			},
+			thread_id	= message.thread_id,
+			context		= {"tool_surface": SHARE_STORE.recall(TOOL_REGISTRY).to_surface()}
+		)
 		
-		return real_data
-	
+		# 注意按顺序匹配
+		match state:
+			
+			case AgentAborted():
+				self.logger.warning(f"渠道 {channel.name} "
+					f"因为 {state.reason} 主动中断了跑图")
+			
+			case Exception():
+				self.logger.error(f"渠道 {channel.name} "
+					f"跑图时出现异常: {type(state).__name__}: {state}", exc_info=state)
+			
+			case {"messages": messages}:
+				if messages and isinstance(messages[-1], AIMessage):
+					await channel.reply(message.thread_id, messages[-1].content)
+			
+			case _:
+				self.logger.error(f"渠道 {channel.name} 返回了没有被 "
+					f"match-case 匹配的对象: {type(state).__name__}")
+		
+		return None

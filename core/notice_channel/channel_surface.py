@@ -1,25 +1,42 @@
-from ...protocols	import BaseChannel, ChannelMessage
+from ...protocols	import BaseChannel, BaseChannelMessage
 
-from asyncio	import gather, wait_for
-from typing		import Dict, List, Union
+from asyncio	import wait_for
+from typing		import Dict, List, Tuple
+
+import asyncio
+import logging
+
+
+LOGGER = logging.getLogger("ChannelSurface")
 
 
 class ChannelSurface:
 	
-	"""
-	把拿信息->编排->构建多个步骤弄成可调用的方法
-	注意这个是一次性类 __init__ 靠重建字典以保证引用冻结
-	"""
-	
 	def __init__(self, channels: List[BaseChannel]) -> None:
-		self._channels	= {c.name: c for c in channels} # 转为字典实现冻结
+		self.channels = channels
 	
-	async def batch_drain(self, atimeout: int) -> Dict[str, Union[ChannelMessage, Exception]]:
+	async def batch_drain(self, atimeout: float) -> Dict[BaseChannel, BaseChannelMessage]:
 		
-		"""基于 asyncio.gather 并发获取新信息"""
+		# 转为 wait_for 协程列表后塞给 asyncio.gather 并发获取
+		coros	= [wait_for(_drain_c(c), timeout=atimeout) for c in self.channels]
+		results	= await asyncio.gather(*coros, return_exceptions=True)
 		
-		# 构建所有协程再 gather 不然太长了
-		coros	= [wait_for(c.drain(), timeout=atimeout) for c in self._channels.values()]
-		results	= await gather(*coros, return_exceptions=True)
+		# dict(List[Tuple[BaseChannel, BaseChannelMessage]]) 直接转为字典
+		return dict([result for result in results if isinstance(result, tuple)])
+
+
+async def _drain_c(c: BaseChannel) -> Tuple[BaseChannel, BaseChannelMessage]:
+			
+	"""返回 (渠道实例: 渠道消息) 元组 方便组装字典"""
+	
+	try:
+		return (c, await c.drain())
+	
+	except BaseException as e:
 		
-		return dict(zip(self._channels, results))
+		LOGGER.exception(f"渠道 {c.name} "
+			f"拉取信息异常: {type(e).__name__}: {e}")
+		
+		raise
+	
+	return None

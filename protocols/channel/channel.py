@@ -1,4 +1,4 @@
-from .message	import ChannelMessage
+from .message	import BaseChannelMessage
 
 from abc	import ABC, abstractmethod
 
@@ -10,5 +10,7 @@ class BaseChannel(ABC):
 	def name(self) -> str: ...
 	
 	@abstractmethod
-	async def drain(self) -> ChannelMessage:
-		"""取走通道里未读消息"""
+	async def drain(self) -> BaseChannelMessage: ... # 自己处理去重 框架只负责拿
+	
+	@abstractmethod
+	async def reply(self, thread_id: str, text: str) -> None: ...

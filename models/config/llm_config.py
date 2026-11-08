@@ -7,9 +7,9 @@ from typing	import Dict, List, Self
 
 class LLMConfig(BaseModel):
 	
-	model	: str				= Field(..., description="将要使用的模型")
-	provider: str				= Field(..., description="将要使用的供应商")
-	thinking: ThinkingEffort	= Field(..., description="设置模型的思考强度")
+	model			: str				= Field(..., description="将要使用的模型")
+	provider		: str				= Field(..., description="将要使用的供应商")
+	thinking_effort	: ThinkingEffort	= Field(..., description="设置模型的思考强度")
 	
 	providers	: List[Provider]	= Field(..., description="供应商", min_length=1)
 	
@@ -27,7 +27,7 @@ class LLMConfig(BaseModel):
 			raise ValueError(f"供应商 '{self.provider}' 未配置 '{self.model}' 模型")
 		
 		thinking_efforts = models[self.model].thinking_efforts
-		if self.thinking not in thinking_efforts:
-			raise ValueError(f"{self.provider}/{self.model} 只支持 {list(thinking_efforts)}: 接收到 {self.thinking}")
+		if self.thinking_effort not in thinking_efforts:
+			raise ValueError(f"{self.provider}/{self.model} 只支持 {list(thinking_efforts)}: 接收到 {self.thinking_effort}")
 		
 		return self

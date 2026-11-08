@@ -2,13 +2,15 @@ from .graph_state			import GraphState
 from .graph_runtime_context	import GraphRuntimeContext
 from .config				import (
 	CheckpointerConfig,
+	ChannelConfig,
 	Client,
+	GraphConfig,
 	LLM,
 	LLMConfig,
 	PluginConfig,
 	Provider,
 	SubPluginConfig,
-	ChannelSetting,
+	TickConfig,
 	ThinkingEffort,
 	Vision,
 )
@@ -29,7 +31,9 @@ __all__ = [
 	"LLMConfig",
 	"CheckpointerConfig",
 	"SubPluginConfig",
-	"ChannelSetting",
+	"TickConfig",
+	"GraphConfig",
+	"ChannelConfig",
 	"Vision",
 	"Client",
 	"ThinkingEffort",

@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.41.0](CHANGELOG/v0.41.0.md) — 2026-11-08 — 🧱 唤醒改成 `RUN_REQUESTED` 事件驱动（新增 `please_run_graph` / `tick.interval`），`llm.thinking` 改名 `thinking_effort`（破坏性）
 - [v0.40.0](CHANGELOG/v0.40.0.md) — 2026-11-08 — 🧱 模型侧配置收进 `llm` 段（`LLMConfig`），新增 `thinking` / `thinking_efforts`（破坏性）
 - [v0.39.2](CHANGELOG/v0.39.2.md) — 2026-11-08 — 🧱 `store_set()` 加 `overwrite` 开关，有意覆盖不再打撞键告警
 - [v0.39.1](CHANGELOG/v0.39.1.md) — 2026-11-07 — 🧱 修掉 `on_close` 漏丢 `MAIN_READY`，输出协议重写成「闸门已放行」视角、人设补三条说法

@@ -1,13 +1,15 @@
 from abc	import ABC, abstractmethod
 
-from typing	import Any, Union
 
-
-class ChannelMessage(ABC):
+class BaseChannelMessage(ABC):
 	
 	@property
 	@abstractmethod
-	def raw(self) -> Any: ...
+	def thread_id(self) -> str: ...
+	
+	@property
+	@abstractmethod
+	def platform(self) -> str: ...
 	
 	@abstractmethod
-	def to_structured(self) -> Union[dict, list, str]: ...
+	def to_text(self) -> str: ...

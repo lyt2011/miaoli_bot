@@ -29,8 +29,11 @@ async def easier_send(
 		coro = (ncatbot_api.qq.messaging.
 			send_group_msg(group_id=chat_id, message=ob11_message))
 	
-	else:
+	elif mode == "private":
 		coro = (ncatbot_api.qq.messaging.
 			send_private_msg(user_id=chat_id, message=ob11_message))
+	
+	else:
+		raise ValueError(f"不支持的发送模式: {mode}")
 	
 	return await coro

@@ -9,10 +9,10 @@ import pydantic
 # 全用纯 dict / list 表示 方便 deepcopy 与局部覆盖 不要在用例里直接改它
 PLUGIN_CONFIG_ARGS: Dict[str, Any] = {
 	"llm"			: {
-		"provider"		: "the provider",
-		"model"			: "the model",
-		"thinking"		: "medium",
-		"providers"		: [
+		"provider"			: "the provider",
+		"model"				: "the model",
+		"thinking_effort"	: "medium",
+		"providers"			: [
 			{
 				"name"		: "the provider",
 				"base_url"	: "http://a.com/v1",
@@ -32,7 +32,8 @@ PLUGIN_CONFIG_ARGS: Dict[str, Any] = {
 	},
 	"checkpointer"	: {"database": "memory", "connect_to": None, "extra": {}},
 	"sub_plugin"	: {"enable": False, "load_from": []},
-	"channel"		: {"drain_timeout": 30.0},
+	"channel"		: {"atimeout": 30.0},
+	"graph"			: {"atimeout": 60.0},
 }
 
 
@@ -121,6 +122,10 @@ def test_plugin_config() -> None:
 	# 测不存在的 model
 	with pytest.raises(pydantic.ValidationError):
 		PluginConfig.model_validate({**config, "llm": {**config["llm"], "model": "invalid model"}})
+	
+	# 测不存在的思考强度
+	with pytest.raises(pydantic.ValidationError):
+		PluginConfig.model_validate({**config, "llm": {**config["llm"], "thinking_effort": "invalid thinking_effort"}})
 	
 	# 完整构建测试
 	PluginConfig.model_validate(config)

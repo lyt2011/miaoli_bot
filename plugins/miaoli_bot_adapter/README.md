@@ -8,7 +8,7 @@ miaoli_bot 内部数据适配 —— `on_load` 把根配置解析成 `PluginConf
 
 | 插件 | 负责的输入 | 产出 |
 | --- | --- | --- |
-| `miaoli_qq_channel`（**平级插件**，与本包同级目录，不是本包的子插件） | **信息**：QQ 事件 / 消息段（ncatbot 的 `MessageEvent`） | **结构化输入**：它自带的 `QQChannel`（`name = "qq"`，经 `miaoli_bot.api.register_channel()` 进 `ChannelRegistry`），`drain()` 给出 `QQChannelMessage`，`to_structured()` 交出每条事件序列化后的 JSON |
+| `miaoli_qq_channel`（**平级插件**，与本包同级目录，不是本包的子插件） | **信息**：QQ 事件 / 消息段（ncatbot 的 `MessageEvent`） | **结构化输入**：它自带的 `QQChannel`（`name = "qq"`，经 `miaoli_bot.api.register_channel()` 进 `ChannelRegistry`），`drain()` 给出 `BaseChannelMessage`，`to_text()` 交出这一回合的文本、`thread_id` 说明它属于哪个会话 |
 | `miaoli_bot_adapter`（本插件） | **miaoli_bot 内部数据**：根配置 + 人格资产（`SOUL.md` / `output_protocol.md`） | 根配置 → `SHARE_STORE`；人格资产 → `prompts` 的 `soul` / `output-protocol` 段 |
 
 `miaoli_qq_channel` 让图节点不必依赖 ncatbot 的事件类（它的消息段模型在 `plugins/qq_platform_tools/models/messages/`，入库结构是 `core/channel/qq_channel_message.py`），本插件让图节点不必依赖 miaoli_bot 的根配置结构。

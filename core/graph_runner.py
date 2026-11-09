@@ -15,7 +15,7 @@ async def safe_run_graph(state: Dict[str, Any], thread_id: str, context: Dict[st
 	try:
 		async with invoke_lock:
 			state_ = await pipeline.ainvoke(
-				state=state, thread_id=thread_id, context=context)
+				state, thread_id=thread_id, context=context)
 	
 	except Exception as exception:
 		return exception

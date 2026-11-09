@@ -56,7 +56,7 @@ from .core	import (
 from collections	import defaultdict
 from pathlib		import Path
 from contextlib		import suppress
-from typing			import Union
+from typing			import Dict, List, Union
 from asyncio		import wait_for as await_for
 
 import asyncio
@@ -68,6 +68,9 @@ CPA_MAPPING	= {
 	"postgresql": PostgresqlAdapter,
 	"memory"	: InMemoryAdapter,
 }
+
+
+ChannelDrainResult = Dict[BaseChannel, List[BaseChannelMessage]]
 
 
 class MiaoLiBot(NcatBotPlugin):
@@ -219,41 +222,62 @@ class MiaoLiBot(NcatBotPlugin):
 		会被 RUN_REQUESTED 标记影响提前跑图
 		"""
 		
-		config				= SHARE_STORE.recall(PLUGIN_CONFIG)
-		request_run_flag	= SHARE_STORE.recall(RUN_REQUESTED)
-		channel_registry	= SHARE_STORE.recall(CHANNEL_REGISTRY)
-		
 		while True:
 			
-			with suppress(asyncio.TimeoutError):
-				await await_for(
-					request_run_flag.wait(), timeout=tick_interval)
+			# 拿配置
+			config = SHARE_STORE.recall(PLUGIN_CONFIG)
 			
-			# 注意 释放后立马.clear 这样不会让别的请求被丢掉
-			request_run_flag.clear()
+			# 等待 tick 时机
+			await self._wait_atick(
+				fg=SHARE_STORE.recall(RUN_REQUESTED), timeout=tick_interval)
 			
 			# 收集渠道信息
-			channel_and_messages = await (
-				channel_registry
-					.to_surface()
-					.batch_drain(atimeout=config.channel.atimeout)
-			)
+			channel_messages = await self._drain_channels(
+				registry=SHARE_STORE.recall(CHANNEL_REGISTRY), atimeout=config.channel.atimeout)
 			
-			# 制作成带超时的跑图协程参数
-			coros = []
-			for channel, message in channel_and_messages.items():
-				coros.append(await_for(
-					self._run_channel_graph(channel, message), timeout=config.graph.atimeout))
-			
-			# 并发跑图 带上错误方便统计
-			results = await asyncio.gather(*coros, return_exceptions=True)
-			for result in results:
-				if isinstance(result, Exception):
-					self.logger.error(f"并发跑图出现异常: "
-						f"{type(result).__name__}: {result}", exc_info=result)
+			# 串行跑图
+			await self._run_channel_graphs(channel_messages=channel_messages, atimeout=config.graph.atimeout)
 			
 			self.logger.debug("一轮 tick 运行完成")
-
+	
+	async def _run_channel_graphs(self, channel_messages: ChannelDrainResult, atimeout: float) -> None:
+		
+		"""为渠道消息串行跑图 并行跑图容易把日志混淆在一坨 肉眼难以分辨"""
+		
+		for channel, messages in channel_messages.items():
+			for message in messages:
+				
+				try:
+					await await_for(self._run_channel_graph(
+						channel, message), timeout=atimeout)
+				
+				except Exception as e:
+					self.logger.exception(f"{channel.name}: "
+						f"{message.thread_id}跑图时出现异常: {type(e).__name__}: {e}")
+				
+				else:
+					self.logger.debug(f"{channel.name}: {message.thread_id} 跑图完成")
+	
+		return None
+	
+	async def _wait_atick(self, fg: asyncio.Event, timeout: float) -> None:
+		
+		"""
+		等待下一个 tick
+		返回前清理 tick 标记残留 (无论是超时还是被主动.set)
+		"""
+		
+		with suppress(asyncio.TimeoutError):
+			await await_for(
+				fg.wait(), timeout=timeout)
+		
+		# 释放后立马.clear
+		fg.clear()
+	
+	async def _drain_channels(self, registry: ChannelRegistry, atimeout: float) -> ChannelDrainResult:
+		"""将渠道注册器转为 surface 后获取所有信息"""
+		return await registry.to_surface().batch_drain(atimeout=atimeout)
+	
 	async def _run_channel_graph(self, channel: BaseChannel, message: BaseChannelMessage) -> None:
 		
 		"""
@@ -279,19 +303,19 @@ class MiaoLiBot(NcatBotPlugin):
 		match state:
 			
 			case AgentAborted():
-				self.logger.warning(f"渠道 {channel.name} "
-					f"因为 {state.reason} 主动中断了跑图")
+				self.logger.warning(f"渠道 {channel.name}: "
+					f"{message.thread_id} 因为 {state.reason} 主动中断了跑图")
 			
 			case Exception():
-				self.logger.error(f"渠道 {channel.name} "
-					f"跑图时出现异常: {type(state).__name__}: {state}", exc_info=state)
+				self.logger.error(f"渠道 {channel.name}: "
+					f"{message.thread_id} 跑图时出现异常: {type(state).__name__}: {state}", exc_info=state)
 			
 			case {"messages": messages}:
 				if messages and isinstance(messages[-1], AIMessage):
 					await channel.reply(message.thread_id, messages[-1].content)
 			
 			case _:
-				self.logger.error(f"渠道 {channel.name} 返回了没有被 "
-					f"match-case 匹配的对象: {type(state).__name__}")
+				self.logger.error(f"渠道 {channel.name}: "
+					f"{message.thread_id} 返回了没有被 match-case 匹配的对象: {type(state).__name__}")
 		
 		return None

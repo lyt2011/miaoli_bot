@@ -1,0 +1,4 @@
+name = "time_injector"
+entry_class = "main.TimeInjector"
+description = "按间隔注入时间信息"
+dependences = []

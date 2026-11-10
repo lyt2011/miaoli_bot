@@ -5,7 +5,7 @@
 An LLM-agent QQ bot plugin built on [Ncatbot](https://github.com/NapNeko/NcatBot) + [LangGraph](https://github.com/langchain-ai/langgraph).
 A self-built graph pipeline feeds QQ conversations to any OpenAI-compatible endpoint, so every incoming message lets the model think, reply and call tools.
 
-- **Version**: 0.44.0
+- **Version**: 0.45.0
 - **Entry point**: `main.py` (plugin class `MiaoLiBot`)
 - **Runtime host**: Ncatbot plugin system (NapCat / OneBot 11)
 - **LLM client**: picked by `llm.providers[].client` — `ChatOpenAI` (`langchain-openai`) / `ChatDeepSeek` (`langchain-deepseek`) / `ChatAnthropic` (`langchain-anthropic`), all built through `miaoli_bot.api.build_client()`
@@ -59,6 +59,7 @@ miaoli_bot.core.GraphPipeline.ainvoke({"messages": [HumanMessage(to_content())]}
         ▼
    ON_AGENT_START ── inject_mcp_tools (mcp_adapter, MEDIUM: external tools → tool_surface)
         │            inject_doc / inject_memes (meme_ops, NORMAL: meme-helper / available-memes sections)
+        │            helper_inject (time_injector, NORMAL: time-inject-helper section)
         ▼
    ON_TURN_START ── inject_soul / inject_output_protocol (miaoli_bot_adapter, NORMAL+1)
         │            recognize_intent (intent_recognition, NORMAL: one tagged HumanMessage)
@@ -70,7 +71,8 @@ miaoli_bot.core.GraphPipeline.ainvoke({"messages": [HumanMessage(to_content())]}
         │                                                    Overwrite replaces messages)
         │                                   └─▶ ON_AFTER_COMPACT ── back to ON_TURN_START
         ▼
-   ON_BEFORE_REQUEST ── build_prompt (prompt_builder, NORMAL+1: sections → SystemMessage at messages[0])
+   ON_BEFORE_REQUEST ── time_inject (time_injector, NORMAL+2: interval-gated <time-inject> at the tail)
+        │               build_prompt (prompt_builder, NORMAL+1: sections → SystemMessage at messages[0])
         │               pick_tools (tool_permission_manager, 1: drop tools not marked allow)
         ▼
    ON_REQUEST ── fix_pending_tool_call / fix_orphan_tool_message (NORMAL+2, only act on broken history)
@@ -141,7 +143,7 @@ miaoli_bot/
 │   ├── config/                    #   plugin_config / llm_config / tick_config / provider_config / sub_plugin_config / checkpointer_config / channel_setting
 │   ├── graph_state.py             #   GraphState (messages / prompts, both checkpointed)
 │   └── graph_runtime_context.py   #   GraphRuntimeContext (tool_surface / client / custom_status / custom_mapping)
-├── plugins/                       # 13 built-in sub-plugins (directories listed by sub_plugin.load_from)
+├── plugins/                       # 14 built-in sub-plugins (directories listed by sub_plugin.load_from)
 │   ├── base_nodes/                #   build_client / call_llm / invoke_tools / output_checker (nodes/ + README)
 │   ├── context_compactor/         #   should_compact + compact (nodes/ utils/ models/ consts/ config.example.yaml + README)
 │   ├── default_routing/           #   one node file per event, 11 Goto defaults (nodes/ models/ config.example.yaml + README)
@@ -186,7 +188,7 @@ miaoli_bot/
 
 ## Built-in sub-plugins
 
-The main package keeps the graph pipeline itself, the checkpointer adapter layer, the `HandlerRegistry` / `ToolRegistry` / `ChannelRegistry` registries (the last one handing out a per-run read-only `ChannelSurface`), the `core.Loader` framework (the `Job` / `Once` / `Every` under `core/scheduler/` are still in the tree, but the wake loop now belongs to `main.py`'s `tick` task, so nothing starts them); all business capability comes from sub-plugins. The thirteen built-in sub-plugins below live in this repo's `plugins/` directory; their `metadata.toml` and `config.example.yaml` templates are committed, while every deployment's real `config.yaml` is gitignored (root one included) and must be copied from the template before editing.
+The main package keeps the graph pipeline itself, the checkpointer adapter layer, the `HandlerRegistry` / `ToolRegistry` / `ChannelRegistry` registries (the last one handing out a per-run read-only `ChannelSurface`), the `core.Loader` framework (the `Job` / `Once` / `Every` under `core/scheduler/` are still in the tree, but the wake loop now belongs to `main.py`'s `tick` task, so nothing starts them); all business capability comes from sub-plugins. The fourteen built-in sub-plugins below live in this repo's `plugins/` directory; their `metadata.toml` and `config.example.yaml` templates are committed, while every deployment's real `config.yaml` is gitignored (root one included) and must be copied from the template before editing.
 
 > The QQ side is **not** in this directory: [`miaoli_qq_channel`](../../miaoli_qq_channel) is a **separate plugin next to** `miaoli_bot` that depends on this package, registers its channel through `register_channel()`, and carries two sub-plugins of its own — `account_injector` (the `account-info` section) and `qq_platform_tools` (send message / download file / query message / recall / poke). The main package no longer owns either of them. Because they are loaded by `core.Loader` too, `sub_plugin.load_from` must list **both** plugin directories.
 
@@ -203,6 +205,7 @@ The main package keeps the graph pipeline itself, the checkpointer adapter layer
 | `pending_tool_fixer` | `fix_pending_tool_call` (`on_request`, `NORMAL+2`) inserts a synthetic `ToolMessage` (`status="error"`, `id="auto-fix: …"`) after every `AIMessage` whose `tool_calls` never got a result, returning a full-table `Overwrite`; the `fix_message` text is configurable. Ships `README.md` |
 | `prompt_builder` | `build_prompt` (`on_before_request`, `NORMAL+1`) joins the `prompts` sections into `<key>\nvalue\n</key>` blocks (longest first), drops stale `SystemMessage`s and writes `Overwrite([SystemMessage, *rest])`; returns `None` when the result equals the current first `SystemMessage`. Ships `README.md` |
 | `system_tools` | Five tools: `bash` (command + encoding + timeout, own process group so a timeout kills the whole tree), `read_file`, `write`, `replace`, `read_image`. `read_image` filters by `support_image` **to restrict reading** — without it any path is base64-encoded into an image block and the request fails with `400`. Ships `config.example.yaml` and `README.md` |
+| `time_injector` | Time injection: `helper_inject` (`on_agent_start`, `NORMAL`) writes how to read the `<time-inject>` tag into the `time-inject-helper` section of `prompts`; `time_inject` (`on_before_request`, `NORMAL+2`) appends one `<time-inject>`-wrapped `HumanMessage` (`%Y-%m-%d %H:%M:%S %z` plus an ISO weekday, time zone offset included) to the tail of `messages`, throttled per conversation by `interval`. The time value **never** goes into `prompts` — it changes every round and would shatter the prefix cache of the whole request; only the static explanation lives there. `template` swaps in an external template file (`$now` / `$weekday`; a missing path silently falls back to the built-in template), and `config.yaml` is **mandatory** (a missing file makes `model_validate(None)` fail). Ships `config.example.yaml` and `README.md` |
 | `tool_permission_manager` | `pick_tools` (`on_before_request`, `priority=1`) applies one global `allow` / `refuse` table and deletes everything else from `runtime.context["tool_surface"]`; an undeclared tool is denied, and `debug: true` only adds a warning. Identity no longer takes part in the decision. Ships `config.example.yaml` and `README.md` |
 | `web_search` | Registers exactly one `web_search` tool; `adapter` picks `langsearch` (`POST /v1/web-search`) or `deepseek` (`POST /v1/tools/search`) and only changes the input schema and response shape. `api_url` is the full endpoint. Errors come back as `{"message": …}` rather than exceptions. Ships `README.md` |
 
@@ -297,7 +300,7 @@ This section only describes **what the project is now**; it does not accumulate 
 **Current shape**
 
 - The main package is the framework only: the graph pipeline (`core/graph_pipeline/`), the checkpointer adapter layer, the `HandlerRegistry` / `ToolRegistry` / `ChannelRegistry` registries, the `core.Loader` sub-plugin framework (the wake loop is `main.py`'s `tick` task; `core/scheduler/` is no longer used), the `SHARE_STORE` container and the `api/` facade. Deployment is a plain directory sync — there is no extra local package to install
-- All business logic comes from the **13** sub-plugins in this repo plus the QQ channel plugin next to it (see [Built-in sub-plugins](#built-in-sub-plugins)). Each ships its own `README.md` and a committed `config.example.yaml`; real `config.yaml` files are always gitignored and copied from the templates at deploy time
+- All business logic comes from the **14** sub-plugins in this repo plus the QQ channel plugin next to it (see [Built-in sub-plugins](#built-in-sub-plugins)). Each ships its own `README.md` and a committed `config.example.yaml`; real `config.yaml` files are always gitignored and copied from the templates at deploy time
 - The message path is: QQ event → channel plugin's ring buffer → `batch_drain` → one message per buffered thread → one graph per message, run serially, under the message's own `thread_id` → `channel.reply(message.platform, message.thread_id, last.content)`. Compaction, tool permissions, MCP integration, web search, memes and intent recognition are all wired in, each with an independent `enable` switch
 - The LLM client can be `openai` / `deepseek` / `anthropic` (`llm.providers[].client`), all built through `miaoli_bot.api.build_client()`; `Provider` only describes *where to connect and which implementation to use*, while the client instance is rebuilt by `build_client` every round
 - A message enters the graph as `HumanMessage(message.to_content(), additional_kwargs={"platform": message.platform})` — `to_content()` is the **only** model-input contract (a string, or a list of OpenAI-style content blocks); the platform rides along in `additional_kwargs` and goes back out through `channel.reply(...)` unchanged. Plain text for logs comes from the base class `__str__` (`<ClassName platform:thread_id>`), which must **never** call `to_content()` — after multimodal support that would be base64

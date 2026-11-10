@@ -2,7 +2,7 @@
 
 [English](README/en.md) | **简体中文**
 
-- **版本**：0.44.0
+- **版本**：0.45.0
 - **定位**：一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把通道收到的对话交给 LLM，让模型思考、回复并调用工具
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
@@ -49,6 +49,7 @@ miaoli_bot.core.GraphPipeline.ainvoke({"messages": [HumanMessage(to_content())]}
         │  START
         ▼
    ON_AGENT_START ── inject_mcp_tools（mcp_adapter，MEDIUM：MCP 工具追加进本轮工具表）
+        │            helper_inject（time_injector，NORMAL：写 prompts 的 time-inject-helper 段）
         │            default_routing: on_agent_start → ON_TURN_START
         ▼
    ON_TURN_START ── inject_soul / inject_output_protocol（miaoli_bot_adapter，NORMAL+1）
@@ -62,7 +63,8 @@ miaoli_bot.core.GraphPipeline.ainvoke({"messages": [HumanMessage(to_content())]}
         │                                              Overwrite 整体替换 messages）
         │                               └─▶ ON_AFTER_COMPACT ── 跳回 ON_TURN_START
         ▼◀──────────────────────────────────────────────────────────┘
-   ON_BEFORE_REQUEST ── build_prompt（prompt_builder，NORMAL+1：prompts 各段 → messages[0]）
+   ON_BEFORE_REQUEST ── time_inject（time_injector，NORMAL+2：按 interval 往 messages 末尾追加一条 <time-inject>）
+        │               build_prompt（prompt_builder，NORMAL+1：prompts 各段 → messages[0]）
         │               pick_tools（tool_permission_manager，priority=1：按 allow / refuse 摘工具）
         ▼
    ON_REQUEST ── fix_pending_tool_call / fix_orphan_tool_message（NORMAL+2：修坏消息形状）
@@ -148,7 +150,7 @@ miaoli_bot/
 │   ├── graph_state.py             #   GraphState（messages / prompts，两者都进 checkpoint）
 │   ├── graph_runtime_context.py   #   GraphRuntimeContext（tool_surface 必填，client / custom_* 可选）
 │   └── config/                    #   PluginConfig / LLMConfig / TickConfig / GraphConfig / Provider / LLM / ThinkingEffort / CheckpointerConfig / SubPluginConfig / ChannelConfig
-├── plugins/                       # 13 个内置子插件（加载目录由 sub_plugin.load_from 指定）
+├── plugins/                       # 14 个内置子插件（加载目录由 sub_plugin.load_from 指定）
 ├── protocols/                     # 抽象基类集中层（子插件依赖这里，不依赖具体实现）
 │   ├── plugin.py                  #   PluginProtocol（on_load / on_close）
 │   ├── timer.py                   #   BaseTimer（调度器的计时协议）
@@ -182,7 +184,7 @@ miaoli_bot/
 
 ## 内置子插件
 
-主包只保留图管线本体、checkpointer 适配层、`HandlerRegistry` / `ToolRegistry` / `ChannelRegistry` 三个注册器、`core.Loader` 子插件加载框架与最小调度器，业务能力由子插件提供。以下 13 个内置子插件位于本仓库的 `plugins/` 目录，`metadata.toml` 与配置模板 `config.example.yaml` 随仓库提交（`base_nodes` / `prompt_builder` 不读配置，故无模板）；各部署环境的真实 `config.yaml` 一律 gitignore（含根目录），部署时从模板复制一份再改。
+主包只保留图管线本体、checkpointer 适配层、`HandlerRegistry` / `ToolRegistry` / `ChannelRegistry` 三个注册器、`core.Loader` 子插件加载框架与最小调度器，业务能力由子插件提供。以下 14 个内置子插件位于本仓库的 `plugins/` 目录，`metadata.toml` 与配置模板 `config.example.yaml` 随仓库提交（`base_nodes` / `prompt_builder` 不读配置，故无模板）；各部署环境的真实 `config.yaml` 一律 gitignore（含根目录），部署时从模板复制一份再改。
 
 > QQ 侧不在本目录 —— `miaoli_qq_channel` 是与 `miaoli_bot` **同级**的独立仓库（`plugins/miaoli_qq_channel/`），自己带两个子插件：`account_injector`（`inject_account` 挂 `on_agent_start`，把账号信息写进提示词）与 `qq_platform_tools`（5 个 QQ 平台工具：发消息 / 下载文件 / 查消息 / 撤回消息 / 戳一戳）。主包不认识 QQ，只通过 `BaseChannel` 与它对接。
 
@@ -199,6 +201,7 @@ miaoli_bot/
 | `pending_tool_fixer` | 修复悬空工具调用 —— 「有请求没返回」：`fix_pending_tool_call` 挂 `on_request`（`NORMAL+2`），给悬空的 `tool_calls` 补一条正文取自 `fix_message` 的合成 `ToolMessage`，返回 `Overwrite` 整表替换，无事可修时返回 `None` |
 | `prompt_builder` | 把 state 里的提示词段拼成一条系统消息，插到消息列表最前面：`build_prompt` 挂 `on_before_request`（`NORMAL+1`），渲染 `<key>value</key>`、按长度降序、空行连接，滤掉已有 `SystemMessage` 后用 `Overwrite` 放到 `messages[0]`；空内容或与现有首条相同则返回 `None`。自带 `README.md` |
 | `system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml` 与 `README.md`）。`read_image` 按 `support_image` 名单过滤格式 —— 这道过滤是**为了限制读取**（不做的话读什么都会被 b64 成图片塞进上下文，导致 400），**不是**给模型过滤不同类型的图片 |
+| `time_injector` | 时间注入：`helper_inject` 挂 `on_agent_start`（`NORMAL`）把 `<time-inject>` 标签的读法写进 `prompts` 的 `time-inject-helper` 段；`time_inject` 挂 `on_before_request`（`NORMAL+2`）按 `interval` 每会话节流，往 `messages` 末尾追加一条包在 `<time-inject>` 里的 `HumanMessage`（`%Y-%m-%d %H:%M:%S %z` + ISO 星期，带时区偏移）。时间值**刻意不进** `prompts` —— 它每轮都在变，进系统提示词会把前缀缓存整段撞碎；静态说明才进 `prompts`。`template` 可换外部模板文件（占位符 `$now` / `$weekday`；路径不存在时静默回落到内置模板），`config.yaml` 为**必需**（缺文件时 `model_validate(None)` 直接失败）。自带 `README.md` |
 | `tool_permission_manager` | 工具权限控制：按 `config.yaml` 的 `allow` / `refuse` 表，在 `on_before_request`（`priority=1`）把未放行的工具从 `runtime.context["tool_surface"]` 里 `delete` 掉；未出现在表里的工具一律摘除（默认拒绝），`debug: true` 时对漏配的工具打 warning（只影响日志，不影响判定）。自带 `README.md` |
 | `web_search` | 联网搜索工具：注册一个 `web_search` 工具（**工具名与后端无关**），`adapter` 选 `langsearch` 或 `deepseek`，请求地址与密钥取自 `config.yaml` 的 `api_url` / `api_key`（模板给的是 langsearch 的 `https://api.langsearch.com/v1/web-search`），原始响应整体交给模型；`adapter` 只影响工具入参 schema 与返回数据形状。自带 `README.md` |
 
@@ -296,7 +299,7 @@ cd <插件父目录>          # plugins/
 **已有形态**
 
 - 主包只剩几件事：图管线本体（`core/graph_pipeline/`）、checkpointer 适配层、`HandlerRegistry` / `ToolRegistry` / `ChannelRegistry` 三个注册器（后两者分别用 `ToolSurface` / `ChannelSurface` 给出每轮只读快照）、`core.Loader` 子插件加载框架（`core/scheduler/` 的 `Job` / `Once` / `Every` 仍在仓库里，但唤醒已改由 `main.py` 的 `tick` 任务负责，目前没有使用者）。部署只需整目录同步，没有额外的本地包要装
-- 业务全部由 **13 个**子插件提供（见[内置子插件](#内置子插件)）。每个子插件自带 `README.md`，读配置的还带入库的 `config.example.yaml`，真实 `config.yaml` 一律 gitignore，部署时从模板复制
+- 业务全部由 **14 个**子插件提供（见[内置子插件](#内置子插件)）。每个子插件自带 `README.md`，读配置的还带入库的 `config.example.yaml`，真实 `config.yaml` 一律 gitignore，部署时从模板复制
 - QQ 侧由**平级插件** `miaoli_qq_channel`（独立仓库）提供：事件入口、消息段解析、两个子插件（`account_injector` / `qq_platform_tools`）都在那边；主包只认 `BaseChannel` / `BaseChannelMessage`
 - 链路形态是「事件唤醒 + 定时兜底 + 按会话跑图」：`tick` 任务被 `api.please_run_graph()` 提前唤醒、或每 `tick.interval`（默认 60 秒）兜底醒一次；每个渠道一次 `drain()` 交回全部会话各一条消息，**随后串行逐条跑图**（锁仍按 `thread_id` 分），跑完由 `channel.reply(message.platform, message.thread_id, last.content)` 回给该会话。上下文压缩、工具权限、MCP 接入、联网搜索、表情包、意图识别都已接入，各自能独立开关（`enable`）
 - LLM 客户端可在 `openai` / `deepseek` / `anthropic` 之间切换（`llm.providers[].client`），统一由 `miaoli_bot.api.build_client()` 构建；`Provider` 只描述「连哪儿、用哪家的实现」，客户端实例由 `build_client` 节点每轮现建

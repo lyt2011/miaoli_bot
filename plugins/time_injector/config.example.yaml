@@ -1,0 +1,18 @@
+# time_injector 配置模板
+#
+# 用法：
+#   cp plugins/time_injector/config.example.yaml plugins/time_injector/config.yaml
+#
+# config.yaml 已加入 .gitignore，不会被提交。本文件是入库的模板。
+# 本插件必须提供 config.yaml，缺文件时 on_load 的 model_validate(None) 会 ValidationError。
+
+enable: true                  # 是否启用该插件；关闭时不写共享容器也不注册节点
+
+interval: 60.0                # 两次注入之间的最小间隔，单位秒
+
+# 外部模板文件路径，留空则使用内置模板（consts/prompt.py 的 DEFAULT_TEMPLATE）
+# 占位符：$now（%Y-%m-%d %H:%M:%S %z）、$weekday（1=星期一 … 7=星期日）
+# 只做类型校验、不校验存在性：路径不存在或不是文件时静默回落到内置模板
+template: null
+
+encoding: utf-8               # 读取模板文件时使用的编码

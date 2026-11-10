@@ -2,7 +2,7 @@
 
 [English](README/en.md) | **简体中文**
 
-- **版本**：0.45.0
+- **版本**：0.46.0
 - **定位**：一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把通道收到的对话交给 LLM，让模型思考、回复并调用工具
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
@@ -201,7 +201,7 @@ miaoli_bot/
 | `pending_tool_fixer` | 修复悬空工具调用 —— 「有请求没返回」：`fix_pending_tool_call` 挂 `on_request`（`NORMAL+2`），给悬空的 `tool_calls` 补一条正文取自 `fix_message` 的合成 `ToolMessage`，返回 `Overwrite` 整表替换，无事可修时返回 `None` |
 | `prompt_builder` | 把 state 里的提示词段拼成一条系统消息，插到消息列表最前面：`build_prompt` 挂 `on_before_request`（`NORMAL+1`），渲染 `<key>value</key>`、按长度降序、空行连接，滤掉已有 `SystemMessage` 后用 `Overwrite` 放到 `messages[0]`；空内容或与现有首条相同则返回 `None`。自带 `README.md` |
 | `system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml` 与 `README.md`）。`read_image` 按 `support_image` 名单过滤格式 —— 这道过滤是**为了限制读取**（不做的话读什么都会被 b64 成图片塞进上下文，导致 400），**不是**给模型过滤不同类型的图片 |
-| `time_injector` | 时间注入：`helper_inject` 挂 `on_agent_start`（`NORMAL`）把 `<time-inject>` 标签的读法写进 `prompts` 的 `time-inject-helper` 段；`time_inject` 挂 `on_before_request`（`NORMAL+2`）按 `interval` 每会话节流，往 `messages` 末尾追加一条包在 `<time-inject>` 里的 `HumanMessage`（`%Y-%m-%d %H:%M:%S %z` + ISO 星期，带时区偏移）。时间值**刻意不进** `prompts` —— 它每轮都在变，进系统提示词会把前缀缓存整段撞碎；静态说明才进 `prompts`。`template` 可换外部模板文件（占位符 `$now` / `$weekday`；路径不存在时静默回落到内置模板），`config.yaml` 为**必需**（缺文件时 `model_validate(None)` 直接失败）。自带 `README.md` |
+| `time_injector` | 时间注入：`helper_inject` 挂 `on_agent_start`（`NORMAL`）把 `<time-inject>` 标签的读法写进 `prompts` 的 `time-inject-helper` 段；`time_inject` 挂 `on_before_request`（`NORMAL+2`）按 `interval` 每会话节流，往 `messages` 末尾追加一条包在 `<time-inject>` 里的 `HumanMessage`（`%Y-%m-%d %H:%M %z` + ISO 星期，带时区偏移，不含秒）。时间值**刻意不进** `prompts` —— 它每轮都在变，进系统提示词会把前缀缓存整段撞碎；静态说明才进 `prompts`。`template` 可换外部模板文件（占位符 `$now` / `$weekday`；路径不存在时静默回落到内置模板），`config.yaml` 为**必需**（缺文件时 `model_validate(None)` 直接失败）。自带 `README.md` |
 | `tool_permission_manager` | 工具权限控制：按 `config.yaml` 的 `allow` / `refuse` 表，在 `on_before_request`（`priority=1`）把未放行的工具从 `runtime.context["tool_surface"]` 里 `delete` 掉；未出现在表里的工具一律摘除（默认拒绝），`debug: true` 时对漏配的工具打 warning（只影响日志，不影响判定）。自带 `README.md` |
 | `web_search` | 联网搜索工具：注册一个 `web_search` 工具（**工具名与后端无关**），`adapter` 选 `langsearch` 或 `deepseek`，请求地址与密钥取自 `config.yaml` 的 `api_url` / `api_key`（模板给的是 langsearch 的 `https://api.langsearch.com/v1/web-search`），原始响应整体交给模型；`adapter` 只影响工具入参 schema 与返回数据形状。自带 `README.md` |
 

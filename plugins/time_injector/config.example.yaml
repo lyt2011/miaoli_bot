@@ -8,10 +8,10 @@
 
 enable: true                  # 是否启用该插件；关闭时不写共享容器也不注册节点
 
-interval: 60.0                # 两次注入之间的最小间隔，单位秒
+interval: 60.0                # 两次注入之间的最小间隔，单位秒，必须 >= 60（ge=60）
 
 # 外部模板文件路径，留空则使用内置模板（consts/prompt.py 的 DEFAULT_TEMPLATE）
-# 占位符：$now（%Y-%m-%d %H:%M:%S %z）、$weekday（1=星期一 … 7=星期日）
+# 占位符：$now（%Y-%m-%d %H:%M %z，不含秒）、$weekday（1=星期一 … 7=星期日）
 # 只做类型校验、不校验存在性：路径不存在或不是文件时静默回落到内置模板
 template: null
 

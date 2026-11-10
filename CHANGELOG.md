@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.46.0](CHANGELOG/v0.46.0.md) — 2026-11-10 — ⏱️ 时间戳去掉秒（`%H:%M`）、`interval` 加 `ge=60` 下限，假精度不再进上下文（破坏性）
 - [v0.45.0](CHANGELOG/v0.45.0.md) — 2026-11-10 — 🕒 新增 `time_injector` 子插件：时间快照走 `messages` 尾部追加、静态说明走 `prompts`，避免每轮撞碎 `SystemMessage` 的前缀缓存
 - [v0.44.0](CHANGELOG/v0.44.0.md) — 2026-11-10 — 🧱 平台对称性交给框架：通道自报 `platforms`、`reply(platform, thread_id, content)` 原路带回，`to_text()` 删除、改用基类 `__str__`（破坏性）
 - [v0.43.0](CHANGELOG/v0.43.0.md) — 2026-11-10 — 🧱 通道消息新增 `to_content()`，进图内容不再先压成文本、纯图片消息不再被当空丢掉；`safe_run_graph` 改成「`state` + `context` + 仅关键字 `thread_id`」，`ChannelDrainResult` / `_drain_c` 收进 `core/notice_channel`，补 `ShareStore` 与工具注册器用例（破坏性）

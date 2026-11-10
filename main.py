@@ -41,6 +41,7 @@ from .core	import (
 
 	# notice_channel
 	ChannelRegistry,
+	ChannelDrainResult,
 
 	# graph_pipeline
 	GraphPipeline,
@@ -56,7 +57,7 @@ from .core	import (
 from collections	import defaultdict
 from pathlib		import Path
 from contextlib		import suppress
-from typing			import Dict, List, Union
+from typing			import Union
 from asyncio		import wait_for as await_for
 
 import asyncio
@@ -68,9 +69,6 @@ CPA_MAPPING	= {
 	"postgresql": PostgresqlAdapter,
 	"memory"	: InMemoryAdapter,
 }
-
-
-ChannelDrainResult = Dict[BaseChannel, List[BaseChannelMessage]]
 
 
 class MiaoLiBot(NcatBotPlugin):
@@ -287,19 +285,26 @@ class MiaoLiBot(NcatBotPlugin):
 		(channel.reply 抛出的异常会冒给调用方)
 		"""
 		
-		# 过滤空消息 不要瞎跑图
-		if not (text := message.to_text().strip()):
+		# 处理空列表与空文本 免跑图
+		content = message.to_content()
+		if not content or (isinstance(content, str) and not content.strip()):
 			return None
-			
+		
+		# 构建 HumanMessage
+		human = HumanMessage(content,
+			additional_kwargs={"platform": message.platform})
+		
 		state = await safe_run_graph(
 			{
-				"messages": [HumanMessage(text)],
+				"messages": [human],
+			},
+			{
+				"tool_surface": SHARE_STORE.recall(TOOL_REGISTRY).to_surface(),
 			},
 			thread_id	= message.thread_id,
-			context		= {"tool_surface": SHARE_STORE.recall(TOOL_REGISTRY).to_surface()}
 		)
 		
-		# 注意按顺序匹配
+		# 注意按顺序匹配 AgentAborted 继承 Exception
 		match state:
 			
 			case AgentAborted():
@@ -310,9 +315,8 @@ class MiaoLiBot(NcatBotPlugin):
 				self.logger.error(f"渠道 {channel.name}: "
 					f"{message.thread_id} 跑图时出现异常: {type(state).__name__}: {state}", exc_info=state)
 			
-			case {"messages": messages}:
-				if messages and isinstance(messages[-1], AIMessage):
-					await channel.reply(message.thread_id, messages[-1].content)
+			case {"messages": [*_, last]} if isinstance(last, AIMessage):
+				await channel.reply(message.platform, message.thread_id, last.content)
 			
 			case _:
 				self.logger.error(f"渠道 {channel.name}: "

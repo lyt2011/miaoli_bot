@@ -10,6 +10,8 @@
 
 ## 索引
 
+- [v0.44.0](CHANGELOG/v0.44.0.md) — 2026-11-10 — 🧱 平台对称性交给框架：通道自报 `platforms`、`reply(platform, thread_id, content)` 原路带回，`to_text()` 删除、改用基类 `__str__`（破坏性）
+- [v0.43.0](CHANGELOG/v0.43.0.md) — 2026-11-10 — 🧱 通道消息新增 `to_content()`，进图内容不再先压成文本、纯图片消息不再被当空丢掉；`safe_run_graph` 改成「`state` + `context` + 仅关键字 `thread_id`」，`ChannelDrainResult` / `_drain_c` 收进 `core/notice_channel`，补 `ShareStore` 与工具注册器用例（破坏性）
 - [v0.42.0](CHANGELOG/v0.42.0.md) — 2026-11-09 — 🧱 一轮取空、一轮跑完：`drain()` 交回 `List[BaseChannelMessage]`（一个会话一条），`tick` 改成串行跑图并把 `thread_id` 写进日志，顺手修掉 `ainvoke` 首参写成关键字的问题（破坏性）
 - [v0.41.0](CHANGELOG/v0.41.0.md) — 2026-11-09 — 🧱 按会话跑图：`thread_id` 从常量 `"main"` 变回消息自带，锁拆成每会话一把，通道协议收窄成 `to_text()` + `reply(thread_id, text)`，唤醒换成 `tick` + `RUN_REQUESTED`，新增 `tick` / `graph` 配置段、`thinking` 改名 `thinking_effort`（破坏性）
 - [v0.40.0](CHANGELOG/v0.40.0.md) — 2026-11-08 — 🧱 模型侧配置收进 `llm` 段（`LLMConfig`），新增 `thinking` / `thinking_efforts`（破坏性）

@@ -1,6 +1,6 @@
 from .timer					import BaseTimer
 from .plugin				import PluginProtocol
-from .channel				import BaseChannel, BaseChannelMessage
+from .channel				import BaseChannel, BaseChannelMessage, Content
 from .node_action			import BaseNodeAction
 from .checkpointer_adapter	import BaseCheckpointerSaverAdapter
 
@@ -22,5 +22,6 @@ __all__ = [
 	# channel
 	"BaseChannel",
 	"BaseChannelMessage",
+	"Content",
 
 ]

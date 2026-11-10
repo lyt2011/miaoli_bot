@@ -4,7 +4,7 @@ from ..consts		import INVOKE_LOCKS, GRAPH_PIPELINE
 from typing	import Any, Dict, Union
 
 
-async def safe_run_graph(state: Dict[str, Any], thread_id: str, context: Dict[str, Any]) -> Union[Exception, Dict[str, Any]]:
+async def safe_run_graph(state: Dict[str, Any], context: Dict[str, Any], *, thread_id: str) -> Union[Exception, Dict[str, Any]]:
 	
 	"""并发安全+异常安全的跑图"""
 	

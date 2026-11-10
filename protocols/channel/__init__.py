@@ -1,5 +1,5 @@
 from .channel	import BaseChannel
-from .message	import BaseChannelMessage
+from .message	import BaseChannelMessage, Content
 
 
 __all__ = [
@@ -9,5 +9,6 @@ __all__ = [
 
 	# message
 	"BaseChannelMessage",
+	"Content",
 
 ]

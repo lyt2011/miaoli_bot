@@ -1,10 +1,10 @@
-from .share_store		import SHARE_STORE
+from .share_store		import SHARE_STORE, ShareStore
 from .graph_runner		import safe_run_graph
 from .plugin			import Loader, PluginProtocol
 from .handler_registry	import HandlerRegistry
 from .tool				import ToolRegistry, ToolSurface
 from .scheduler			import BaseTimer, Every, Job, Once
-from .notice_channel	import ChannelRegistry, ChannelSurface
+from .notice_channel	import ChannelRegistry, ChannelSurface, ChannelDrainResult
 from .graph_pipeline	import (
 	GraphPipeline,
 	Goto,
@@ -26,6 +26,7 @@ __all__ = [
 
 	# share_store
 	"SHARE_STORE",
+	"ShareStore",
 
 	# handler_registry
 	"HandlerRegistry",
@@ -36,6 +37,7 @@ __all__ = [
 	# notice_channel
 	"ChannelRegistry",
 	"ChannelSurface",
+	"ChannelDrainResult",
 
 	# tool
 	"ToolRegistry",

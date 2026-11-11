@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.47.0](CHANGELOG/v0.47.0.md) — 2026-11-11 — 🗄️ `prompts` 改用不落盘的 `UntrackedSectionPatch`，每轮不再往 `checkpoint_blobs` 写提示词段集合
 - [v0.46.0](CHANGELOG/v0.46.0.md) — 2026-11-10 — ⏱️ 时间戳去掉秒（`%H:%M`）、`interval` 加 `ge=60` 下限，假精度不再进上下文（破坏性）
 - [v0.45.0](CHANGELOG/v0.45.0.md) — 2026-11-10 — 🕒 新增 `time_injector` 子插件：时间快照走 `messages` 尾部追加、静态说明走 `prompts`，避免每轮撞碎 `SystemMessage` 的前缀缓存
 - [v0.44.0](CHANGELOG/v0.44.0.md) — 2026-11-10 — 🧱 平台对称性交给框架：通道自报 `platforms`、`reply(platform, thread_id, content)` 原路带回，`to_text()` 删除、改用基类 `__str__`（破坏性）

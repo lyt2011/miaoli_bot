@@ -6,18 +6,19 @@
 	from miaoli_bot.core	import Goto, Continue, Abort
 	from miaoli_bot.core	import BaseNodeAction
 	from miaoli_bot.core	import SectionPatch
+	from miaoli_bot.core	import UntrackedSectionPatch
 	from miaoli_bot.core	import Handler
 	from miaoli_bot.core	import AgentAborted
 
 子包可直接访问：`actions` / `channels` / `runtimes`。
 """
 
-from ...errors					import AgentAborted
-from .runtimes.handler			import Handler
-from .graph_pipeline			import GraphPipeline
-from .							import actions, channels, runtimes
-from .channels.section_patch	import SectionPatch
-from .actions					import Goto, Continue, Abort, BaseNodeAction
+from ...errors			import AgentAborted
+from .runtimes.handler	import Handler
+from .graph_pipeline	import GraphPipeline
+from .					import actions, channels, runtimes
+from .channels			import SectionPatch, UntrackedSectionPatch
+from .actions			import Goto, Continue, Abort, BaseNodeAction
 
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
 	"Abort",
 	"BaseNodeAction",
 	"SectionPatch",
+	"UntrackedSectionPatch",
 	"Handler",
 	"AgentAborted",
 

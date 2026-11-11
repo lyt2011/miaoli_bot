@@ -2,7 +2,7 @@
 
 [English](README/en.md) | **简体中文**
 
-- **版本**：0.46.0
+- **版本**：0.47.0
 - **定位**：一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把通道收到的对话交给 LLM，让模型思考、回复并调用工具
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
@@ -18,7 +18,7 @@
 - 🧠 **LLM 接入**：`main.py` 只把 `message.to_content()` 包成一条 `HumanMessage` 送进图（纯文本通道返回字符串，多模态通道返回内容块列表；会话身份跟着消息走，主包不自己编）；`miaoli_bot_adapter` 子插件的 `inject_soul` / `inject_output_protocol` 节点（`ON_TURN_START`，`priority=NORMAL+1`）分别读自己目录下的 `data/SOUL.md` 与 `data/output_protocol.md`，写进 `prompts` 的 `soul` / `output-protocol` 段，随后 `base_nodes` 的 `build_client` 节点（`ON_TURN_START`，`priority=NORMAL`）调 `api.build_client()` 从根配置直接建客户端（具体类由 `llm.providers[].client` 选）写进 `runtime.context["client"]`（**刻意不在建实例时绑工具** —— 工具表每轮都会变）；`call_llm` 节点用 `runtime.context["tool_surface"].tools`（`ToolRegistry.to_surface()` 的快照）`bind_tools` 后请求模型，并把 token 用量打进日志；工具循环由 `default_routing` 的 `on_after_request` 节点分流 —— 末条消息有 `tool_calls` 就跳 `ON_TOOL_CALLING` 执行工具、再回到 `ON_TURN_START` 重走一轮；没有就跳 `ON_TURN_END` 收尾。
 - 🗜️ **上下文压缩（三段事件）**：压缩不再是藏在 `on_before_request` 里的一个 `if`，而是图上三个有名字的事件 —— `ON_BEFORE_COMPACT` 挂**守卫** `should_compact`（`context_compactor` 子插件，`priority=NORMAL`）算 token 判阈值，需要压就 `Goto(ON_COMPACT)`、不需要就 `Goto(ON_BEFORE_REQUEST)`；`ON_COMPACT` 挂**压缩** `compact`，把历史压成一条 `<abstract>` 摘要并用 `Overwrite` 整体替换（`compact.recall_system_prompt` 为真时把原 `messages[0]` 的 `SystemMessage` 回填到首位）；`ON_AFTER_COMPACT` 的默认跳转**回到 `ON_TURN_START`**，于是压缩完重新走一轮，这一轮守卫重新算一遍 token 决定是压还是往下走。阈值按模型真实 `context_window` / `max_tokens` 算（为输出预留空间），保留条数 / 提示词 / 是否回填系统提示词 / 计数方式（`base` 粗估或 `tiktoken` 精确）全部配置化；压缩提示词内置在 `plugins/context_compactor/utils/prompt_ops.py` 的 `DEFAULT_PROMPT`，`compact.prompt_file` 可覆盖，且守卫估算 token 时会把这段提示词一并计入。
 - 📝 **提示词分段拼装**：`prompts` 不是一整个字符串，而是 `Dict[str, str]` —— 各子插件写各自的段（`{"identity": …}` / `{"style": …}`），写入 `None` 表示删除该段。`prompt_builder` 子插件的 `build_prompt` 节点（`ON_BEFORE_REQUEST`，`priority=NORMAL+1`）把全部段渲染成 `<key>` 换行 `value` 换行 `</key>`，按渲染后长度降序排序、用空行连接，再**滤掉已有的 `SystemMessage`** 后用 `Overwrite` 把拼好的系统提示放到 `messages[0]`；拼出来是空串、或与现有首条 `SystemMessage` 完全相同时返回 `None`，不白写一次 `Overwrite`。
-- 📜 **状态与运行时分离**：`models.GraphState`（会话状态：`messages` 用 `add_messages`、`prompts` 用 `SectionPatch`，两者**进 checkpoint**；不该落盘的东西一律放 `GraphRuntimeContext`）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖：`tool_surface` 必填，`client` / `custom_status` / `custom_mapping` 可选）分离 —— `context` 不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`（放 state 会因 msgpack 无法序列化而当场崩）。
+- 📜 **状态与运行时分离**：`models.GraphState`（会话状态：`messages` 用 `add_messages` 进 checkpoint、`prompts` 用 `UntrackedSectionPatch` **不进 checkpoint**；不该落盘的东西一律放 `GraphRuntimeContext`）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖：`tool_surface` 必填，`client` / `custom_status` / `custom_mapping` 可选）分离 —— `context` 不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`（放 state 会因 msgpack 无法序列化而当场崩）。
 - 🎛️ **配置模型化**：`PluginConfig` 含 `llm`（`LLMConfig`：`provider` / `model`（两个名字，由 `model_validator` 校验确实存在于 `providers` 里）/ `thinking_effort`（本项目的思考强度档位）/ `providers`（`List[Provider]`，每项用 `name` 字段标识 —— `Provider` 有 `name` / `base_url` / `api_key` / `client`（`openai` / `deepseek` / `anthropic`）/ `models`，而 `models` 是 `List[LLM]`、`LLM` 有 `name` / `context_window` / `max_tokens` / `support_visions` / `thinking_efforts`））、`tick`（`interval`，默认 60 秒）、`checkpointer`、`sub_plugin` 与 `graph`（`atimeout`，默认 60 秒，单条消息跑图的总超时）、`channel`（`atimeout`，默认 30 秒，拉取通道的超时）。
 - 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolSurface` 给出本轮副本、由 `ToolNode` 执行。返回值目前**不统一**：`system_tools` 的读写工具返回纯字符串（失败时 `[..]` 包裹），meme / 联网 / MCP 工具仍是 `{"status": bool, ...}` 字典。主包不内置任何工具，系统 / meme / 联网搜索工具全部由内置子插件注册，外部 MCP server 的工具由 `mcp_adapter` 每轮追加；`tool_permission_manager` 子插件在 `ON_BEFORE_REQUEST` 按 `config.yaml` 的 `allow` / `refuse` 白名单摘工具（**未配置即摘除**，`debug` 只影响日志）。
 - 🔍 **联网搜索**：`web_search` 子插件注册一个 `web_search` 工具（**工具名与后端无关**），`adapter` 选后端 —— 请求地址取自子插件 `config.yaml` 的 `api_url`（模板里 `langsearch` 为 `https://api.langsearch.com/v1/web-search`，另一个后端是 `deepseek`），原始响应整体交给模型。`adapter` 只影响工具的入参 schema 与返回数据形状，不影响工具名。实测**英文检索质量明显优于中文**（技术 / 包名类相关率约 65% vs 30%），工具 docstring 已要求模型优先用英文搜。
@@ -116,7 +116,7 @@ miaoli_bot/
 │   ├── graph_pipeline/            #   图管线本体
 │   │   ├── graph_pipeline.py      #     GraphPipeline：register_handler / wire / compile / ainvoke
 │   │   ├── actions/               #     Continue / Goto / Abort
-│   │   ├── channels/              #     SectionPatch 通道（按 key 打补丁，各插件写各自的段）
+│   │   ├── channels/              #     SectionPatch / UntrackedSectionPatch（按 key 打补丁，各插件写各自的段；后者不落盘）
 │   │   └── runtimes/handler.py    #     处理器登记行（event + priority + func）
 │   ├── notice_channel/            #   通道注册表 + 一轮内只读快照
 │   │   ├── channel_registry.py    #     ChannelRegistry：register / unregister / to_surface
@@ -147,7 +147,7 @@ miaoli_bot/
 │   ├── provider_not_found.py      #   ProviderNotFound（供应商未在配置中声明）
 │   └── repeat_dependence_error.py #   RepeatDependenceError（重复声明依赖）
 ├── models/                        # 数据模型
-│   ├── graph_state.py             #   GraphState（messages / prompts，两者都进 checkpoint）
+│   ├── graph_state.py             #   GraphState（messages 进 checkpoint / prompts 走不落盘通道）
 │   ├── graph_runtime_context.py   #   GraphRuntimeContext（tool_surface 必填，client / custom_* 可选）
 │   └── config/                    #   PluginConfig / LLMConfig / TickConfig / GraphConfig / Provider / LLM / ThinkingEffort / CheckpointerConfig / SubPluginConfig / ChannelConfig
 ├── plugins/                       # 14 个内置子插件（加载目录由 sub_plugin.load_from 指定）

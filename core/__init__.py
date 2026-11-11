@@ -12,6 +12,7 @@ from .graph_pipeline	import (
 	Abort,
 	BaseNodeAction,
 	SectionPatch,
+	UntrackedSectionPatch,
 	Handler,
 	AgentAborted,
 )
@@ -60,6 +61,7 @@ __all__ = [
 	"Abort",
 	"BaseNodeAction",
 	"SectionPatch",
+	"UntrackedSectionPatch",
 	"Handler",
 	"AgentAborted",
 

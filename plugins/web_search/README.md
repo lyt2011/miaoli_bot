@@ -6,11 +6,12 @@
 
 ## 工作方式
 
-`on_load` 里做三件事：
+`on_load` 里做四件事：
 
 1. 校验配置，把 `PluginConfig` / 原始配置 / `aiohttp.ClientSession` 写进 `SHARE_STORE`
-2. `enable: false` 时到此为止，**不注册工具**
+2. `enable: false` 时到此为止，**工具与节点都不注册**
 3. 否则按 `TOOL_MAPPING[config.adapter]` 注册**一个**工具
+4. 把使用说明写进提示词段（`inject_helper` 挂 `ON_AGENT_START`，`NORMAL`）
 
 同一时刻只有一个后端生效，两个工具对象都叫 `web_search`，靠 `TOOL_MAPPING` 二选一：
 
@@ -99,6 +100,36 @@ api_key: "sk-..."
 
 本插件**不做字段过滤，原始响应整体交给模型** —— 过滤省不了多少，却要维护一套解析逻辑。
 
+## 提示词段
+
+光有工具不够 —— 模型得知道**什么时候值得搜**、`count` 该给多少、搜到东西之后怎么用。这份说明由 `consts/prompt.py` 的 `HELPER_PROMPT` 提供（硬编码字符串，不读外部文件，没有配置项），`nodes/inject_helper.py` 每轮把它写进 `prompts` 的 `web-search-helper` 段：
+
+```python
+async def inject_helper(state, runtime) -> Dict[str, Any]:
+	"""把联网搜索的使用说明写进提示词段"""
+	return {"prompts": {"web-search-helper": HELPER_PROMPT}}
+```
+
+挂载点是 `ON_AGENT_START`（`NORMAL`），早于 `prompt_builder` 的 `ON_BEFORE_REQUEST`，所以每轮拼出来的 `SystemMessage` 里一定有这一段，形如：
+
+```
+<web-search-helper>
+# 联网搜索 (web_search) 使用说明
+...
+</web-search-helper>
+```
+
+665 字符（约 312 token）的固定成本，每轮都在。正文四节：
+
+| 节 | 内容 |
+| --- | --- |
+| 什么时候值得先查一次 | 没有可靠知识的公共事物（黑话 / 缩写 / 圈内梗 / 新词 / 新事件）、时效敏感的事、要给出具体数值或出处的事 —— 写成「倾向先查」，不是「必须查」 |
+| 怎么搜 | 一次只查一个点、不自己补造限定、相对时间换算成具体年月、`count` 默认 1~3、不把会话标识与成员称谓拼进查询 |
+| 搜完怎么用 | 对得上就照说并区分事实 / 推测；同名对不上就列候选反问；空或孤证就明说没查准，不拿搜索结果编圆 |
+| 适用范围 | 仅在 `web_search` 工具存在时生效；没这个工具时不许声称自己查过 |
+
+**为什么不定成「必须搜」**：实测（`deepseek-v4.1-flash`，13 个用例、N=2~3，A/B 摘掉该段做对照）模型对「X 是什么梗」和时效类问题本来就 100% 触发搜索，对「某人在干嘛」和孤立短词本来就 0% 触发 —— 强制措辞没测出增益，反而在个别用例上让它更爱搜。真正缺的是 `count` 的用法（见下节），所以这一版只提高搜索权重、不再下硬指令。
+
 ## 英文优先
 
 **实测英文检索质量明显优于中文**（`langsearch`，同一后端、同一时间、仅换语言；数据来自 v0.14.0，本次未复测）：技术 / 包名类 query 英文相关率约 **65%**、中文约 **30%**。
@@ -125,7 +156,9 @@ api_key: "sk-..."
 | **5** | **21,887** | **~6,253** |
 | 10 | 43,780 | ~12,508 |
 
-体积的 **80% 是 `summary`**（整页正文抽取，单条最长见过 3,500+ 字符）。`count` 填 50 时按线性外推约 6 万 token，一次就能吃掉 128K 窗口的一半 —— 默认值是刻意保守的。
+体积的 **80% 是 `summary`**（整页正文抽取，单条最长见过 3,500+ 字符）。
+
+上表来自 v0.14.0（`need_content: False`）。2026-11-11 复测（`deepseek`，query `大肥鱼 是什么梗`，默认 `need_content`）：`count: 3` → 6,246 字符（约 2,935 token），`count: 10` → 20,722 字符（约 9,739 token），单条约 2,100 字符，字段为 `title` / `site_name` / `authority` / `rerank_score` / `date` / `url` / `summary` / `snippet` / `content` —— 绝对体积约为上表的一半，但「`count` 线性放大」这个结论不变，所以提示词里要求默认只取 1~3 条。`count` 填 50 时按线性外推约 6 万 token，一次就能吃掉 128K 窗口的一半 —— 默认值是刻意保守的。
 
 ## 加新后端
 

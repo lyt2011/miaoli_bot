@@ -201,7 +201,7 @@ registry.on(ON_TURN_START, recognize_intent, priority=NORMAL)
 
 `register()` 内部是 `reverse=True` 排序，**priority 数值越大越先执行**；但 priority 只在**同一个图节点内**给处理器排序，跨节点先后由图里的边决定。
 
-`prompt_builder` 挂在 `ON_BEFORE_REQUEST`（`NORMAL + 1`），和本节点不是同一个事件，两边的 priority 没有可比性。注入能赶在拼装之前靠的是流程顺序：`ON_TURN_START` 之后先到 `ON_BEFORE_COMPACT`，再到 `ON_BEFORE_REQUEST`（`default_routing` 的 `on_turn_start` → `ON_BEFORE_COMPACT`）。`build_prompt` 会用 `Overwrite([SystemMessage, *messages])` 整个替换 `messages`，先注入的消息因此会进到重建后的列表里。
+`prompt_builder` 挂在 `ON_BEFORE_REQUEST`（`NORMAL + 1`），和本节点不是同一个事件，两边的 priority 没有可比性。注入能赶在拼装之前靠的是流程顺序：`ON_TURN_START` 之后直接到 `ON_BEFORE_REQUEST`（`default_routing` 的 `on_turn_start` → `ON_BEFORE_REQUEST`），`build_prompt` 是那个事件里的处理器。`build_prompt` 会用 `Overwrite([SystemMessage, *messages])` 整个替换 `messages`，先注入的消息因此会进到重建后的列表里。
 
 `main.py` 里那行注释写的是「必须早于 `prompt_builder` 的 `NORMAL + 1`（数值大者先跑），否则拼装时读不到本轮增删的段」—— 跨事件比 priority 和「增删段」都是改写前的说法，注释没跟着改，实际行为以本节为准。
 

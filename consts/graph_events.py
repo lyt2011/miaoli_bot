@@ -1,8 +1,5 @@
 ON_AGENT_START		= "__on_agent_start__"
 ON_TURN_START		= "__on_turn_start__"
-ON_BEFORE_COMPACT	= "__on_before_compact__"
-ON_COMPACT			= "__on_compact__"
-ON_AFTER_COMPACT	= "__on_after_compact__"
 ON_BEFORE_REQUEST	= "__on_before_request__"
 ON_REQUEST			= "__on_request__"
 ON_AFTER_REQUEST	= "__on_after_request__"
@@ -14,9 +11,6 @@ ON_AGENT_END		= "__on_agent_end__"
 GRAPH_EVENTS = [
 	ON_AGENT_START,
 	ON_TURN_START,
-	ON_BEFORE_COMPACT,
-	ON_COMPACT,
-	ON_AFTER_COMPACT,
 	ON_BEFORE_REQUEST,
 	ON_REQUEST,
 	ON_AFTER_REQUEST,

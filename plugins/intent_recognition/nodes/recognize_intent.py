@@ -33,9 +33,9 @@ async def recognize_intent(state: GraphState, runtime: Runtime[GraphRuntimeConte
 		return None
 	
 	# TODO: 判据只看末条消息，而注入产物本身也是 HumanMessage。ON_TURN_START 的
-	# on_tool_calling / on_after_compact 两条入边是回流、没有新用户输入，此时末条可能
-	# 正是刚注入的那条（或压缩保留下来的摘要），于是同一轮里再命中再注入 —— 配合
-	# compact 的 keep_recent 保留尾部，两者互相喂，只受 langgraph 递归上限约束。
+	# on_tool_calling 这条入边是回流、没有新用户输入，此时末条可能正是刚注入的那条
+	# （或压缩保留下来的摘要），于是同一轮里再命中再注入 —— 配合压缩保留尾部，
+	# 两者互相喂，只受 langgraph 递归上限约束。
 	content		= content_to_text(messages[-1])
 	segments	= {}
 	

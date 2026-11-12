@@ -1,10 +1,16 @@
-from .share_store		import SHARE_STORE, ShareStore
-from .graph_runner		import safe_run_graph
-from .plugin			import Loader, PluginProtocol
-from .handler_registry	import HandlerRegistry
-from .tool				import ToolRegistry, ToolSurface
-from .scheduler			import BaseTimer, Every, Job, Once
-from .notice_channel	import ChannelRegistry, ChannelSurface, ChannelDrainResult
+from .graph_runner				import safe_run_graph
+from .plugin					import Loader, PluginProtocol
+from .handler_registry			import HandlerRegistry
+from .tool						import ToolRegistry, ToolSurface
+from .share_store				import SHARE_STORE, ShareStore
+from .scheduler					import BaseTimer, Every, Job, Once
+from .notice_channel			import ChannelRegistry, ChannelSurface, ChannelDrainResult
+from .check_pointer_adapters	import (
+	InMemoryAdapter,
+	SQLiteAdapter,
+	PostgresqlAdapter,
+	BaseCheckpointerSaverAdapter,
+)
 from .graph_pipeline	import (
 	GraphPipeline,
 	Goto,
@@ -16,11 +22,16 @@ from .graph_pipeline	import (
 	Handler,
 	AgentAborted,
 )
-from .check_pointer_adapters	import (
-	InMemoryAdapter,
-	SQLiteAdapter,
-	PostgresqlAdapter,
-	BaseCheckpointerSaverAdapter,
+from .compact	import (
+	ChatHistory,
+	TokenPruner,
+	compact_now,
+	CompactSuccess,
+	CompactFailed,
+	base_calculate,
+	extract_content,
+	extract_tool_calls,
+	truncate_content_if_need,
 )
 
 __all__ = [
@@ -64,6 +75,17 @@ __all__ = [
 	"UntrackedSectionPatch",
 	"Handler",
 	"AgentAborted",
+
+	# compact
+	"ChatHistory",
+	"TokenPruner",
+	"compact_now",
+	"CompactSuccess",
+	"CompactFailed",
+	"base_calculate",
+	"extract_content",
+	"extract_tool_calls",
+	"truncate_content_if_need",
 
 	# check_pointer_adapters
 	"InMemoryAdapter",

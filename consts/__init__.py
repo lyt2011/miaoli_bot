@@ -30,9 +30,6 @@ from .share_store_keys	import (
 from .graph_events	import (
 	ON_AGENT_START,
 	ON_TURN_START,
-	ON_BEFORE_COMPACT,
-	ON_COMPACT,
-	ON_AFTER_COMPACT,
 	ON_BEFORE_REQUEST,
 	ON_AFTER_REQUEST,
 	ON_TOOL_CALLING,
@@ -66,9 +63,6 @@ __all__ = [
 	# graph_events
 	"ON_AGENT_START",
 	"ON_TURN_START",
-	"ON_BEFORE_COMPACT",
-	"ON_COMPACT",
-	"ON_AFTER_COMPACT",
 	"ON_BEFORE_REQUEST",
 	"ON_AFTER_REQUEST",
 	"ON_TOOL_CALLING",

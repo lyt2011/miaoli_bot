@@ -1,9 +1,0 @@
-from langgraph.runtime	import Runtime
-
-from miaoli_bot.core	import Goto
-from miaoli_bot.consts	import ON_TURN_START
-from miaoli_bot.models	import GraphRuntimeContext, GraphState
-
-
-async def on_after_compact(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -> Goto:
-	return Goto(goto=ON_TURN_START)

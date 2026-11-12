@@ -43,16 +43,15 @@ return {"prompts": {"meme-helper": None}}     # 删掉 meme-helper 段
 
 ## 与压缩的先后关系
 
-`build_prompt` 的优先级比 `context_compactor` 的守卫高，但两者**不在同一个事件上** —— 压缩走的是独立的 `ON_BEFORE_COMPACT` / `ON_COMPACT` / `ON_AFTER_COMPACT` 三段，在 `ON_BEFORE_REQUEST` 之前：
+`compact_if_need`（`base_nodes`，`priority=HIGH`）与 `build_prompt`（`NORMAL+1`）在**同一个事件** `ON_BEFORE_REQUEST` 上，`HIGH`(100) 严格高于 `NORMAL+1`(1)，所以每一轮都是先压缩、再拼装系统提示：
 
 ```
-ON_TURN_START → ON_BEFORE_COMPACT（守卫：压不压？）
-              → 需要压：ON_COMPACT → ON_AFTER_COMPACT → 跳回 ON_TURN_START
-              → 不需要压：直接到 ON_BEFORE_REQUEST
-ON_BEFORE_REQUEST → build_prompt（priority=NORMAL+1）→ 其余节点
+ON_BEFORE_REQUEST → compact_if_need（priority=HIGH：过门槛才压，Overwrite 拼回）
+                  → time_inject（NORMAL+2）
+                  → build_prompt（NORMAL+1）→ 其余节点
 ```
 
-所以 `build_prompt` 每次到达 `ON_BEFORE_REQUEST` 时，`messages` 已经是压缩后的结果 —— 不会出现「刚插进去的 `SystemMessage` 被压缩的 `Overwrite` 冲掉」。
+压缩的 `Overwrite` 只替换 `get_compaction_range` 求出的那段区间并保留区间外的原文，`build_prompt` 的 `Overwrite([SystemMessage, *messages])` 在它之后执行，因此插进去的系统提示不会被压缩冲掉。
 
 ## 与 account_injector 的分工
 

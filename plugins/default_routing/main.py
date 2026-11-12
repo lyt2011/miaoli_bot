@@ -1,14 +1,11 @@
 from miaoli_bot.core	import PluginProtocol
 from miaoli_bot.api		import get_handler_registry
-from miaoli_bot.consts	import MINIMUM, ON_AGENT_START, ON_TURN_START, ON_BEFORE_COMPACT, ON_COMPACT, ON_AFTER_COMPACT, ON_BEFORE_REQUEST, ON_REQUEST, ON_AFTER_REQUEST, ON_TOOL_CALLING, ON_TURN_END, ON_AGENT_END
+from miaoli_bot.consts	import MINIMUM, ON_AGENT_START, ON_TURN_START, ON_BEFORE_REQUEST, ON_REQUEST, ON_AFTER_REQUEST, ON_TOOL_CALLING, ON_TURN_END, ON_AGENT_END
 
 from .models	import PluginConfig
 from .nodes		import (
 	on_agent_start,
 	on_turn_start,
-	on_before_compact,
-	on_compact,
-	on_after_compact,
 	on_before_request,
 	on_request,
 	on_after_request,
@@ -44,9 +41,6 @@ class DefaultRouting(PluginProtocol):
 		
 		self.undo_list.append(registry.on(ON_AGENT_START, on_agent_start, priority=MINIMUM))
 		self.undo_list.append(registry.on(ON_TURN_START, on_turn_start, priority=MINIMUM))
-		self.undo_list.append(registry.on(ON_BEFORE_COMPACT, on_before_compact, priority=MINIMUM))
-		self.undo_list.append(registry.on(ON_COMPACT, on_compact, priority=MINIMUM))
-		self.undo_list.append(registry.on(ON_AFTER_COMPACT, on_after_compact, priority=MINIMUM))
 		self.undo_list.append(registry.on(ON_BEFORE_REQUEST, on_before_request, priority=MINIMUM))
 		self.undo_list.append(registry.on(ON_REQUEST, on_request, priority=MINIMUM))
 		self.undo_list.append(registry.on(ON_AFTER_REQUEST, on_after_request, priority=MINIMUM))

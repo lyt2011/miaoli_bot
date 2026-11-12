@@ -17,8 +17,8 @@ miaoli_bot 内部数据适配 —— `on_load` 把根配置解析成 `PluginConf
 
 | 节点 | 事件 / 优先级 | 产出 |
 | --- | --- | --- |
-| `inject_soul` | `on_turn_start`（`NORMAL + 1`） | `prompts` 的 `soul` 段，内容是 `data/SOUL.md` 全文 |
-| `inject_output_protocol` | `on_turn_start`（`NORMAL + 1`） | `prompts` 的 `output-protocol` 段，内容是 `data/output_protocol.md` 全文 |
+| `inject_soul` | `on_turn_start`（`MEDIUM`） | `prompts` 的 `soul` 段，内容是 `data/SOUL.md` 全文 |
+| `inject_output_protocol` | `on_turn_start`（`MEDIUM`） | `prompts` 的 `output-protocol` 段，内容是 `data/output_protocol.md` 全文 |
 
 两个节点都挂 `on_turn_start`，比 `prompt_builder` 的 `on_before_request` 早一个事件，所以它们写的段一定赶在拼装之前就位。
 

@@ -12,7 +12,7 @@
 | `refuse` | 摘除该工具 |
 | 未在权限表中声明 | **一律摘除**（默认拒绝），`debug` 为 `true` 时打一条 warning |
 
-判定在 `ON_BEFORE_REQUEST` 阶段完成，优先级 `1`。
+判定在 `ON_BEFORE_REQUEST` 阶段完成，优先级 `LOW`(-10)。
 
 > 早期版本按调用者身份（`admin` / `white_list` / `anyone` / `passerby` / `nobody`）区分权限。
 > 入口改成通道之后，一张图同时服务多个通道、多个会话，节点拿不到「这一轮是谁在说话」，

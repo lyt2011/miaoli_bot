@@ -29,7 +29,7 @@ class IntentRecognition(PluginProtocol):
 		if not config.enable:
 			return None
 		
-		# 必须早于 prompt_builder 的 NORMAL + 1（数值大者先跑），否则拼装时读不到本轮增删的段
+		# 与 prompt_builder 不在同一个事件上，跨事件比 priority 没有意义；先后由 default_routing 的跳转决定
 		self.undo_list.append(
 			registry.on(ON_TURN_START, recognize_intent, priority=NORMAL),
 		)

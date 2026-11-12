@@ -1,5 +1,5 @@
 from miaoli_bot.core	import PluginProtocol
-from miaoli_bot.consts	import ON_BEFORE_REQUEST
+from miaoli_bot.consts	import LOW, ON_BEFORE_REQUEST
 from miaoli_bot.api		import store_set, get_handler_registry
 
 from .nodes		import pick_tools
@@ -27,7 +27,7 @@ class ToolPermissionManager(PluginProtocol):
 		if not config.enable:
 			return None
 		
-		self.undo_list.append(registry.on(ON_BEFORE_REQUEST, pick_tools, 1))
+		self.undo_list.append(registry.on(ON_BEFORE_REQUEST, pick_tools, priority=LOW))
 	
 	async def on_close(self) -> None:
 		

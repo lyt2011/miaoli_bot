@@ -22,7 +22,7 @@ return {"prompts": {"meme-helper": None}}     # 删掉 meme-helper 段
 
 ## 工作流程
 
-`build_prompt` 挂在 `on_before_request`（`priority=NORMAL + 1`）：
+`build_prompt` 挂在 `on_before_request`（`priority=NORMAL`）：
 
 1. **取段** —— 遍历 `state["prompts"]`，每段渲染成 `<key>\nvalue\n</key>`
 2. **排序** —— 渲染好的段按**长度降序**排列（`sorted(..., key=len, reverse=True)`），最长的那段排在前面，保证同一组段每次拼出的串完全一致
@@ -43,12 +43,12 @@ return {"prompts": {"meme-helper": None}}     # 删掉 meme-helper 段
 
 ## 与压缩的先后关系
 
-`compact_if_need`（`base_nodes`，`priority=HIGH`）与 `build_prompt`（`NORMAL+1`）在**同一个事件** `ON_BEFORE_REQUEST` 上，`HIGH`(100) 严格高于 `NORMAL+1`(1)，所以每一轮都是先压缩、再拼装系统提示：
+`compact_if_need`（`base_nodes`，`priority=HIGH`）与 `build_prompt`（`NORMAL`）在**同一个事件** `ON_BEFORE_REQUEST` 上，`HIGH`(100) 严格高于 `NORMAL+1`(1)，所以每一轮都是先压缩、再拼装系统提示：
 
 ```
 ON_BEFORE_REQUEST → compact_if_need（priority=HIGH：过门槛才压，Overwrite 拼回）
-                  → time_inject（NORMAL+2）
-                  → build_prompt（NORMAL+1）→ 其余节点
+                  → time_inject（MEDIUM）
+                  → build_prompt（NORMAL）→ pick_tools（LOW）
 ```
 
 压缩的 `Overwrite` 只替换 `get_compaction_range` 求出的那段区间并保留区间外的原文，`build_prompt` 的 `Overwrite([SystemMessage, *messages])` 在它之后执行，因此插进去的系统提示不会被压缩冲掉。
@@ -62,9 +62,9 @@ ON_BEFORE_REQUEST → compact_if_need（priority=HIGH：过门槛才压，Overwr
 ## 注册
 
 ```python
-registry.on(ON_BEFORE_REQUEST, build_prompt, priority=NORMAL + 1)
+registry.on(ON_BEFORE_REQUEST, build_prompt, priority=NORMAL)
 ```
 
-`registry` 内部是 `reverse=True` 排序，**priority 数值越大越先执行**。比 `NORMAL` 高一级，先于一切用 `NORMAL` 注册的处理器，也先于 `default_routing` 的默认跳转（`MINIMUM`）。
+`registry` 内部是 `reverse=True` 排序，**priority 数值越大越先执行**。本插件用 `NORMAL`(0)，先于 `default_routing` 的默认跳转（`MINIMUM`）。
 
-`tool_permission_manager` 的 `pick_tools` 注册的也是 `priority=1`，与本插件**同档** —— 同档按注册顺序（即插件加载顺序）执行，本插件不保证排在它前面。
+`tool_permission_manager` 的 `pick_tools` 用 `LOW`(-10)，严格低于本插件 —— 它摘的是工具表，与本插件写 `messages[0]` 互不干扰，先后不依赖插件加载顺序。

@@ -1,5 +1,5 @@
 from miaoli_bot.core	import PluginProtocol
-from miaoli_bot.consts	import NORMAL, ON_REQUEST
+from miaoli_bot.consts	import MEDIUM, ON_REQUEST
 from miaoli_bot.api		import store_set, get_handler_registry
 
 from .models	import PluginConfig
@@ -31,7 +31,7 @@ class PendingToolFixer(PluginProtocol):
 			return None
 		
 		# 优先级高于 call_llm(0) 保证在请求模型之前修好
-		self.undo_list.append(registry.on(ON_REQUEST, fix_pending_tool_call, priority=NORMAL+2))
+		self.undo_list.append(registry.on(ON_REQUEST, fix_pending_tool_call, priority=MEDIUM))
 	
 	async def on_close(self) -> None:
 		

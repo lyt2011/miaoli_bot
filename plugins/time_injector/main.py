@@ -1,6 +1,6 @@
 from miaoli_bot.core	import PluginProtocol
 from miaoli_bot.api		import get_handler_registry, store_set
-from miaoli_bot.consts	import NORMAL, ON_AGENT_START, ON_BEFORE_REQUEST
+from miaoli_bot.consts	import MEDIUM, NORMAL, ON_AGENT_START, ON_BEFORE_REQUEST
 
 from .models	import PluginConfig
 from .nodes		import helper_inject, time_inject
@@ -27,7 +27,7 @@ class TimeInjector(PluginProtocol):
 			self.undo_list.append(store_set(PLUGIN_CONFIG, config))
 			self.undo_list.append(store_set(LAST_INJECTED_AT, {}))
 			
-			self.undo_list.append(registry.on(ON_BEFORE_REQUEST, time_inject, priority=NORMAL + 2))
+			self.undo_list.append(registry.on(ON_BEFORE_REQUEST, time_inject, priority=MEDIUM))
 			self.undo_list.append(registry.on(ON_AGENT_START, helper_inject, priority=NORMAL))
 	
 	async def on_close(self) -> None:

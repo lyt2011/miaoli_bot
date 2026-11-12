@@ -1,6 +1,6 @@
 修复悬空的工具调用 —— 「有请求没返回」。
 
-`fix_pending_tool_call` 节点挂在 `ON_REQUEST`（`priority=NORMAL+2`），发现存在发起但不存在返回的 `tool_call` 时，在每个悬空 `AIMessage` 之后插一条合成的 `ToolMessage`（`status="error"`、`id=f"auto-fix: {tool_call_id}"`），返回 `Overwrite` 整表替换。
+`fix_pending_tool_call` 节点挂在 `ON_REQUEST`（`priority=MEDIUM`），发现存在发起但不存在返回的 `tool_call` 时，在每个悬空 `AIMessage` 之后插一条合成的 `ToolMessage`（`status="error"`、`id=f"auto-fix: {tool_call_id}"`），返回 `Overwrite` 整表替换。
 
 历史本就合法时（`fixed == 0`）直接返回 `None` —— 这条守卫是必需的，否则每轮都会把整张消息表写进 `checkpoint_writes`。
 

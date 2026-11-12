@@ -1,5 +1,5 @@
 from miaoli_bot.core	import PluginProtocol
-from miaoli_bot.consts	import NORMAL, ON_TURN_START
+from miaoli_bot.consts	import MEDIUM, ON_TURN_START
 from miaoli_bot.api		import store_set, get_handler_registry
 
 from .models	import PluginConfig
@@ -31,10 +31,10 @@ class MiaoliBotAdapter(PluginProtocol):
 			return None
 		
 		self.undo_list.append(
-			registry.on(ON_TURN_START, inject_soul, priority=NORMAL + 1),
+			registry.on(ON_TURN_START, inject_soul, priority=MEDIUM),
 		)
 		self.undo_list.append(
-			registry.on(ON_TURN_START, inject_output_protocol, priority=NORMAL + 1),
+			registry.on(ON_TURN_START, inject_output_protocol, priority=MEDIUM),
 		)
 	
 	async def on_close(self) -> None:

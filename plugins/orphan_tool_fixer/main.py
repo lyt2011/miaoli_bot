@@ -1,5 +1,5 @@
 from miaoli_bot.core	import PluginProtocol
-from miaoli_bot.consts	import NORMAL, ON_REQUEST
+from miaoli_bot.consts	import MEDIUM, ON_REQUEST
 from miaoli_bot.api		import get_handler_registry
 
 from .models	import PluginConfig
@@ -24,7 +24,7 @@ class OrphanToolFixer(PluginProtocol):
 		if not config.enable:
 			return None
 		
-		self.undo_list.append(registry.on(ON_REQUEST, fix_orphan_tool_message, priority=NORMAL+2))
+		self.undo_list.append(registry.on(ON_REQUEST, fix_orphan_tool_message, priority=MEDIUM))
 	
 	async def on_close(self) -> None:
 		

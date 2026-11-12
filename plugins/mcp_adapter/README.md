@@ -16,7 +16,7 @@ MCP 适配子插件：接入 [MCP（Model Context Protocol）](https://modelcont
 | 事件 | 本插件 | `tool_permission_manager` |
 |---|---|---|
 | `on_agent_start` | ✅ `inject_mcp_tools`（`MEDIUM` = 10） | — |
-| `on_before_request` | — | ✅ `pick_tools`（`priority=1`） |
+| `on_before_request` | — | ✅ `pick_tools`（`priority=LOW`） |
 
 `GRAPH_EVENTS` 里 `on_agent_start` 排在 `on_before_request` 之前，所以顺序天然是：
 

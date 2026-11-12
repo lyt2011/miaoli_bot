@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.48.1](CHANGELOG/v0.48.1.md) — 2026-11-11 — 🎚️ 六处 `NORMAL+n` / 字面量优先级换成档位常量，事件内执行顺序逐一比对一致；`manifest.toml` 删掉已无引用方的 `pillow` / `tiktoken`
 - [v0.48.0](CHANGELOG/v0.48.0.md) — 2026-11-11 — 🗜️ 压缩从「三个图事件 + `context_compactor` 子插件」收回成 `base_nodes` 的一个节点 + 一段区间，切点按「用户原话整组」求，删掉 `context_compactor` 与三个事件（破坏性）
 - [v0.47.0](CHANGELOG/v0.47.0.md) — 2026-11-11 — 🗄️ `prompts` 改用不落盘的 `UntrackedSectionPatch`，每轮不再往 `checkpoint_blobs` 写提示词段集合
 - [v0.46.0](CHANGELOG/v0.46.0.md) — 2026-11-10 — ⏱️ 时间戳去掉秒（`%H:%M`）、`interval` 加 `ge=60` 下限，假精度不再进上下文（破坏性）

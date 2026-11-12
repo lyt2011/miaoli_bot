@@ -9,7 +9,7 @@
 | 节点 | 事件 | 优先级 | 写哪儿 |
 |---|---|---|---|
 | `helper_inject` | `ON_AGENT_START` | `NORMAL` | `prompts` 的 `time-inject-helper` 段 |
-| `time_inject` | `ON_BEFORE_REQUEST` | `NORMAL + 2` | `messages` 末尾一条 `HumanMessage` |
+| `time_inject` | `ON_BEFORE_REQUEST` | `MEDIUM` | `messages` 末尾一条 `HumanMessage` |
 
 ## 为什么分成两个通道
 
@@ -20,7 +20,7 @@
 - **时间值**每秒都在变，绝不能进 `prompts` —— 每轮都会撞碎前缀缓存。它走 `messages` 尾部追加，前缀不动，只有新增的那 78 个字符是未命中的。
 - **说明文本**是常量，进 `prompts` 后 `SystemMessage` 每轮逐字符相同，缓存照常命中，边际成本接近 0。
 
-同理，`time_inject` 的优先级 `NORMAL + 2` 是刻意的：`prompt_builder` 的 `build_prompt` 是 `NORMAL + 1`，本插件的说明段要能被同一轮的 `build_prompt` 读到。`helper_inject` 挂在 `ON_AGENT_START` 上，每轮跑图只执行一次，而 `ON_TURN_START` 会随工具循环反复进入。
+同理，`time_inject` 的优先级 `MEDIUM`(10) 是刻意的：`prompt_builder` 的 `build_prompt` 是 `NORMAL`(0)，本插件要排在它之前，时间块才会落在本轮系统提示词之后、而不是被后续的 `Overwrite` 顺序绕过去。`helper_inject` 挂在 `ON_AGENT_START` 上，每轮跑图只执行一次，而 `ON_TURN_START` 会随工具循环反复进入。
 
 ## 注入内容
 

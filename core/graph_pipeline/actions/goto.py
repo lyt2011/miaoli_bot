@@ -1,6 +1,6 @@
 from langgraph.types	import Send
 
-from ....protocols.node_action	import BaseNodeAction
+from ....protocols	import BaseNodeAction
 
 from typing	import List, Optional, Union
 

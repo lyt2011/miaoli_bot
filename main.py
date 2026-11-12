@@ -47,7 +47,7 @@ from .core	import (
 	GraphPipeline,
 	AgentAborted,
 
-	# check_pointer_adapters
+	# checkpointer_adapters
 	InMemoryAdapter,
 	SQLiteAdapter,
 	PostgresqlAdapter,

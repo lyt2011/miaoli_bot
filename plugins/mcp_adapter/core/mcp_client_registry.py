@@ -1,5 +1,5 @@
 from ..models.runtimes	import MCPClient
-from ..protocols		import ToolObtainanle
+from ..protocols		import ToolObtainable
 
 from typing	import Any, List
 
@@ -11,7 +11,7 @@ class MCPClientRegistry:
 		self.clients		: List[MCPClient]	= []
 		self._cached_tools	: List[Any]			= []
 	
-	def register_client(self, client: ToolObtainanle, reusable: bool) -> None:
+	def register_client(self, client: ToolObtainable, reusable: bool) -> None:
 		
 		"""注册客户端 自动去重(实例级)"""
 		

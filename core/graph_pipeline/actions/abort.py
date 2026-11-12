@@ -1,4 +1,4 @@
-from ....protocols.node_action	import BaseNodeAction
+from ....protocols	import BaseNodeAction
 
 from typing	import Optional
 

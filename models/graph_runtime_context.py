@@ -1,6 +1,6 @@
 from langchain_core.language_models	import BaseChatModel
 
-from ..core.tool	import ToolSurface
+from ..core	import ToolSurface
 
 from typing	import Any, Dict, List, NotRequired, TypedDict, Optional
 

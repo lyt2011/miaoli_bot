@@ -1,4 +1,4 @@
-from .compact		import compact_now
+from .compact_now	import compact_now
 from .chat_history	import ChatHistory
 from .token_pruner	import TokenPruner
 from .runtimes		import CompactFailed, CompactSuccess

@@ -1,8 +1,8 @@
 from langgraph._internal._typing	import MISSING
 
-from typing	import Any, Self
-
 from .section_patch	import SectionPatch
+
+from typing	import Any, Self
 
 
 class UntrackedSectionPatch(SectionPatch):

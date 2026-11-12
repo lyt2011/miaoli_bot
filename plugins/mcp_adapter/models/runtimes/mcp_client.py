@@ -1,4 +1,4 @@
-from ...protocols	import ToolObtainanle
+from ...protocols	import ToolObtainable
 
 from dataclasses	import dataclass
 
@@ -7,4 +7,4 @@ from dataclasses	import dataclass
 class MCPClient:
 	
 	reusable: bool
-	client	: ToolObtainanle
+	client	: ToolObtainable

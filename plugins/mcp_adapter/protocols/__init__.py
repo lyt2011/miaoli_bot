@@ -1,8 +1,8 @@
-from .tool_obtainable	import ToolObtainanle
+from .tool_obtainable	import ToolObtainable
 
 
 __all__ = [
 
-	"ToolObtainanle",
+	"ToolObtainable",
 
 ]

@@ -12,8 +12,8 @@ class CompactSuccess:
 	summary		: str
 	used_time	: float
 	
-	tokens_before	: int
-	tokens_after	: int
+	tokens_before	: float
+	tokens_after	: float
 	
 	messages_before	: List[BaseMessage]
 	messages_after	: List[BaseMessage]

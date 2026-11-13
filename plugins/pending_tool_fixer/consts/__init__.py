@@ -1,9 +1,7 @@
-from .share_store_keys	import PLUGIN_CONFIG, RAW_CONFIG
+from .fix_texts	import COMMON_FIX_TEXT, INVALID_FIX_TEXT
 
 
 __all__ = [
-
-	"PLUGIN_CONFIG",
-	"RAW_CONFIG",
-
+	"COMMON_FIX_TEXT",
+	"INVALID_FIX_TEXT",
 ]

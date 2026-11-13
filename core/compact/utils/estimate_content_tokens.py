@@ -4,20 +4,20 @@ from ..consts				import DEFAULT_PAYLOAD_TOKENS
 from .estimate_text_tokens	import estimate_text_tokens
 
 
-def estimate_content_tokens(content: Union[str, list]) -> int:
+def estimate_content_tokens(content: Union[str, list]) -> float:
 	
 	"""
-	全量估算 content 的 token 会计算多模态内容
-	压缩链路不使用这个入口: 压缩模型只看聊天记录 图片等块不计入
+	估算 content 的 token 会计算多模态内容
+	返回未取整的 float 取整与舍入由调用方决定
 	"""
 	
 	if isinstance(content, str):
-		return int(estimate_text_tokens(content))
+		return estimate_text_tokens(content)
 	
 	return _estimate_blocks(content)
 
 
-def _estimate_blocks(blocks: List[Union[str, Dict[str, Any]]]) -> int:
+def _estimate_blocks(blocks: List[Union[str, Dict[str, Any]]]) -> float:
 	
 	total = 0.0
 	
@@ -29,7 +29,8 @@ def _estimate_blocks(blocks: List[Union[str, Dict[str, Any]]]) -> int:
 		
 		elif isinstance(block, dict):
 			
-			if text := block.get("text"):
+			text = block.get("text")
+			if text is not None:
 				total = total + estimate_text_tokens(text)
 			
 			elif block.get("image_url"):
@@ -41,4 +42,4 @@ def _estimate_blocks(blocks: List[Union[str, Dict[str, Any]]]) -> int:
 		else:
 			raise TypeError(f"未知的多模态数组类型: {type(block).__name__}")
 	
-	return int(total)
+	return total

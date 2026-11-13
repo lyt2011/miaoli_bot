@@ -23,7 +23,6 @@ from .graph_pipeline	import (
 )
 from .compact	import (
 	ChatHistory,
-	TokenPruner,
 	compact_now,
 	CompactSuccess,
 	CompactFailed,
@@ -32,6 +31,7 @@ from .compact	import (
 	estimate_text_tokens,
 	extract_content,
 	extract_tool_calls,
+	prune_messages,
 	truncate_content_if_need,
 )
 
@@ -73,7 +73,6 @@ __all__ = [
 
 	# compact
 	"ChatHistory",
-	"TokenPruner",
 	"compact_now",
 	"CompactSuccess",
 	"CompactFailed",
@@ -82,6 +81,7 @@ __all__ = [
 	"estimate_text_tokens",
 	"extract_content",
 	"extract_tool_calls",
+	"prune_messages",
 	"truncate_content_if_need",
 
 	# checkpointer_adapters

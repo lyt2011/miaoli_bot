@@ -1,7 +1,9 @@
-from langchain_core.messages	import ToolCall, ToolMessage
+from langchain_core.messages	import InvalidToolCall, ToolCall, ToolMessage
+
+from typing	import Union
 
 
-def fix_tool_message(tool_call: ToolCall, content: str) -> ToolMessage:
+def fix_tool_message(tool_call: Union[ToolCall, InvalidToolCall], content: str) -> ToolMessage:
 	
 	"""为悬空的 tool_call 合成一条「工具未执行」的返回"""
 	

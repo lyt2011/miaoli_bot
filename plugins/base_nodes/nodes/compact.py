@@ -6,7 +6,7 @@ from langgraph.config	import get_config
 
 from miaoli_bot.api		import get_model_info
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
-from miaoli_bot.core	import CompactFailed, base_calculate, compact_now
+from miaoli_bot.core	import CompactFailed, compact_now, estimate_message_tokens
 
 from ..utils	import get_compaction_range
 
@@ -26,7 +26,7 @@ async def compact_if_need(state: GraphState, runtime: Runtime[GraphRuntimeContex
 	config		= get_model_info()
 	
 	# 对当前上下文立即求 tokens 数量 对于当前 token 小于 (上下文 - 最大输出) 保留值则不压缩
-	tokens = sum(base_calculate(message) for message in messages)
+	tokens = sum(estimate_message_tokens(message) for message in messages)
 	if tokens < (config["context_window"] - config["max_tokens"]):
 		return None
 

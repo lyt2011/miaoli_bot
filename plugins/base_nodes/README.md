@@ -14,7 +14,7 @@
 
 两步都是短路优先：
 
-1. **门槛**：`sum(base_calculate(message) for message in messages) < context_window - max_tokens` 直接返回 `None`，不发请求、不写增量。`context_window` / `max_tokens` 取自 `api.get_model_info()`（`model.model_dump()`，按字典键取）。
+1. **门槛**：`sum(estimate_message_tokens(message) for message in messages) < context_window - max_tokens` 直接返回 `None`，不发请求、不写增量。`context_window` / `max_tokens` 取自 `api.get_model_info()`（`model.model_dump()`，按字典键取）。
 2. **区间**：`get_compaction_range(messages)` 返回 `None`（没有可压的段落）也直接返回 `None`。
 
 过了两道之后把 `messages[p_start:p_end + 1]` 交给 `compact_now(messages, client, 20000)`，返回 `CompactFailed` 时只打日志、返回 `None`（原历史保持不动）；`CompactSuccess` 时按

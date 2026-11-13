@@ -1,12 +1,13 @@
 from langchain_core.messages	import AIMessage, BaseMessage
 
+from .estimate_text_tokens	import estimate_text_tokens
 from .extract_content		import extract_content
 from .extract_tool_calls	import extract_tool_calls
 
 
-def base_calculate(message: BaseMessage) -> int:
+def estimate_message_tokens(message: BaseMessage) -> int:
 	
-	"""计算 BaseMessage 的 token (基于公式)"""
+	"""粗估单条消息的 token (只算纯文本 图片等多模态内容不计)"""
 	
 	content	= extract_content(message)
 	
@@ -15,5 +16,4 @@ def base_calculate(message: BaseMessage) -> int:
 		for tool_call in extract_tool_calls(message):
 			content = content + tool_call
 	
-	# NOTE: 公式最简实现 能用但不咋好用
-	return int(len(content) * 0.47)
+	return int(estimate_text_tokens(content))

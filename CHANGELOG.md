@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.49.0](CHANGELOG/v0.49.0.md) — 2026-11-13 — 🎭 人设与输出协议按「脱离框架还成不成立」重划边界：协议只剩框架机制（2427 → 637 字符），人设改散文承接全部语气（1258 → 1113 字符）；压缩 utils 收成三个估算入口并统一 0.47 来源（破坏性）
 - [v0.48.3](CHANGELOG/v0.48.3.md) — 2026-11-12 — 🧹 纯结构清理：`check_pointer_adapters` 改名并让三个适配器文件对上类名，删掉没人用的 `core/scheduler/` 与 `BaseTimer`，修跨两层导入与 `ToolObtainanle` 拼写，README 中英对齐真实目录
 - [v0.48.2](CHANGELOG/v0.48.2.md) — 2026-11-11 — 🔍 `web_search` 补一段 `web-search-helper` 提示词段：什么时候值得查、`count` 给多少、搜完怎么用；只提高搜索倾向，不下「必须搜」的硬指令
 - [v0.48.1](CHANGELOG/v0.48.1.md) — 2026-11-11 — 🎚️ 六处 `NORMAL+n` / 字面量优先级换成档位常量，事件内执行顺序逐一比对一致；`manifest.toml` 删掉已无引用方的 `pillow` / `tiktoken`

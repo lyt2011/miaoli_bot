@@ -1,6 +1,6 @@
 from langchain_core.messages	import AIMessage, BaseMessage, SystemMessage, ToolMessage
 
-from .utils	import base_calculate
+from .utils	import estimate_message_tokens
 
 from typing	import List, Self
 
@@ -17,7 +17,7 @@ class TokenPruner:
 	@classmethod
 	def from_messages(cls, messages: List[BaseMessage]) -> Self:
 		"""从消息数组直接构建实例 内部自动基于公式计算 token"""
-		return cls(messages=messages, tokens=[base_calculate(message) for message in messages])
+		return cls(messages=messages, tokens=[estimate_message_tokens(message) for message in messages])
 	
 	@property
 	def messages(self) -> List[BaseMessage]:

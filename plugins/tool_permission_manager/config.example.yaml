@@ -6,13 +6,20 @@
 # config.yaml 已加入 .gitignore，不会被提交。本文件是入库的模板。
 # 键名与 models/plugin_config.py 的 PluginConfig 一一对应。
 #
-# 判定规则（nodes/pick_tools.py）：
-#   mode = "allow"   → 保留该工具
-#   mode = "refuse"  → 摘除该工具
-#   未出现在 permissions 里 → 一律摘除（默认拒绝）
+# 判定规则（nodes/pick_tools.py，判定函数在 utils/is_allowed.py）：
+#   allowed = "all"                → 所有会话都保留该工具
+#   allowed = ["private-x", ...]   → 只有列表里的 thread_id 保留该工具
+#   allowed = null / [] / 不写     → 一律摘除
+#   未出现在 permissions 里         → 一律摘除（默认拒绝）
+#
+# thread_id 取自 get_config()["configurable"]["thread_id"]，形如
+# private-3757973483 / group-1046279455；同一个 QQ 号在私聊和群聊里是两个不同的值。
 #
 # 所以每新增一个工具，都要记得在这里补条目；debug = true 时漏配会打 warning。
 # 被摘掉的工具模型看不见、执行器也拿不到。
+#
+# ⚠️ 只有 allowed 字段生效。老版本写的 mode 会被当作多余字段忽略，
+#    allowed 落到默认 [] —— 结果是所有工具被摘光，而不是报错。
 
 enable: true
 
@@ -20,19 +27,29 @@ debug: true                   # 对未配置的工具打 warning；生产环境�
 
 permissions:
 
-  # mode 只有两种取值：
-  #   "allow"   放行
-  #   "refuse"  拒绝（等同于直接不写这条，但留在表里有据可查）
-
-  - name: "web_search"
-    mode: "allow"
-
-  - name: "send_message_to_qq"
-    mode: "allow"
-
-  # 危险工具示例：多通道共用一个图时无法区分调用者身份，默认拒绝
+  # —— 只给管理员私聊 ——
   - name: "bash"
-    mode: "refuse"
+    allowed: ["private-3757973483"]
+
+  - name: "read_file"
+    allowed: ["private-3757973483"]
 
   - name: "write"
-    mode: "refuse"
+    allowed: ["private-3757973483"]
+
+  - name: "replace"
+    allowed: ["private-3757973483"]
+
+  - name: "read_image"
+    allowed: ["private-3757973483"]
+
+  # —— 所有会话 ——
+  - name: "send_message_to_qq"
+    allowed: "all"
+
+  - name: "web_search"
+    allowed: "all"
+
+  # —— 谁都不能用（等同于不写这条，但留在表里有据可查）——
+  - name: "archive_qq_meme"
+    allowed: null

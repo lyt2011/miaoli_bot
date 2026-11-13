@@ -2,7 +2,7 @@
 
 [English](README/en.md) | **简体中文**
 
-- **版本**：0.49.2
+- **版本**：0.50.0
 - **定位**：一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把通道收到的对话交给 LLM，让模型思考、回复并调用工具
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
@@ -20,7 +20,7 @@
 - 📝 **提示词分段拼装**：`prompts` 不是一整个字符串，而是 `Dict[str, str]` —— 各子插件写各自的段（`{"identity": …}` / `{"style": …}`），写入 `None` 表示删除该段。`prompt_builder` 子插件的 `build_prompt` 节点（`ON_BEFORE_REQUEST`，`priority=NORMAL`）把全部段渲染成 `<key>` 换行 `value` 换行 `</key>`，按渲染后长度降序排序、用空行连接，再**滤掉已有的 `SystemMessage`** 后用 `Overwrite` 把拼好的系统提示放到 `messages[0]`；拼出来是空串、或与现有首条 `SystemMessage` 完全相同时返回 `None`，不白写一次 `Overwrite`。
 - 📜 **状态与运行时分离**：`models.GraphState`（会话状态：`messages` 用 `add_messages` 进 checkpoint、`prompts` 用 `UntrackedSectionPatch` **不进 checkpoint**；不该落盘的东西一律放 `GraphRuntimeContext`）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖：`tool_surface` 必填，`client` / `custom_status` / `custom_mapping` 可选）分离 —— `context` 不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`（放 state 会因 msgpack 无法序列化而当场崩）。
 - 🎛️ **配置模型化**：`PluginConfig` 含 `llm`（`LLMConfig`：`provider` / `model`（两个名字，由 `model_validator` 校验确实存在于 `providers` 里）/ `thinking_effort`（本项目的思考强度档位）/ `providers`（`List[Provider]`，每项用 `name` 字段标识 —— `Provider` 有 `name` / `base_url` / `api_key` / `client`（`openai` / `deepseek` / `anthropic`）/ `models`，而 `models` 是 `List[LLM]`、`LLM` 有 `name` / `context_window` / `max_tokens` / `support_visions` / `thinking_efforts`））、`tick`（`interval`，默认 60 秒）、`checkpointer`、`sub_plugin` 与 `graph`（`atimeout`，默认 60 秒，单条消息跑图的总超时）、`channel`（`atimeout`，默认 30 秒，拉取通道的超时）。
-- 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolSurface` 给出本轮副本、由 `ToolNode` 执行。返回值目前**不统一**：`system_tools` 的读写工具返回纯字符串（失败时 `[..]` 包裹），meme / 联网 / MCP 工具仍是 `{"status": bool, ...}` 字典。主包不内置任何工具，系统 / meme / 联网搜索工具全部由内置子插件注册，外部 MCP server 的工具由 `mcp_adapter` 每轮追加；`tool_permission_manager` 子插件在 `ON_BEFORE_REQUEST` 按 `config.yaml` 的 `allow` / `refuse` 白名单摘工具（**未配置即摘除**，`debug` 只影响日志）。
+- 🛠️ **工具调用闭环**：工具统一经 `ToolRegistry` 注册、由 `ToolSurface` 给出本轮副本、由 `ToolNode` 执行。返回值目前**不统一**：`system_tools` 的读写工具返回纯字符串（失败时 `[..]` 包裹），meme / 联网 / MCP 工具仍是 `{"status": bool, ...}` 字典。主包不内置任何工具，系统 / meme / 联网搜索工具全部由内置子插件注册，外部 MCP server 的工具由 `mcp_adapter` 每轮追加；`tool_permission_manager` 子插件在 `ON_BEFORE_REQUEST` 按 `config.yaml` 的授权表摘工具：`allowed` 写 `"all"`、写 `thread_id` 列表、或写 `null`，**未配置即摘除**，`debug` 只影响日志。
 - 🔍 **联网搜索**：`web_search` 子插件注册一个 `web_search` 工具（**工具名与后端无关**），`adapter` 选后端 —— 请求地址取自子插件 `config.yaml` 的 `api_url`（模板里 `langsearch` 为 `https://api.langsearch.com/v1/web-search`，另一个后端是 `deepseek`），原始响应整体交给模型。`adapter` 只影响工具的入参 schema 与返回数据形状，不影响工具名。实测**英文检索质量明显优于中文**（技术 / 包名类相关率约 65% vs 30%），工具 docstring 已要求模型优先用英文搜。另有一段 `web-search-helper` 提示词段（`ON_AGENT_START` 每轮写入 `prompts`），说明什么时候值得先查一次、`count` 该给多少、搜完之后怎么用。
 - 🔧 **协议先行**：抽象集中在顶层 `protocols/`，不跟实现走 —— `plugin.py`（`PluginProtocol`：`on_load` / `on_close`）、`node_action.py`（`BaseNodeAction`，`Continue` / `Goto` / `Abort` 的共同基类）、`checkpointer_adapter.py`（`BaseCheckpointerSaverAdapter`）、`channel/`（`BaseChannel`：`name` / `platforms` / `drain` / `reply`；`BaseChannelMessage`：`thread_id` / `platform` / `to_content`）。子插件与各层都从这里取协议，不依赖具体实现。`platforms` 是通道自报的 `FrozenSet[str]`「我能收发哪些平台」，主包用它和每条消息自带的 `platform` 做**对称路由**：什么东西进来就什么东西出去
 - 🗄️ **checkpointer 适配层**：`checkpointer.database` 在 `memory` / `sqlite` / `postgresql` 之间切换 checkpoint 存储 —— `core/checkpointer_adapters/` 的三个适配器把 `InMemorySaver` / `AsyncSqliteSaver` / `AsyncPostgresSaver` 收拢成同一门面（1:1 转发 `BaseCheckpointSaver` 的同步 / 异步协议方法，`connect(connect_to, **extra)` 建连、`close()` 释放），`main.py` 的 `CPA_MAPPING` 按 `database` 取类，`on_load` 注入图、`on_close` 统一关闭。
@@ -60,7 +60,7 @@ miaoli_bot.core.GraphPipeline.ainvoke({"messages": [HumanMessage(to_content())]}
    ON_BEFORE_REQUEST ── compact_if_need（base_nodes，HIGH：过门槛才压，Overwrite 拼回区间外原文）
         │               time_inject（time_injector，MEDIUM：按 interval 往 messages 末尾追加一条 <time-inject>）
         │               build_prompt（prompt_builder，NORMAL：prompts 各段 → messages[0]）
-        │               pick_tools（tool_permission_manager，priority=LOW：按 allow / refuse 摘工具）
+        │               pick_tools（tool_permission_manager，priority=LOW：按 allowed 摘工具）
         ▼
    ON_REQUEST ── fix_pending_tool_call / fix_orphan_tool_message（MEDIUM：修坏消息形状）
         │        call_llm（base_nodes，NORMAL：bind_tools(tool_surface.tools) → 请求模型）
@@ -201,7 +201,7 @@ miaoli_bot/
 | `prompt_builder` | 把 state 里的提示词段拼成一条系统消息，插到消息列表最前面：`build_prompt` 挂 `on_before_request`（`NORMAL`），渲染 `<key>value</key>`、按长度降序、空行连接，滤掉已有 `SystemMessage` 后用 `Overwrite` 放到 `messages[0]`；空内容或与现有首条相同则返回 `None`。自带 `README.md` |
 | `system_tools` | 系统工具：`bash` / `read_file` / `write` / `replace` / `read_image`（自带 `config.yaml` 与 `README.md`）。`read_image` 按 `support_image` 名单过滤格式 —— 这道过滤是**为了限制读取**（不做的话读什么都会被 b64 成图片塞进上下文，导致 400），**不是**给模型过滤不同类型的图片 |
 | `time_injector` | 时间注入：`helper_inject` 挂 `on_agent_start`（`NORMAL`）把 `<time-inject>` 标签的读法写进 `prompts` 的 `time-inject-helper` 段；`time_inject` 挂 `on_before_request`（`MEDIUM`）按 `interval` 每会话节流，往 `messages` 末尾追加一条包在 `<time-inject>` 里的 `HumanMessage`（`%Y-%m-%d %H:%M %z` + ISO 星期，带时区偏移，不含秒）。时间值**刻意不进** `prompts` —— 它每轮都在变，进系统提示词会把前缀缓存整段撞碎；静态说明才进 `prompts`。`template` 可换外部模板文件（占位符 `$now` / `$weekday`；路径不存在时静默回落到内置模板），`config.yaml` 为**必需**（缺文件时 `model_validate(None)` 直接失败）。自带 `README.md` |
-| `tool_permission_manager` | 工具权限控制：按 `config.yaml` 的 `allow` / `refuse` 表，在 `on_before_request`（`priority=LOW`）把未放行的工具从 `runtime.context["tool_surface"]` 里 `delete` 掉；未出现在表里的工具一律摘除（默认拒绝），`debug: true` 时对漏配的工具打 warning（只影响日志，不影响判定）。自带 `README.md` |
+| `tool_permission_manager` | 工具权限控制：按 `config.yaml` 的授权表，在 `on_before_request`（`priority=LOW`）把未放行的工具从 `runtime.context["tool_surface"]` 里 `delete` 掉。`allowed` 三种取值 —— `"all"` 全部会话放行、`["thread_id", ...]` 只放行列表内的会话、`null` / `[]` 一律摘除；未出现在表里的工具同样摘除（默认拒绝），`debug: true` 时对漏配的工具打 warning（只影响日志，不影响判定）。会话取自 `get_config()` 的 `thread_id`，`utils/is_allowed.py` 里是判定函数。自带 `README.md` |
 | `web_search` | 联网搜索工具：注册一个 `web_search` 工具（**工具名与后端无关**），`adapter` 选 `langsearch` 或 `deepseek`，请求地址与密钥取自 `config.yaml` 的 `api_url` / `api_key`（模板给的是 langsearch 的 `https://api.langsearch.com/v1/web-search`），原始响应整体交给模型；`adapter` 只影响工具入参 schema 与返回数据形状。另注册 `inject_helper`（`ON_AGENT_START`，`NORMAL`）把使用说明写进 `prompts` 的 `web-search-helper` 段（硬编码在 `consts/prompt.py`）。自带 `README.md` |
 
 > `orphan_tool_fixer` 与 `pending_tool_fixer` 成对：前者治「有返回没请求」，后者治「有请求没返回」。两者互不依赖、各自独立判断，谁先跑都不影响结果（增量折叠对形态不敏感，定向删除与整表替换可以任意顺序组合）；触发场景是上一轮工具执行中途异常／并发冲突导致消息形状坏掉，此后每轮请求模型都会 `400 insufficient tool messages following tool_calls`。
@@ -305,7 +305,7 @@ cd <插件父目录>          # plugins/
 - **通道侧还没交多模态**：`miaoli_qq_channel` 的 `to_content()` 仍是整包事件的 JSON 字符串，图片只以 NapCat 的 `url` / `file_id` 形式留在文本里，模型得自己调工具去取；要真正内联得先把图片转成 base64 内容块。主包这边已经通了（块列表原样进 `HumanMessage`，只带图片块的消息不会被当成空消息丢掉）
 - **一轮 tick 串行跑图**：N 个会话的耗时会叠加，最坏要 `N × graph.atimeout` 才走完一轮；换来的是日志按会话成块、归属清楚。要提速就得并发 + 让框架日志带上会话身份（`formatter.py` 目前只打 `message`）
 - **`\n\n` 的切分责任在渠道**：输出协议里「两个换行 = 对方收到两条独立 QQ 消息」，而 `reply` 只拿得到一个 `text`。主包不切，渠道想分条就得自己切
-- **工具只有「谁能用」，没有「能干什么」**：进程以 root 身份运行，`tool_permission_manager` 管的是工具可见性（`allow` / `refuse` 白名单，未配置即摘除）；`bash` / `write` / `replace` 一旦放行，就没有文件系统边界
+- **工具只有「谁能用」，没有「能干什么」**：进程以 root 身份运行，`tool_permission_manager` 管的是工具可见性（`allowed` 授权表，未配置即摘除）；`bash` / `write` / `replace` 一旦放行，就没有文件系统边界
 - **`mcp_adapter` 只加不删**：MCP server 撤掉的工具不会从工具表里消失；同名工具直接顶替并打 warning
 - **区间小于保留量时压缩反而净增**：`compact_if_need` 的 `retain_tokens` 是 `20000` 的硬编码，`TokenPruner` 看区间正文不足这个数就一条都不删，而摘要照样插入 —— 区间本来就很小的场景（历史总量过门槛、但可压区间恰好很小）净效果是 `messages` 变长。实测 5,864 token 的区间会得到 +5.6% 的端到端 token 增长
 - **门槛只看总量，不看区间**：触发条件由整段历史的 token 数决定，但真正被压的是 `get_compaction_range` 给出的区间，两者大小无关。区间超过 `context_window` 时压完仍可能超限，只能等下一轮再压

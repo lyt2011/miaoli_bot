@@ -1,12 +1,15 @@
-from pydantic	import BaseModel, Field
+from pydantic	import BaseModel, Field, model_validator
 
-from typing	import Literal
+from typing		import List, Literal, Self, Union
 
 
-Mode = Literal["allow", "refuse"]
+Allowed = Union[Literal["all"], List[str], None]
+# all		-> 全部放行
+# None		-> 全部拒绝
+# list[str]	-> 内部 thread_id 放行
 
 
 class Permission(BaseModel):
 	
-	name: str	= Field(..., description="要声明权限的工具名")
-	mode: Mode	= Field(default="refuse", description="权限类型 默认拒绝")
+	name	: str		= Field(..., description="要声明权限的工具名")
+	allowed	: Allowed	= Field(default_factory=list, description="可以使用该工具的的 thread_id 列表")

@@ -1,9 +1,11 @@
 from langgraph.runtime	import Runtime
+from langgraph.config	import get_config
 
 from miaoli_bot.api		import store_recall
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
 
 from ..consts	import PLUGIN_CONFIG
+from ..utils	import is_allowed
 
 import logging
 
@@ -15,24 +17,23 @@ async def pick_tools(state: GraphState, runtime: Runtime[GraphRuntimeContext]) -
 	
 	"""通过 config.yaml 的权限控制摘除工具"""
 	
-	config = store_recall(PLUGIN_CONFIG)
+	# 获取 thread_id
+	thread_id	= get_config()["configurable"]["thread_id"]
 	
-	# 拿 tool_surface 并构建工具名与权限的映射表
-	tool_surface	= runtime.context["tool_surface"]
-	tp_mapping		= {p.name: p.mode for p in config.permissions} # 工具名与权限的映射表
-
-	for tool in tool_surface.tools:
+	# 获取配置并构建权限映射表
+	config	= store_recall(PLUGIN_CONFIG)
+	mapping	= {p.name: p for p in config.permissions}
+	
+	for tool in runtime.context["tool_surface"].tools:
 		
-		# 同意则跳过
-		if tp_mapping.get(tool.name) == "allow":
+		# 声明了权限且放行则保留
+		if tool.name in mapping and is_allowed(thread_id, mapping[tool.name].allowed):
 			continue
 		
-		# 提醒没有配置权限则默认摘除
-		if tool.name not in tp_mapping:
-			if config.debug: # debug = True 才提醒
-				LOGGER.warning(f"{tool.name} 未配置权限 默认摘除")
+		# 没有声明工具默认摘除 调试模式时需要打日志确认
+		if tool.name not in mapping and config.debug is True:
+			LOGGER.warning(f"{tool.name} 未声明工具权限 默认摘除")
 		
-		# 摘除工具
-		tool_surface.delete(tool)
+		runtime.context["tool_surface"].delete(tool)
 	
 	return None

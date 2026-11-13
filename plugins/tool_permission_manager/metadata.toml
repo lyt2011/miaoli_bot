@@ -1,4 +1,4 @@
 name = "tool_permission_manager"
 entry_class = "main.ToolPermissionManager"
-description = "工具权限控制：按 config.yaml 的 allow / refuse 表，在请求前摘掉未放行的工具"
+description = "工具权限控制：按 config.yaml 的 allowed 授权表（all / 拒绝 / thread_id 白名单），在请求前摘掉未放行的工具"
 dependences = []

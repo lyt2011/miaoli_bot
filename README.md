@@ -2,7 +2,7 @@
 
 [English](README/en.md) | **简体中文**
 
-- **版本**：0.50.0
+- **版本**：0.50.1
 - **定位**：一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把通道收到的对话交给 LLM，让模型思考、回复并调用工具
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）

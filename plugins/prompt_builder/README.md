@@ -4,10 +4,10 @@
 
 ## 数据来源
 
-`GraphState.prompts` 是一个 `Dict[str, str]`，它的状态通道（langgraph 的 state channel）是 `miaoli_bot.core` 的 `SectionPatch`：
+`GraphState.prompts` 是一个 `Dict[str, str]`，它的状态通道（langgraph 的 state channel）是 `miaoli_bot.core` 的 `UntrackedSectionPatch`（`SectionPatch` 的子类，`checkpoint()` 返回 `MISSING`、不落盘）：
 
 ```python
-prompts: Annotated[Dict[str, str], SectionPatch]
+prompts: Annotated[Dict[str, str], UntrackedSectionPatch]
 ```
 
 各子插件往自己那段写，互不覆盖：
@@ -18,7 +18,7 @@ return {"prompts": {"soul": "你是喵璃"}}          # miaoli_bot_adapter 写�
 return {"prompts": {"meme-helper": None}}     # 删掉 meme-helper 段
 ```
 
-同一段重复写同一个值是幂等的 —— `SectionPatch.update()` 用结构化对比判定变更，内容没变就不 bump 版本、不产生新 checkpoint。
+同一段重复写同一个值是幂等的 —— `UntrackedSectionPatch.update()` 用结构化对比判定变更，内容没变就不 bump 版本、不产生新 checkpoint。
 
 ## 工作流程
 
@@ -43,7 +43,7 @@ return {"prompts": {"meme-helper": None}}     # 删掉 meme-helper 段
 
 ## 与压缩的先后关系
 
-`compact_if_need`（`base_nodes`，`priority=HIGH`）与 `build_prompt`（`NORMAL`）在**同一个事件** `ON_BEFORE_REQUEST` 上，`HIGH`(100) 严格高于 `NORMAL+1`(1)，所以每一轮都是先压缩、再拼装系统提示：
+`compact_if_need`（`base_nodes`，`priority=HIGH`）与 `build_prompt`（`NORMAL`）在**同一个事件** `ON_BEFORE_REQUEST` 上，`HIGH`(100) 严格高于 `NORMAL`(0)，所以每一轮都是先压缩、再拼装系统提示：
 
 ```
 ON_BEFORE_REQUEST → compact_if_need（priority=HIGH：过门槛才压，Overwrite 拼回）

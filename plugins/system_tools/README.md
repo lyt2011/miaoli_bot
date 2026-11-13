@@ -18,8 +18,8 @@
 
 | 输入 | 结果 |
 |---|---|
-| 不在 `support_image` 里的图片（如 `bmp`） | `fail("不支持的数据类型 bmp")`，**不读盘、不塞上下文** |
-| 不是图片的文件（如 `svg` / `txt`） | `fail("无法识别 … 的类型")`（`filetype` 返回 `None`） |
+| 不在 `support_image` 里的图片（如 `bmp`） | `"[不支持的数据类型 bmp]"`，**不读盘、不塞上下文** |
+| 不是图片的文件（如 `svg` / `txt`） | `"[无法识别 <path> 的类型]"`（`filetype` 返回 `None`） |
 
 没有这道过滤，任何路径都会被无条件 `b64encode` 后当作图片塞进 `messages`，
 模型 API 会直接回 **400**（实测报错为 `You have uploaded an unsupported image`）。
@@ -28,3 +28,14 @@
 （实测 `deepseek-flash` 只接受 `webp` / `png` / `jpeg` / `gif`）。
 因此 `Literal` 只是保证「值能声明」，**真正的开关是 `config.yaml` 的 `support_image`** ——
 往里加值时请确认目标模型确实支持该格式。
+
+## `bash` 的两个参数
+
+`config.yaml` 的 `bash` 段由 `models/plugin_config.py` 的 `BashConfig` 校验，缺省走默认值：
+
+| 键 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `bash.limit` | `int` | `65535` | 管道单次读取上限（字节），超出部分丢弃 |
+| `bash.reader_timeout` | `float` | `5.0` | 进程结束后等待管道读取器的超时（秒） |
+
+两个值都由 `tools/bash.py` 直接消费：`limit` 传给读取器、`reader_timeout` 作为 `wait_for` 的超时。

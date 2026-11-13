@@ -1,6 +1,8 @@
 本插件提供了表情包的数据库与发送扩展
 但是需要注意: **大模型可能会将用户发送的普通图片归档为表情包，导致用户隐私被泄露**
 
+本插件注册三个工具：`archive_qq_meme` / `send_meme_to_qq` / `remove_qq_meme_by_hash`。
+
 ## 配置
 
 ```yaml
@@ -18,7 +20,7 @@ help_doc:
 | --- | --- |
 | `enable` | 关闭时 `on_load` 直接返回，**工具与节点都不注册** |
 | `database.path` | sqlite 数据库路径；启用时必填 |
-| `help_doc.path` | 表情包扩展帮助文档，**绝对路径**；启用时必填 |
+| `help_doc.path` | 表情包扩展帮助文档路径，支持 `$workspace` 占位符（加载时替换成插件目录）；启用时必填 |
 | `help_doc.encoding` | 读 `help_doc.path` 用的编码 |
 
 `database.path` 与 `help_doc.path` 都是「可以关闭 + 不填，不能启用 + 不填」—— 启用时缺任一项，加载期直接 `ValueError`。

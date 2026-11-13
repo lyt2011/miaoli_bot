@@ -10,7 +10,7 @@
 
 ## 压缩节点
 
-`compact_if_need` 挂在 `ON_BEFORE_REQUEST` 的 `HIGH`(100)，是这个事件里跑得最早的处理器 —— 此时 `messages` 还没被 `time_inject`（`NORMAL+2`）/ `build_prompt`（`NORMAL+1`）改过，压缩看到的就是上一轮落盘的历史。
+`compact_if_need` 挂在 `ON_BEFORE_REQUEST` 的 `HIGH`(100)，是这个事件里跑得最早的处理器 —— 此时 `messages` 还没被 `time_inject`（`MEDIUM`）/ `build_prompt`（`NORMAL`）改过，压缩看到的就是上一轮落盘的历史。
 
 两步都是短路优先：
 

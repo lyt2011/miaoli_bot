@@ -27,7 +27,7 @@ miaoli_bot 内部数据适配 —— `on_load` 把根配置解析成 `PluginConf
 | 文件 | 段名 | 内容 |
 | --- | --- | --- |
 | `data/SOUL.md` | `soul` | 她是谁：身份 / 外貌 / 脾气 / 口吻 |
-| `data/output_protocol.md` | `output_protocol` | 怎么输出：长度 / 接话 / 松弛 / 符号 / 分寸 / 消息边界 / 回复通道 / 标点 / 语序 / 输出格式 |
+| `data/output_protocol.md` | `output-protocol` | 怎么输出：长度 / 接话 / 松弛 / 符号 / 分寸 / 消息边界 / 回复通道 / 标点 / 语序 / 输出格式 |
 
 两份都是**每轮读盘**的，改完 `md` 文件不用改代码，下一轮就生效。路径由 `WORKSPACE` 这个 store 键拿到的插件目录拼出（`workspace / "data" / "SOUL.md"`），所以部署时只换文件、不换配置。
 

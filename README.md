@@ -2,7 +2,7 @@
 
 [English](README/en.md) | **简体中文**
 
-- **版本**：0.51.2
+- **版本**：0.52.0
 - **定位**：一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把通道收到的对话交给 LLM，让模型思考、回复并调用工具
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
@@ -109,6 +109,7 @@ miaoli_bot/
 │   ├── share_store.py             #   SHARE_STORE：全局共享容器（ShareStore 唯一实例）
 │   ├── graph_runner.py            #   safe_run_graph：套执行锁 + 异常兜底地跑图
 │   ├── handler_registry.py        #   HandlerRegistry：event → 图节点注册（on(event, func, priority) 返回 disposer）
+│   ├── llm/                       #   call_llm：包住 client.ainvoke 的重试入口（utils/is_retriable 目前恒 False）
 │   ├── compact/                   #   上下文压缩器（与图无关的纯能力层）
 │   │   ├── compact_now.py         #     compact_now：区间正文 → 模型 → 摘要 + 剪枝结果
 │   │   ├── chat_history.py        #     ChatHistory：messages → 带 [User] / [Assistant] 标签的行
@@ -292,7 +293,7 @@ cd <插件父目录>          # plugins/
 
 **已有形态**
 
-- 主包只剩几件事：图管线本体（`core/graph_pipeline/`）、checkpointer 适配层、`HandlerRegistry` / `ToolRegistry` / `ChannelRegistry` 三个注册器（后两者分别用 `ToolSurface` / `ChannelSurface` 给出每轮只读快照）、`core.Loader` 子插件加载框架。部署只需整目录同步，没有额外的本地包要装
+- 主包只剩几件事：图管线本体（`core/graph_pipeline/`）、checkpointer 适配层、`HandlerRegistry` / `ToolRegistry` / `ChannelRegistry` 三个注册器（后两者分别用 `ToolSurface` / `ChannelSurface` 给出每轮只读快照）、`core.Loader` 子插件加载框架；`core/llm/call_llm` 是模型调用的重试入口（判据 `is_retriable` 暂为恒 `False` 的桩）。部署只需整目录同步，没有额外的本地包要装
 - 业务全部由 **13 个**子插件提供（见[内置子插件](#内置子插件)）。每个子插件自带 `README.md`，读配置的还带入库的 `config.example.yaml`，真实 `config.yaml` 一律 gitignore，部署时从模板复制
 - QQ 侧由**平级插件** `miaoli_qq_channel`（独立仓库）提供：事件入口、消息段解析、两个子插件（`account_injector` / `qq_platform_tools`）都在那边；主包只认 `BaseChannel` / `BaseChannelMessage`
 - 链路形态是「事件唤醒 + 定时兜底 + 按会话跑图」：`tick` 任务被 `api.please_run_graph()` 提前唤醒、或每 `tick.interval`（默认 60 秒）兜底醒一次；每个渠道一次 `drain()` 交回全部会话各一条消息，**随后串行逐条跑图**（锁仍按 `thread_id` 分），跑完由 `channel.reply(message.platform, message.thread_id, last.content)` 回给该会话。上下文压缩、工具权限、MCP 接入、联网搜索、表情包、意图识别都已接入，各自能独立开关（`enable`）
@@ -302,6 +303,7 @@ cd <插件父目录>          # plugins/
 **已知短板**
 
 - **通道侧还没交多模态**：`miaoli_qq_channel` 的 `to_content()` 只是把事件逐段渲染成 markdown 文本（`[图片 名 大小](url)` / `[@ id]` / `[回复 id]` …），图片以 NapCat 的 `url` 留在文本里而不是 base64 内容块，模型得自己调工具去取；要真正内联得先把图片转成 base64 内容块。主包这边已经通了（块列表原样进 `HumanMessage`，只带图片块的消息不会被当成空消息丢掉）
+- **重试入口还没接进调用点**：`core/llm/call_llm` 已经能返回「第几次尝试 + 途中全部异常 + 最终回复」，但 `plugins/base_nodes/nodes/call_llm.py` 与 `core/compact/compact_now.py` 两处仍是直接 `client.ainvoke`，而且 `is_retriable` 恒 `False`，所以现在既不会重试、也没有 `max_retry` 配置可调
 - **一轮 tick 串行跑图**：N 个会话的耗时会叠加，最坏要 `N × graph.atimeout` 才走完一轮；换来的是日志按会话成块、归属清楚。要提速就得并发 + 让框架日志带上会话身份（`formatter.py` 目前只打 `message`）
 - **`\n\n` 的切分责任在渠道**：输出协议里「两个换行 = 对方收到两条独立 QQ 消息」，而 `reply` 只拿得到一个 `text`。主包不切，渠道想分条就得自己切
 - **工具只有「谁能用」，没有「能干什么」**：进程以 root 身份运行，`tool_permission_manager` 管的是工具可见性（`allowed` 授权表，未配置即摘除）；`bash` / `write` / `replace` 一旦放行，就没有文件系统边界

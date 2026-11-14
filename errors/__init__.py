@@ -1,4 +1,5 @@
 from .base_bot_error			import BaseBotError
+from .max_retry_limit_error		import MaxRetryLimitError
 from .agent_aborted				import AgentAborted
 from .model_not_found			import ModelNotFound
 from .client_not_found			import ClientNotFound
@@ -26,6 +27,9 @@ __all__ = [
 
 	# graph_pipeline
 	"AgentAborted",
+
+	# llm
+	"MaxRetryLimitError",
 
 	# plugin
 	"BasePluginError",

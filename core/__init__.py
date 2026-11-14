@@ -3,6 +3,7 @@ from .plugin				import Loader, PluginProtocol
 from .handler_registry		import HandlerRegistry
 from .tool					import ToolRegistry, ToolSurface
 from .share_store			import SHARE_STORE, ShareStore
+from .llm					import call_llm
 from .notice_channel		import ChannelRegistry, ChannelSurface, ChannelDrainResult
 from .checkpointer_adapters	import (
 	InMemoryAdapter,
@@ -46,6 +47,9 @@ __all__ = [
 
 	# graph_runner
 	"safe_run_graph",
+
+	# llm
+	"call_llm",
 
 	# notice_channel
 	"ChannelRegistry",

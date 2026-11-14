@@ -5,7 +5,7 @@
 An LLM-agent QQ bot plugin built on [Ncatbot](https://github.com/NapNeko/NcatBot) + [LangGraph](https://github.com/langchain-ai/langgraph).
 A self-built graph pipeline feeds QQ conversations to any OpenAI-compatible endpoint, so every incoming message lets the model think, reply and call tools.
 
-- **Version**: 0.51.2
+- **Version**: 0.52.0
 - **Entry point**: `main.py` (plugin class `MiaoLiBot`)
 - **Runtime host**: Ncatbot plugin system (NapCat / OneBot 11)
 - **LLM client**: picked by `llm.providers[].client` — `ChatOpenAI` (`langchain-openai`) / `ChatDeepSeek` (`langchain-deepseek`) / `ChatAnthropic` (`langchain-anthropic`), all built through `miaoli_bot.api.build_client()`
@@ -120,6 +120,7 @@ miaoli_bot/
 │   ├── share_store.py             #   ShareStore + the SHARE_STORE singleton
 │   ├── graph_runner.py            #   safe_run_graph (INVOKE_LOCKS[thread_id] around ainvoke)
 │   ├── handler_registry.py        #   HandlerRegistry.on(event, func, priority) → disposer
+│   ├── llm/                       #   call_llm: retry wrapper around client.ainvoke (utils/is_retriable is an always-False stub)
 │   ├── compact/                   #   compact_now / ChatHistory / prune_messages + consts/ runtimes/ utils/
 │   ├── checkpointer_adapters/     #   in_memory_adapter.py / sqlite_adapter.py / postgresql_adapter.py
 │   ├── graph_pipeline/            #   the graph pipeline itself

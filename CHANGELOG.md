@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.52.0](CHANGELOG/v0.52.0.md) — 2026-11-14 — 🔁 模型调用收出 `core/llm/call_llm` 带重试入口 + `MaxRetryLimitError`（重试判据暂留恒 False 的桩）；人设重写：称呼固定「杂鱼」、越界请求改成「不做不陪聊 + 岔开」、话尾三个符号分工写清
 - [v0.51.2](CHANGELOG/v0.51.2.md) — 2026-11-14 — 📝 五十余处文档与代码不符逐条修正：优先级、字段名、目录树、工具数、依赖版本、死链
 - [v0.51.1](CHANGELOG/v0.51.1.md) — 2026-11-14 — ✏️ 工具调用展开格式从 `名字(参数)` 改成 `名字 -> 参数`，参数里的括号不再和模板收尾括号粘连
 - [v0.51.0](CHANGELOG/v0.51.0.md) — 2026-11-14 — 🧱 剪枝从 `TokenPruner` 类收成 `prune_messages` 函数（浮点 token / 索引删除），`pending_tool_fixer` 去掉全部配置并认 `invalid_tool_calls`（破坏性）

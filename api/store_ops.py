@@ -6,9 +6,9 @@ SHARE_STORE 的便捷 api
 
 from ..core	import SHARE_STORE
 
-import logging
-
 from typing	import Any, Callable
+
+import logging
 
 
 LOGGER = logging.getLogger("StoreOps")

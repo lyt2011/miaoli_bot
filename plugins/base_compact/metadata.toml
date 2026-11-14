@@ -1,0 +1,4 @@
+name = "base_compact"
+entry_class = "main.BaseCompact"
+description = "上下文压缩能力 只提供压缩逻辑不挂节点"
+dependences = []

@@ -1,6 +1,6 @@
 from miaoli_bot.core	import SHARE_STORE
 
-from typing		import Iterator
+from typing	import Iterator
 
 import pytest
 

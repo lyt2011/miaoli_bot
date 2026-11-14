@@ -1,0 +1,4 @@
+name = "base_llm"
+entry_class = "main.BaseLLM"
+description = "带重试的模型调用入口 只提供调用逻辑不挂节点"
+dependences = []

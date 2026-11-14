@@ -1,5 +1,5 @@
-from .channel_surface	import ChannelSurface, ChannelDrainResult
 from .channel_registry	import ChannelRegistry
+from .channel_surface	import ChannelSurface, ChannelDrainResult
 
 
 __all__ = [

@@ -1,8 +1,7 @@
 from pydantic	import BaseModel, Field, FilePath
 
+from ..rules		import Rule
 from ...protocols	import BaseWorkflow
-
-from ..rules	import Rule
 
 from pathlib	import Path
 from typing		import List, Literal

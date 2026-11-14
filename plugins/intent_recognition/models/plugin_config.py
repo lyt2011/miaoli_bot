@@ -2,7 +2,7 @@ from pydantic	import BaseModel, Field
 
 from .workflows	import Workflow
 
-from typing		import List
+from typing	import List
 
 
 class PluginConfig(BaseModel):

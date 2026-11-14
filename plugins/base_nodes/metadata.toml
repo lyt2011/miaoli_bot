@@ -1,4 +1,6 @@
 name = "base_nodes"
 entry_class = "main.BaseNodes"
 description = "基础节点 保证图运作正常"
-dependences = []
+[[dependences]]
+name = "base_compact"
+version = "0.1.0"

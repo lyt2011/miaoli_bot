@@ -2,7 +2,7 @@
 
 [English](README/en.md) | **简体中文**
 
-- **版本**：0.52.0
+- **版本**：0.53.0
 - **定位**：一个基于 [Ncatbot](https://github.com/NapNeko/NcatBot) 的 QQ 机器人插件，用 **LangGraph** 自建图管线把通道收到的对话交给 LLM，让模型思考、回复并调用工具
 - **入口**：`main.py`（插件类 `MiaoLiBot`）
 - **运行载体**：Ncatbot 插件系统（NapCat/OneBot 协议）
@@ -16,7 +16,7 @@
 - 📡 **消息入口是通道**：主包不注册任何消息处理器，`on_message` 挂在平级插件 `miaoli_qq_channel` 上 —— 它把 QQ 事件记进环形缓冲，暴露成 `BaseChannel`（`name` + `platforms` + `drain()` + `reply(platform, thread_id, content)`）与 `BaseChannelMessage`（`thread_id` + `platform` + `to_content()`），再用 `api.register_channel()` 注册进主包的 `ChannelRegistry`。主包侧 `main.py` 由一个常驻 `tick` 任务负责唤醒 —— 它 `await` 在 `RUN_REQUESTED` 事件上、带 `tick.interval`（默认 60 秒）兜底超时；任何子插件 / 通道插件调 `api.please_run_graph()` 把事件 `set()` 就能提前唤醒（N 次请求合并成一次，醒来先消费再跑图）：`ChannelRegistry.to_surface()` 取一份只读快照，`batch_drain(atimeout=channel.atimeout)` 并发 `drain()` 各通道（单通道异常或超时只落在自己那一路），拿回 `{渠道实例: 渠道消息列表}` 的映射（一个通道一次交回它在缓冲里的全部会话，每个会话一项）；随后**串行**为每条消息跑图（每条一路 `graph.atimeout`），出结果就 `channel.reply(message.platform, message.thread_id, last.content)` —— `platform` 原路来原路回；`thread_id` 的 `group-` / `private-` 前缀是主包 `consts/id_prefix.py` 定下的约定，由通道编码、通道自己拆回来，主包只透传、不据此路由。
 - 🔌 **子插件系统**：`core.Loader` 读 `sub_plugin.load_from`（`List[DirectoryPath]`，可给多个目录）下每个子目录的 `metadata.toml`，登记成 `PluginEntity`（缺元数据直接抛错、非包目录跳过），再按 `topology_sort_plugins()` 的依赖序逐个 `load()`：「注册成 Python 包 → 实例化 `entry_class` → 注入 `workspace` / `metadata` / `config` → `on_load()`」；单个插件失败只回滚 `unload()` 并标记 `erred`、打日志，依赖它失败的插件跳过。卸载走 `unload()`（清 `sys.modules` + 转发 `on_close`），按倒拓扑序执行。子插件用 `api.get_handler_registry().on(event, func, priority)` 挂图节点、`api.register_tool()` 注册工具 —— 两者都**返回一个注销函数**（`store_set` 同样返回），子插件把它收进 `self.undo_list`，`on_close` 里逐个调用即可摘干净（不摘就会在下一次加载时重复挂载）。
 - 🧠 **LLM 接入**：`main.py` 只把 `message.to_content()` 包成一条 `HumanMessage` 送进图（纯文本通道返回字符串，多模态通道返回内容块列表；会话身份跟着消息走，主包不自己编）；`miaoli_bot_adapter` 子插件的 `inject_soul` / `inject_output_protocol` 节点（`ON_TURN_START`，`priority=MEDIUM`）分别读自己目录下的 `data/SOUL.md` 与 `data/output_protocol.md`，写进 `prompts` 的 `soul` / `output-protocol` 段，随后 `base_nodes` 的 `build_client` 节点（`ON_TURN_START`，`priority=NORMAL`）调 `api.build_client()` 从根配置直接建客户端（具体类由 `llm.providers[].client` 选）写进 `runtime.context["client"]`（**刻意不在建实例时绑工具** —— 工具表每轮都会变）；`call_llm` 节点用 `runtime.context["tool_surface"].tools`（`ToolRegistry.to_surface()` 的快照）`bind_tools` 后请求模型，并把 token 用量打进日志；工具循环由 `default_routing` 的 `on_after_request` 节点分流 —— 末条消息有 `tool_calls` 就跳 `ON_TOOL_CALLING` 执行工具、再回到 `ON_TURN_START` 重走一轮；没有就跳 `ON_TURN_END` 收尾。
-- 🗜️ **上下文压缩（单节点 + 区间）**：`compact_if_need`（`base_nodes` 子插件，挂在 `ON_BEFORE_REQUEST`，`priority=HIGH`）先按模型真实 `context_window` / `max_tokens` 算门槛 —— `Σ estimate_message_tokens(message) < context_window - max_tokens` 就直接返回 `None`，不发请求；过了门槛再调 `get_compaction_range(messages)` 求出**待压缩的闭区间**，把这一段交给 `compact_now` 请求模型压成一条摘要，最后用 `Overwrite` 拼回 `[区间前原文, <summary> 摘要, 剪枝后的区间正文, 区间后原文]` 整体替换 `messages`。区间右端永远停在**最后一段连续用户原话之前**，因此群聊里用户连发的几十条 `HumanMessage` 无论后面挂的是工具轮还是普通回复都完整留在区间外；左端从最后一个 `SystemMessage` 之后开始，起点不落 `ToolMessage`、终点不回退到带 `tool_calls` 的 `AIMessage`，保证不拆工具组、不留孤儿工具结果。压缩器本体（`ChatHistory` / `prune_messages` / `compact_now` / `estimate_message_tokens` / `extract_*` / `truncate_content_if_need`）与压缩提示词都在主包的 `core/compact/`，子插件只调用不持有。
+- 🗜️ **上下文压缩（单节点 + 区间）**：`compact_if_need`（`base_nodes` 子插件，挂在 `ON_BEFORE_REQUEST`，`priority=HIGH`）先按模型真实 `context_window` / `max_tokens` 算门槛 —— `Σ estimate_message_tokens(message) < context_window - max_tokens` 就直接返回 `None`，不发请求；过了门槛再调 `get_compaction_range(messages)` 求出**待压缩的闭区间**，把这一段交给 `compact_now` 请求模型压成一条摘要，最后用 `Overwrite` 拼回 `[区间前原文, <summary> 摘要, 剪枝后的区间正文, 区间后原文]` 整体替换 `messages`。区间右端永远停在**最后一段连续用户原话之前**，因此群聊里用户连发的几十条 `HumanMessage` 无论后面挂的是工具轮还是普通回复都完整留在区间外；左端从最后一个 `SystemMessage` 之后开始，起点不落 `ToolMessage`、终点不回退到带 `tool_calls` 的 `AIMessage`，保证不拆工具组、不留孤儿工具结果。压缩器本体（`ChatHistory` / `prune_messages` / `compact_now` / `estimate_message_tokens` / `extract_*` / `truncate_content_if_need`）与压缩提示词都住在 `base_compact` 子插件里（`api/` / `core/` / `utils/` / `consts/`），`base_nodes` 在 `metadata.toml` 的 `dependences` 里声明它，再从 `base_compact.api` 取用。
 - 📝 **提示词分段拼装**：`prompts` 不是一整个字符串，而是 `Dict[str, str]` —— 各子插件写各自的段（`{"identity": …}` / `{"style": …}`），写入 `None` 表示删除该段。`prompt_builder` 子插件的 `build_prompt` 节点（`ON_BEFORE_REQUEST`，`priority=NORMAL`）把全部段渲染成 `<key>` 换行 `value` 换行 `</key>`，按渲染后长度降序排序、用空行连接，再**滤掉已有的 `SystemMessage`** 后用 `Overwrite` 把拼好的系统提示放到 `messages[0]`；拼出来是空串、或与现有首条 `SystemMessage` 完全相同时返回 `None`，不白写一次 `Overwrite`。
 - 📜 **状态与运行时分离**：`models.GraphState`（会话状态：`messages` 用 `add_messages` 进 checkpoint、`prompts` 用 `UntrackedSectionPatch` **不进 checkpoint**；不该落盘的东西一律放 `GraphRuntimeContext`）与 `models.GraphRuntimeContext`（不进 checkpoint 的运行时依赖：`tool_surface` 必填，`client` / `custom_status` / `custom_mapping` 可选）分离 —— `context` 不做浅拷贝、结果保持原引用，所以 LLM 客户端 / 锁这类不可序列化对象只能放 `context`（放 state 会因 msgpack 无法序列化而当场崩）。
 - 🎛️ **配置模型化**：`PluginConfig` 含 `llm`（`LLMConfig`：`provider` / `model`（两个名字，由 `model_validator` 校验确实存在于 `providers` 里）/ `thinking_effort`（本项目的思考强度档位）/ `providers`（`List[Provider]`，每项用 `name` 字段标识 —— `Provider` 有 `name` / `base_url` / `api_key` / `client`（`openai` / `deepseek` / `anthropic`）/ `models`，而 `models` 是 `List[LLM]`、`LLM` 有 `name` / `context_window` / `max_tokens` / `support_visions` / `thinking_efforts`））、`tick`（`interval`，默认 60 秒）、`checkpointer`、`sub_plugin` 与 `graph`（`atimeout`，默认 60 秒，单条消息跑图的总超时）、`channel`（`atimeout`，默认 30 秒，拉取通道的超时）。
@@ -25,9 +25,9 @@
 - 🔧 **协议先行**：抽象集中在顶层 `protocols/`，不跟实现走 —— `plugin.py`（`PluginProtocol`：`on_load` / `on_close`）、`node_action.py`（`BaseNodeAction`，`Continue` / `Goto` / `Abort` 的共同基类）、`checkpointer_adapter.py`（`BaseCheckpointerSaverAdapter`）、`channel/`（`BaseChannel`：`name` / `platforms` / `drain` / `reply`；`BaseChannelMessage`：`thread_id` / `platform` / `to_content`）。子插件与各层都从这里取协议，不依赖具体实现。`platforms` 是通道自报的 `FrozenSet[str]`「我能收发哪些平台」，主包用它和每条消息自带的 `platform` 做**对称路由**：什么东西进来就什么东西出去
 - 🗄️ **checkpointer 适配层**：`checkpointer.database` 在 `memory` / `sqlite` / `postgresql` 之间切换 checkpoint 存储 —— `core/checkpointer_adapters/` 的三个适配器把 `InMemorySaver` / `AsyncSqliteSaver` / `AsyncPostgresSaver` 收拢成同一门面（1:1 转发 `BaseCheckpointSaver` 的同步 / 异步协议方法，`connect(connect_to, **extra)` 建连、`close()` 释放），`main.py` 的 `CPA_MAPPING` 按 `database` 取类，`on_load` 注入图、`on_close` 统一关闭。
 - 💾 **共享存储**：`core/share_store.py` 的 `SHARE_STORE` 是全局共享容器（`ShareStore` 的唯一实例）；core 的键在 `consts/share_store_keys.py`（`NCATBOT_API` / `RAW_CONFIG` / `PLUGIN_CONFIG` / `PLUGIN_DIR` / `GRAPH_PIPELINE` / `WORKSPACE_DIR` / `TOOL_REGISTRY` / `HANDLER_REGISTRY` / `INVOKE_LOCKS` / `CHANNEL_REGISTRY` / `MAIN_READY` / `RUN_REQUESTED`，共 12 个），子插件用自带命名空间键（如 `miaoli_bot_adapter` 的 `WORKSPACE`、`mcp_adapter` 的 `MCP_CLIENT_REGISTRY`）。子插件不直接操作它，一律走 `miaoli_bot.api`。`api.store_set()` 在键已存在时打一行 warning —— 这是为了揪「两个子插件撞键」；确实要按轮改写同一个键的调用方传 `overwrite=True`，就不会再报。
-- 🚪 **`api/` 门面层**：子插件只从 `miaoli_bot.api` 取东西 —— 一个模块一类事：`channel_ops`（`register_channel`）、`config_ops`（`get_root_config`）、`llm_ops`（`build_client` / `get_model_info` / `get_provider_info`）、`platform_ops`（`get_ncatbot_api`）、`registry_ops`（`get_handler_registry`）、`store_ops`（`store_recall` / `store_set` / `store_contains`）、`sync_ops`（`get_invoke_lock` / `wait_main_ready` / `please_run_graph`）、`tool_ops`（`register_tool`），图执行 `safe_run_graph` 从 `core` 直接转出，发送封装 `easier_send` 从 `utils/sugar.py` 转出。`__all__` 共 16 项，「键名 + 取值路径 + 类型」这些内部细节锁在门面层里，子插件只依赖函数签名。
+- 🚪 **`api/` 门面层**：子插件只从 `miaoli_bot.api` 取东西 —— 一个模块一类事：`channel_ops`（`register_channel`）、`config_ops`（`get_root_config`）、`llm_ops`（`build_client` / `get_model_info` / `get_provider_info`）、`platform_ops`（`get_ncatbot_api`）、`registry_ops`（`get_handler_registry`）、`store_ops`（`store_recall` / `store_set` / `store_contains`）、`sync_ops`（`get_invoke_lock` / `wait_main_ready` / `please_run_graph`）、`tool_ops`（`register_tool`），图执行 `safe_run_graph` 从 `core` 直接转出。`__all__` 共 15 项，「键名 + 取值路径 + 类型」这些内部细节锁在门面层里，子插件只依赖函数签名。
 - 🧹 **导入分块与对齐**：模块顶部的导入按「`__future__` → 第三方 `from`（按顶层包名各成一块）→ 跨包自引用 `miaoli_bot.x` → 同包相对导入 `.` / `..` → 内置 `from` → 普通 `import`」排列，块与块之间空一行，块内按语句字符数从短到长；列对齐到组内最长前缀的下一个 4 的倍数（tab stop = 4），**换行导入是组尾** —— 它可以跟上面的行对齐，它下面的行另起一组。子插件只从主包的一层导入（`miaoli_bot.api` / `core` / `models` / `consts` / `protocols` / `utils`）。
-- 🎭 **人格与输出协议外置**：主包不持有任何提示词资产 —— 人格（`plugins/miaoli_bot_adapter/data/SOUL.md`）与输出协议（`plugins/miaoli_bot_adapter/data/output_protocol.md`）都是 `miaoli_bot_adapter` 子插件的资产，由 `inject_soul` / `inject_output_protocol` 每轮读盘写进 `prompts` 的 `soul` / `output-protocol` 段；该子插件 `enable: false` 时这两个节点不注册。根 `data/` 只留 `intent_prompts/`（意图识别的本地私有文案，已 gitignore）。
+- 🎭 **人格与输出协议外置**：主包不持有任何提示词资产 —— 人格（`plugins/miaoli_bot_adapter/data/SOUL.md`）与输出协议（`plugins/miaoli_bot_adapter/data/output_protocol.md`）都是 `miaoli_bot_adapter` 子插件的资产，由 `inject_soul` / `inject_output_protocol` 每轮读盘写进 `prompts` 的 `soul` / `output-protocol` 段；该子插件 `enable: false` 时这两个节点不注册。根目录不含任何提示词资产；`intent_recognition` 的 `workflows[].file` 指到哪，部署方就得在哪里放那个文件 —— 文件不存在时该插件连加载都过不去（`FilePath` 在 `model_validate` 阶段就校验），哪怕 `enable: false`。
 - 🧪 **本地测试**：`tests/` 随仓库提交，根目录 `pytest.ini` 用 `pythonpath = ..` 把 `plugins/` 加进 `sys.path`、`testpaths = tests` 圈定用例目录、`asyncio_mode = auto` 让 `async def test_*` 不用加标记。当前覆盖 `models/config/` 的校验、`consts/node_priorities.py` 的档位、`SHARE_STORE`、`ToolRegistry` / `ToolSurface` 的注册与快照、`utils/` 的纯函数，其余待补。
 
 ## 架构设计
@@ -90,7 +90,7 @@ miaoli_bot/
 ├── pytest.ini                     # pythonpath = .. / testpaths = tests / asyncio_mode = auto
 ├── __init__.py                    # 空文件，仅作包标记（分层靠各子包自己的 __init__）
 ├── api/                           # 子插件唯一入口（门面层，不直接暴露 SHARE_STORE）
-│   ├── __init__.py                #   16 项门面导出（含 utils 的 easier_send）
+│   ├── __init__.py                #   15 项门面导出
 │   ├── channel_ops.py             #   register_channel（注册通道并返回注销函数）
 │   ├── config_ops.py              #   get_root_config（根配置对象）
 │   ├── llm_ops.py                 #   build_client / get_model_info / get_provider_info
@@ -109,13 +109,6 @@ miaoli_bot/
 │   ├── share_store.py             #   SHARE_STORE：全局共享容器（ShareStore 唯一实例）
 │   ├── graph_runner.py            #   safe_run_graph：套执行锁 + 异常兜底地跑图
 │   ├── handler_registry.py        #   HandlerRegistry：event → 图节点注册（on(event, func, priority) 返回 disposer）
-│   ├── llm/                       #   call_llm：包住 client.ainvoke 的重试入口（utils/is_retriable 目前恒 False）
-│   ├── compact/                   #   上下文压缩器（与图无关的纯能力层）
-│   │   ├── compact_now.py         #     compact_now：区间正文 → 模型 → 摘要 + 剪枝结果
-│   │   ├── chat_history.py        #     ChatHistory：messages → 带 [User] / [Assistant] 标签的行
-│   │   ├── consts/                #     labels / prompt（COMPACT_PROMPT）/ tags / tokens（0.47 与 1440）
-│   │   ├── runtimes/              #     CompactSuccess / CompactFailed
-│   │   └── utils/                 #     prune_messages / estimate_text_tokens / estimate_message_tokens / estimate_content_tokens / extract_* / truncate_content_if_need
 │   ├── checkpointer_adapters/     #   in_memory_adapter / sqlite_adapter / postgresql_adapter（统一门面）
 │   ├── graph_pipeline/            #   图管线本体
 │   │   ├── graph_pipeline.py      #     GraphPipeline：register_handler / wire / compile / ainvoke
@@ -135,8 +128,6 @@ miaoli_bot/
 │   └── tool/                      #   工具注册器
 │       ├── registry.py            #     ToolRegistry：按名字存工具（register / unregister / to_surface）
 │       └── surface.py             #     ToolSurface：一轮内使用的工具表副本（add / delete / tools）
-├── data/
-│   └── intent_prompts/            #   意图识别要注入的提示词（已 gitignore，本地私有文案，不入库）
 ├── errors/                        # 异常定义（10 个，各一文件一类）
 │   ├── agent_aborted.py           #   AgentAborted（Abort 冒到 ainvoke 调用处）
 │   ├── base_bot_error.py          #   BaseBotError 基类
@@ -152,17 +143,16 @@ miaoli_bot/
 │   ├── graph_state.py             #   GraphState（messages 进 checkpoint / prompts 走不落盘通道）
 │   ├── graph_runtime_context.py   #   GraphRuntimeContext（tool_surface 必填，client / custom_* 可选）
 │   └── config/                    #   PluginConfig / LLMConfig / TickConfig / GraphConfig / Provider / LLM / ThinkingEffort / CheckpointerConfig / SubPluginConfig / ChannelConfig
-├── plugins/                       # 13 个内置子插件（加载目录由 sub_plugin.load_from 指定）
+├── plugins/                       # 14 个内置子插件（加载目录由 sub_plugin.load_from 指定）
 ├── protocols/                     # 抽象基类集中层（子插件依赖这里，不依赖具体实现）
 │   ├── plugin.py                  #   PluginProtocol（on_load / on_close）
 │   ├── node_action.py             #   BaseNodeAction（Continue / Goto / Abort 的共同基类）
 │   ├── checkpointer_adapter.py    #   BaseCheckpointerSaverAdapter（connect / close）
 │   └── channel/                   #   channel.py（BaseChannel：name / platforms / drain / reply）+ message.py（BaseChannelMessage：thread_id / platform / to_content，另导出 Content）
-├── tests/                         # pytest 用例（test_config / test_config_ops / test_node_priorities / test_store / test_sugar / test_tool_registry_family）
+├── tests/                         # pytest 用例（test_config / test_config_ops / test_node_priorities / test_store / test_tool_registry_family）
 ├── utils/                         # 工具函数
 │   ├── config_ops.py              #   inject_workspace（把 $workspace 占位符替换成实际目录）
-│   ├── pipeline_helper.py         #   增量折叠（merge_into_updates / merge_into_state …）
-│   └── sugar.py                   #   easier_send（私聊 / 群聊发送）+ concatenate_id（会话键加前缀）
+│   └── pipeline_helper.py         #   增量折叠（merge_into_updates / merge_into_state …）
 ├── CHANGELOG.md                   # 版本索引
 ├── CHANGELOG/                     # 各版本完整记录（v<版本号>.md）
 └── README.md / README/en.md       # 中文 / 英文说明
@@ -176,7 +166,7 @@ miaoli_bot/
 4. 每条消息**依次**跑一次 `safe_run_graph({"messages": [HumanMessage(content)]}, {"tool_surface": tool_registry.to_surface()}, thread_id=message.thread_id)` —— 入参只有一条 `HumanMessage`（`content` 是 `to_content()` 的原样返回，字符串或内容块列表），会话身份来自消息本身；客户端由 `ON_TURN_START` 的 `build_client` 从根配置现建；执行锁是 `INVOKE_LOCKS` 里**按 `thread_id`** 的那一把（同会话串行），在 `graph_runner.safe_run_graph` 里套住整次 `ainvoke`；本轮 tick 是一条跑完再下一条 —— 并发跑图会把日志搅成一坨，而框架的 formatter 只打 `message`、不带会话身份。
 5. `ON_AGENT_START` 的 `inject_mcp_tools`（`mcp_adapter`，`priority=MEDIUM`）把外部 MCP server 的工具追加进本轮 `tool_surface`（同名工具直接顶替并打 warning），随后 `default_routing` 的 `on_agent_start` 跳 `ON_TURN_START`。
 6. `ON_TURN_START` 先跑 `inject_soul` / `inject_output_protocol`（`miaoli_bot_adapter` 子插件，`priority=MEDIUM`）写人格与输出协议，`recognize_intent`（`intent_recognition`，`priority=NORMAL`）按配置的 workflow 匹配末条消息、命中就往 `messages` 追加一条 `<intent-recognition>` 的 `HumanMessage`（**不碰 `prompts`**，系统提示词每轮完全一致），再由 `build_client`（`priority=NORMAL`）调 `miaoli_bot.api.build_client()` 建客户端写进 `runtime.context["client"]`（每轮现建，工具到 `ON_REQUEST` 才绑），最后 `default_routing` 的 `on_turn_start` 跳 `ON_BEFORE_REQUEST`。
-7. `ON_BEFORE_REQUEST` 打头的是 **`compact_if_need`（`base_nodes` 子插件，`priority=HIGH`，排在所有其它处理器之前）**：它用 `sum(estimate_message_tokens(message) for message in messages)` 估当前历史 token 数，小于 `context_window - max_tokens` 就返回 `None` 直接放行（不发任何请求）；过了门槛则调 `get_compaction_range(messages)` 求出一段闭区间 `[p_start, p_end]`，把这一段交给 `core.compact.compact_now()` 压成一条摘要，再用 `Overwrite([*messages[:p_start], HumanMessage(摘要), *剪枝后的区间正文, *messages[p_end + 1:]])` 整体替换历史（`Overwrite` 是 langgraph 官方的「绕过 reducer 直接写入」包装，`merge_into_updates` 折叠多个处理器的产出时保留它、`merge_into_state` 构建视图时消费它，因此「整体替换」与其它处理器的「追加 / 定向删除」可以任意顺序组合）。区间右端停在**最后一段连续 `HumanMessage` 的起点之前**，中间的分隔点既不落在 `ToolMessage` 上也不回退掉带 `tool_calls` 的 `AIMessage`，左端从最后一个 `SystemMessage` 之后起算 —— 所以系统提示词、当前这一轮的用户原话、以及任何半个工具轮都不会被送进压缩器。
+7. `ON_BEFORE_REQUEST` 打头的是 **`compact_if_need`（`base_nodes` 子插件，`priority=HIGH`，排在所有其它处理器之前）**：它用 `sum(estimate_message_tokens(message) for message in messages)` 估当前历史 token 数，小于 `context_window - max_tokens` 就返回 `None` 直接放行（不发任何请求）；过了门槛则调 `get_compaction_range(messages)` 求出一段闭区间 `[p_start, p_end]`，把这一段交给 `base_compact` 的 `compact_now()` 压成一条摘要，再用 `Overwrite([*messages[:p_start], HumanMessage(摘要), *剪枝后的区间正文, *messages[p_end + 1:]])` 整体替换历史（`Overwrite` 是 langgraph 官方的「绕过 reducer 直接写入」包装，`merge_into_updates` 折叠多个处理器的产出时保留它、`merge_into_state` 构建视图时消费它，因此「整体替换」与其它处理器的「追加 / 定向删除」可以任意顺序组合）。区间右端停在**最后一段连续 `HumanMessage` 的起点之前**，中间的分隔点既不落在 `ToolMessage` 上也不回退掉带 `tool_calls` 的 `AIMessage`，左端从最后一个 `SystemMessage` 之后起算 —— 所以系统提示词、当前这一轮的用户原话、以及任何半个工具轮都不会被送进压缩器。
 8. 压缩之后 `ON_BEFORE_REQUEST` 批次接着跑（按 priority 降序）`time_inject`（`priority=MEDIUM`，`time_injector` 子插件）按 `interval` 节流追加时间戳，再跑 `build_prompt`（`priority=NORMAL`，`prompt_builder` 子插件）把 `prompts` 的各段拼成系统提示并用 `Overwrite` 放到 `messages[0]`，再跑 `pick_tools`（`priority=LOW`）按 `config.yaml` 的 `permissions` 表（每项 `name` + `allowed`）把未放行的工具从 `runtime.context["tool_surface"]` 里摘掉（未声明的工具默认拒绝并打 warning）；随后 `ON_REQUEST` 先跑 `fix_pending_tool_call` / `fix_orphan_tool_message`（两者 `priority=MEDIUM`，只在上一轮异常中断留下坏形状时才有产出，历史本就合法时直接返回 `None`、不写任何增量），最后由 `call_llm`（`priority=NORMAL`）把 `state["messages"]`（首条已是 `build_prompt` 放好的 `SystemMessage`）交给模型，返回的 `AIMessage` 追加进 `messages`。
 9. `ON_AFTER_REQUEST` 由 `default_routing` 的 `on_after_request` 节点分流（它注册在最低优先级 `MINIMUM`，因此任何插件都能抢在它之前改道）：末条消息带 `tool_calls` → 跳 `ON_TOOL_CALLING`，由 `invoke_tools`（`base_nodes`，`ToolNode`）执行工具、`ToolMessage` 追加进 `messages`，然后跳回 `ON_TURN_START` 重走一轮（重跑 `build_client` / `pick_tools` / `call_llm`）；无 `tool_calls` → 跳 `ON_TURN_END`，再经 `on_turn_end` 跳 `ON_AGENT_END`。
 10. `ON_AGENT_END` 先跑 `output_checker`（`base_nodes`，`priority=LOWEST`）校验 `messages[-1]` 是 `AIMessage`，否则 `Abort`（空列表 / `ToolMessage` / `HumanMessage` / 未知类型四种理由）；最后 `on_agent_end` 返回 `Goto(END)` 收尾（`END` 被 langgraph 过滤，于是没有下一跳）。
@@ -185,17 +175,18 @@ miaoli_bot/
 
 ## 内置子插件
 
-主包只保留图管线本体、checkpointer 适配层、`HandlerRegistry` / `ToolRegistry` / `ChannelRegistry` 三个注册器、`core.Loader` 子插件加载框架，业务能力由子插件提供。以下 13 个内置子插件位于本仓库的 `plugins/` 目录，`metadata.toml` 与配置模板 `config.example.yaml` 随仓库提交（`base_nodes` / `prompt_builder` / `pending_tool_fixer` 不读配置，故无模板）；各部署环境的真实 `config.yaml` 一律 gitignore（含根目录），部署时从模板复制一份再改。
+主包只保留图管线本体、checkpointer 适配层、`HandlerRegistry` / `ToolRegistry` / `ChannelRegistry` 三个注册器、`core.Loader` 子插件加载框架，业务能力由子插件提供。以下 14 个内置子插件位于本仓库的 `plugins/` 目录，`metadata.toml` 与配置模板 `config.example.yaml` 随仓库提交（`base_compact` / `base_llm` / `base_nodes` / `prompt_builder` / `pending_tool_fixer` 不读配置，故无模板）；各部署环境的真实 `config.yaml` 一律 gitignore（含根目录），部署时从模板复制一份再改。
 
 > QQ 侧不在本目录 —— `miaoli_qq_channel` 是与 `miaoli_bot` **同级**的独立仓库（`plugins/miaoli_qq_channel/`），自己带两个子插件：`account_injector`（`inject_account` 挂 `on_agent_start`，把账号信息写进提示词）与 `qq_platform_tools`（6 个 QQ 平台工具：发消息 / 下载文件 / 查消息 / 撤回消息 / 戳一戳 / 语音转写）。主包不认识 QQ，只通过 `BaseChannel` 与它对接。
 
 | 子插件 | 提供 |
 |---|---|
-| `base_nodes` | 基础节点 保证图运作正常：`build_client`（`on_turn_start`，`NORMAL`）/ `compact_if_need`（`on_before_request`，`HIGH`）/ `call_llm`（`on_request`，`NORMAL`）/ `invoke_tools`（`on_tool_calling`，`NORMAL`）/ `output_checker`（`on_agent_end`，`LOWEST`）。`compact_if_need` 读模型真实 `context_window` / `max_tokens` 判门槛，过门槛才把 `get_compaction_range` 求出的区间交给 `core.compact.compact_now` 压缩并用 `Overwrite` 拼回；区间外的系统提示词、当前用户原话、工具组原样保留。自带 `README.md` |
+| `base_compact` | 上下文压缩的**库型子插件**：没有节点、不注册任何事件，只对外提供压缩能力。`api/` 转出 `compact_now` / `CompactSuccess` / `CompactFailed` / `estimate_message_tokens`；`core/` 是编排 `compact_now`、逐条渲染 `ChatHistory` 与两个结果类型；`utils/` 是纯函数（token 估算、`extract_*`、`prune_messages`、`truncate_content_if_need`）；`consts/` 持有压缩提示词 `COMPACT_PROMPT` 与标签、常数。`compact_now` 先用 `prune_messages` 算出剪枝前后的 token，再把 `ChatHistory` 渲染的全文按 `max_characters` 截断、连同 `COMPACT_PROMPT` 交给模型；空入参或空摘要返回 `CompactFailed` 而不是抛异常。`base_nodes` 在 `dependences` 里依赖它。自带 `README.md` |
+| `base_llm` | 带重试的模型调用入口，**库里没有节点**：`call_llm(messages, client, *, max_retry=0)` 返回 `(尝试次数, 途中全部异常, 最终回复)`，失败抛 `MaxRetryLimitError`（继承主包的 `BaseBotError`，带 `exceptions` 与 `times`）。`max_retry` 是**总尝试次数上限**，所以 `0` 与 `1` 都只调 1 次；`is_retriable` 目前恒 `False`，任何异常第一次就抛，重试循环是空转的桩 —— 接线时要排除 `400` 类，只对超时 / 限流 / `5xx` 重试。**目前零调用点**：`base_nodes` 的 `call_llm` 节点与 `base_compact` 都还是直接 `client.ainvoke`。自带 `README.md` |
+| `base_nodes` | 基础节点 保证图运作正常：`build_client`（`on_turn_start`，`NORMAL`）/ `compact_if_need`（`on_before_request`，`HIGH`）/ `call_llm`（`on_request`，`NORMAL`）/ `invoke_tools`（`on_tool_calling`，`NORMAL`）/ `output_checker`（`on_agent_end`，`LOWEST`）。`compact_if_need` 读模型真实 `context_window` / `max_tokens` 判门槛，过门槛才把 `get_compaction_range` 求出的区间交给 `base_compact` 的 `compact_now` 压缩并用 `Overwrite` 拼回；区间外的系统提示词、当前用户原话、工具组原样保留。自带 `README.md` |
 | `default_routing` | 默认跳转（edgeless 拓扑的顺序来源）：**一个事件一个节点文件**，8 个节点各返回一条 `Goto`，把拓扑的默认顺序在插件层声明；`on_after_request` 按 `is_tool_calling(messages)` 分流工具循环与收尾。8 个节点全注册在 `MINIMUM`，可被任何子插件抢跑 |
 | `intent_recognition` | 识别用户意图，据此注入本轮的提示内容：`recognize_intent` 挂 `on_turn_start`（`NORMAL`，比 `prompt_builder` 的 `on_before_request` 早一个阶段），按配置的 `workflows` 逐条匹配末条 AI / Human 消息的正文 —— 一个 workflow 的多条 rule 是**「与」关系**（`all()`），全部命中才把该 workflow 的文件内容以 `<name>` 标签拼成一条 `<intent-recognition>` 的 `HumanMessage` **追加进 `messages`**；四种命中方式以 `mode` 为判别字段组成判别式联合：`single_keyword`（单关键字子串）/ `any_keywords`（任意一个命中）/ `min_keywords`（至少命中 `count` 个）/ `regex`（`re.search`）。多模态正文由 `content_to_text` 只收 `text` 块与裸字符串，图片块等跳过（避免 base64 进匹配文本）。`enable` 默认 `false`。自带 `README.md` |
 | `mcp_adapter` | MCP 适配 —— 接入 MCP server 并把其工具追加进本轮工具表：`inject_mcp_tools` 挂 `on_agent_start`（`MEDIUM`），用 `MultiServerMCPClient` 拉取工具后 `add` 进 `runtime.context["tool_surface"]`；必须排在 `pick_tools`（`ON_BEFORE_REQUEST`）之前，否则 MCP 工具会绕过权限过滤。支持 `stdio` / `streamable_http` 两种传输，`tool_prefix` 可给工具名加服务器名前缀，每个 server 可选 `reusable`（工具列表稳定则首次拉取后进缓存，由 `MCPClientRegistry` 管理）。自带 `README.md`。**未完成**：只做追加不做下架 |
-| `meme_ops` | meme 素材库工具：归档 / 发送 / 按 hash 删除；`inject_doc` 挂 `on_agent_start`（`NORMAL`）把 `help_doc.path` 的内容写进 `prompts` 的 `meme-helper` 段，`inject_memes` 同事件把已归档表情包的 `hash: description: tags` 列表写进 `available-memes` 段，模型无需再调工具列举；`enable: false` 时工具与节点都不注册；自带 `README.md` 说明隐私风险 —— 模型可能把用户发的普通图片误归档为表情包 |
 | `miaoli_bot_adapter` | 内部数据适配 + 人格资产：`on_load` 把原生配置 / `PluginConfig` / `workspace` 写进共享容器，`inject_soul` / `inject_output_protocol` 挂 `on_turn_start`（`MEDIUM`）用自己目录下的 `data/SOUL.md` 与 `data/output_protocol.md` 写出 `prompts` 的 `soul` / `output-protocol` 段；`enable: false` 时两个节点不注册。自带 `config.example.yaml` 与 `README.md` |
 | `orphan_tool_fixer` | 修复孤儿工具返回 —— 「有返回没请求」：`fix_orphan_tool_message` 挂 `on_request`（`MEDIUM`），删掉找不到发起 `tool_calls` 的 `ToolMessage`，只产出定向删除增量（`RemoveMessage`），无孤儿时返回 `None` |
 | `pending_tool_fixer` | 修复悬空工具调用 —— 「有请求没返回」：`fix_pending_tool_call` 挂 `on_request`（`MEDIUM`），给 `tool_calls` 与 `invalid_tool_calls` 里没拿到返回的调用各补一条合成 `ToolMessage`（正文分别取 `consts/fix_texts.py` 的 `COMMON_FIX_TEXT` / `INVALID_FIX_TEXT`），返回 `Overwrite` 整表替换，无事可修时返回 `None`；不读配置 |
@@ -206,6 +197,7 @@ miaoli_bot/
 | `web_search` | 联网搜索工具：注册一个 `web_search` 工具（**工具名与后端无关**），`adapter` 选 `langsearch` 或 `deepseek`，请求地址与密钥取自 `config.yaml` 的 `api_url` / `api_key`（模板给的是 langsearch 的 `https://api.langsearch.com/v1/web-search`），原始响应整体交给模型；`adapter` 只影响工具入参 schema 与返回数据形状。另注册 `inject_helper`（`ON_AGENT_START`，`NORMAL`）把使用说明写进 `prompts` 的 `web-search-helper` 段（硬编码在 `consts/prompt.py`）。自带 `README.md` |
 
 > `orphan_tool_fixer` 与 `pending_tool_fixer` 成对：前者治「有返回没请求」，后者治「有请求没返回」。两者互不依赖、各自独立判断，谁先跑都不影响结果（增量折叠对形态不敏感，定向删除与整表替换可以任意顺序组合）；触发场景是上一轮工具执行中途异常／并发冲突导致消息形状坏掉，此后每轮请求模型都会 `400 insufficient tool messages following tool_calls`。
+> `meme_ops` 自 0.53.0 起不在本仓库：它发消息要走通道的 `easier_send`，跟着 QQ 一起搬去了 `miaoli_qq_channel/plugins/meme_ops`。`sub_plugin.load_from` 同时列出两个仓库的 `plugins/` 就照旧加载（本仓库只认目录，不认归属）。
 
 子插件约定：目录下放 `metadata.toml`（`name` / `entry_class` / `description` / `dependences`；`entry_class` 是点号路径如 `main.IntentRecognition`，入口类在 `__init__.py` 里时只写类名）与入库的配置模板 `config.example.yaml`（真实 `config.yaml` 不入库）。加载器对**有** `config.yaml` 的插件做 `yaml.safe_load` 并把 `$workspace` 占位符替换成插件自身目录；缺 `config.yaml` 时 `self.config` 就是 `None`，此时若插件仍去 `PluginConfig.model_validate(self.config)` 就会 `ValidationError` 并在激活阶段被判失败。入口类继承 `PluginProtocol`，在 `on_load` 里用 `api.get_handler_registry().on(event, func, priority)` 挂图节点、`api.register_tool()` 注册工具、`api.store_set()` 写共享容器（都返回注销函数，收进 `self.undo_list`），在 `on_close` 里把 `undo_list` 逐个调用即可摘干净，再释放其它资源。
 
@@ -276,7 +268,7 @@ cd <插件父目录>          # plugins/
 | `langchain-core`（`>=1.6.5`） | `@tool` 工具定义、`BaseMessage` / `BaseChatModel` 等基础类型（主包与子插件都用） |
 | `langgraph-checkpoint-sqlite`（`>=3.1.1`） | `AsyncSqliteSaver`（`checkpointer.database: sqlite`），带 `aiosqlite` / `sqlite-vec` |
 | `langgraph-checkpoint-postgres`（`>=3.1.2`） | `AsyncPostgresSaver`（`checkpointer.database: postgresql`），带 `psycopg` / `psycopg-pool` |
-| `aiosqlite`（`>=0.22.1`） | `SQLiteAdapter` 与 `meme_ops.MemeSqlite` 共用的异步 sqlite 驱动（连接分别由 `close()` / `__aexit__` 关） |
+| `aiosqlite`（`>=0.22.1`） | `SQLiteAdapter` 的异步 sqlite 驱动（连接由 `close()` 关） |
 | `aiofiles`（`>=24.1.0`） | `system_tools` 的 `write` / `replace` 工具异步写盘（`aiofiles.open` + `async with`） |
 | `aiohttp`（`>=3.13.4`） | `web_search` 的联网搜索请求（`ClientSession.post`）；它也是 `ncatbot5` 的传递依赖，此处显式声明 |
 | `psycopg`（`>=3.3.6`）/ `psycopg-pool`（`>=3.3.3`） | `PostgresqlAdapter` 直接 import 的驱动与连接池（`AsyncConnectionPool`） |
@@ -293,8 +285,8 @@ cd <插件父目录>          # plugins/
 
 **已有形态**
 
-- 主包只剩几件事：图管线本体（`core/graph_pipeline/`）、checkpointer 适配层、`HandlerRegistry` / `ToolRegistry` / `ChannelRegistry` 三个注册器（后两者分别用 `ToolSurface` / `ChannelSurface` 给出每轮只读快照）、`core.Loader` 子插件加载框架；`core/llm/call_llm` 是模型调用的重试入口（判据 `is_retriable` 暂为恒 `False` 的桩）。部署只需整目录同步，没有额外的本地包要装
-- 业务全部由 **13 个**子插件提供（见[内置子插件](#内置子插件)）。每个子插件自带 `README.md`，读配置的还带入库的 `config.example.yaml`，真实 `config.yaml` 一律 gitignore，部署时从模板复制
+- 主包只剩几件事：图管线本体（`core/graph_pipeline/`）、checkpointer 适配层、`HandlerRegistry` / `ToolRegistry` / `ChannelRegistry` 三个注册器（后两者分别用 `ToolSurface` / `ChannelSurface` 给出每轮只读快照）、`core.Loader` 子插件加载框架；模型调用的重试入口在 `base_llm` 子插件（判据 `is_retriable` 暂为恒 `False` 的桩）。部署只需整目录同步，没有额外的本地包要装
+- 业务全部由 **14 个**子插件提供（见[内置子插件](#内置子插件)）。每个子插件自带 `README.md`，读配置的还带入库的 `config.example.yaml`，真实 `config.yaml` 一律 gitignore，部署时从模板复制
 - QQ 侧由**平级插件** `miaoli_qq_channel`（独立仓库）提供：事件入口、消息段解析、两个子插件（`account_injector` / `qq_platform_tools`）都在那边；主包只认 `BaseChannel` / `BaseChannelMessage`
 - 链路形态是「事件唤醒 + 定时兜底 + 按会话跑图」：`tick` 任务被 `api.please_run_graph()` 提前唤醒、或每 `tick.interval`（默认 60 秒）兜底醒一次；每个渠道一次 `drain()` 交回全部会话各一条消息，**随后串行逐条跑图**（锁仍按 `thread_id` 分），跑完由 `channel.reply(message.platform, message.thread_id, last.content)` 回给该会话。上下文压缩、工具权限、MCP 接入、联网搜索、表情包、意图识别都已接入，各自能独立开关（`enable`）
 - LLM 客户端可在 `openai` / `deepseek` / `anthropic` 之间切换（`llm.providers[].client`），统一由 `miaoli_bot.api.build_client()` 构建；`Provider` 只描述「连哪儿、用哪家的实现」，客户端实例由 `build_client` 节点每轮现建
@@ -303,7 +295,7 @@ cd <插件父目录>          # plugins/
 **已知短板**
 
 - **通道侧还没交多模态**：`miaoli_qq_channel` 的 `to_content()` 只是把事件逐段渲染成 markdown 文本（`[图片 名 大小](url)` / `[@ id]` / `[回复 id]` …），图片以 NapCat 的 `url` 留在文本里而不是 base64 内容块，模型得自己调工具去取；要真正内联得先把图片转成 base64 内容块。主包这边已经通了（块列表原样进 `HumanMessage`，只带图片块的消息不会被当成空消息丢掉）
-- **重试入口还没接进调用点**：`core/llm/call_llm` 已经能返回「第几次尝试 + 途中全部异常 + 最终回复」，但 `plugins/base_nodes/nodes/call_llm.py` 与 `core/compact/compact_now.py` 两处仍是直接 `client.ainvoke`，而且 `is_retriable` 恒 `False`，所以现在既不会重试、也没有 `max_retry` 配置可调
+- **重试入口还没接进调用点**：`base_llm` 的 `call_llm` 已经能返回「第几次尝试 + 途中全部异常 + 最终回复」，但 `plugins/base_nodes/nodes/call_llm.py` 与 `plugins/base_compact/core/compact_now.py` 两处仍是直接 `client.ainvoke`，而且 `is_retriable` 恒 `False`，所以现在既不会重试、也没有 `max_retry` 配置可调
 - **一轮 tick 串行跑图**：N 个会话的耗时会叠加，最坏要 `N × graph.atimeout` 才走完一轮；换来的是日志按会话成块、归属清楚。要提速就得并发 + 让框架日志带上会话身份（`formatter.py` 目前只打 `message`）
 - **`\n\n` 的切分责任在渠道**：输出协议里「两个换行 = 对方收到两条独立 QQ 消息」，而 `reply` 只拿得到一个 `text`。主包不切，渠道想分条就得自己切
 - **工具只有「谁能用」，没有「能干什么」**：进程以 root 身份运行，`tool_permission_manager` 管的是工具可见性（`allowed` 授权表，未配置即摘除）；`bash` / `write` / `replace` 一旦放行，就没有文件系统边界

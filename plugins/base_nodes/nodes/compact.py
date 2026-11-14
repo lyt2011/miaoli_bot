@@ -1,3 +1,5 @@
+from base_compact.api	import CompactFailed, compact_now, estimate_message_tokens
+
 from langchain_core.messages	import HumanMessage
 
 from langgraph.runtime	import Runtime
@@ -6,7 +8,6 @@ from langgraph.config	import get_config
 
 from miaoli_bot.api		import get_model_info
 from miaoli_bot.models	import GraphRuntimeContext, GraphState
-from miaoli_bot.core	import CompactFailed, compact_now, estimate_message_tokens
 
 from ..utils	import get_compaction_range
 

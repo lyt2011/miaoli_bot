@@ -1,10 +1,10 @@
-from .plugin			import Plugin
-from .plugin_entity		import PluginEntity
-from .utils				import topology_sort_plugins
+from .plugin		import Plugin
+from .plugin_entity	import PluginEntity
+from .utils			import topology_sort_plugins
 
-from contextlib	import suppress
 from pathlib	import Path
 from typing		import Dict, List
+from contextlib	import suppress
 
 import logging
 

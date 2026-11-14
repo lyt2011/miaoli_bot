@@ -1,6 +1,6 @@
 from ...protocols	import BaseChannel, BaseChannelMessage
 
-from typing		import List, Optional, Tuple
+from typing	import List, Optional, Tuple
 
 import asyncio
 import logging

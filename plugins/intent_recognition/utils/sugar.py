@@ -1,6 +1,6 @@
 from langchain_core.messages	import BaseMessage
 
-from typing					import Dict, Union
+from typing	import Dict, Union
 
 
 def build_prompt(dt: Dict[str, str], cr: str = "\n") -> str:	

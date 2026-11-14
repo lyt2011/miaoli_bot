@@ -3,7 +3,7 @@
 | 节点 | 事件 | 优先级 | 作用 |
 | --- | --- | --- | --- |
 | `build_client` | `on_turn_start` | `NORMAL` | 按根配置里的供应商 / 模型名建 LLM 客户端，写进 `runtime.context["client"]` |
-| `compact_if_need` | `on_before_request` | `HIGH` | 历史 token 总量过门槛才压：`get_compaction_range` 求出区间 → `core.compact.compact_now` 压缩 → `Overwrite` 拼回区间外原文 |
+| `compact_if_need` | `on_before_request` | `HIGH` | 历史 token 总量过门槛才压：`get_compaction_range` 求出区间 → `base_compact` 的 `compact_now` 压缩 → `Overwrite` 拼回区间外原文 |
 | `call_llm` | `on_request` | `NORMAL` | 绑工具后请求模型，返回的 `AIMessage` 追加进 `messages` |
 | `invoke_tools` | `on_tool_calling` | `NORMAL` | 用 `ToolNode` 执行模型请求的工具，`ToolMessage` 追加进 `messages` |
 | `output_checker` | `on_agent_end` | `LOWEST` | 检查 `messages[-1]` 的类型：不是 `AIMessage` 就 `Abort`（空列表 / `ToolMessage` / `HumanMessage` / 未知类型四种理由） |

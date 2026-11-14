@@ -1,6 +1,6 @@
 from pydantic	import BaseModel, Field, model_validator
 
-from typing		import List, Literal, Self, Union
+from typing	import List, Literal, Self, Union
 
 
 Allowed = Union[Literal["all"], List[str], None]

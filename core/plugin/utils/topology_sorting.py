@@ -2,7 +2,7 @@ from __future__	import annotations
 
 from ..models	import PluginTopologyRuntime
 
-from typing		import TYPE_CHECKING, Iterable, List
+from typing	import TYPE_CHECKING, Iterable, List
 
 if TYPE_CHECKING:
 	from ..plugin	import Plugin

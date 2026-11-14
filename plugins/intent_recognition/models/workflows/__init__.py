@@ -1,8 +1,8 @@
+from pydantic	import Field
+
 from .file_workflow	import FileWorkflow
 
-from pydantic		import Field
-
-from typing			import Annotated, Union
+from typing	import Annotated, Union
 
 
 Workflow = Annotated[

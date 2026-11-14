@@ -8,7 +8,7 @@ from miaoli_bot.models	import GraphRuntimeContext, GraphState
 from ..consts	import PLUGIN_CONFIG
 from ..utils	import build_prompt, content_to_text
 
-from typing		import Any, Dict, Optional
+from typing	import Any, Dict, Optional
 
 import logging
 

@@ -1,5 +1,5 @@
-from .permission		import Allowed, Permission
 from .plugin_config	import PluginConfig
+from .permission	import Allowed, Permission
 
 
 __all__ = [

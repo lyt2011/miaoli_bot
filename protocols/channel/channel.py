@@ -1,7 +1,7 @@
 from .message	import BaseChannelMessage, Content
 
-from abc	import ABC, abstractmethod
 from typing	import FrozenSet, List
+from abc	import ABC, abstractmethod
 
 
 class BaseChannel(ABC):

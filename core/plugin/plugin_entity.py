@@ -1,7 +1,7 @@
 from __future__	import annotations
 
-from dataclasses	import dataclass, field
 from enum			import Enum, auto
+from dataclasses	import dataclass, field
 from typing			import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:

@@ -46,15 +46,15 @@ class Plugin:
 	def is_package(self) -> bool:
 		return Path(self.path / "__init__.py").is_file()
 	
-	async def load(self) -> None:
+	async def load(self, config: Dict[str, Any]) -> None:
 		
 		"""Plugin 实例生命周期 加载"""
 		
 		if not self.is_package():
 			raise NotAPackageError(f"{self.path} 缺失 __init__.py")
 		
-		self._prepare_config()
 		self._build_package()
+		self._prepare_config(config=config)
 		self._instantiate_plugin()
 		self._inject_data()
 		
@@ -75,17 +75,20 @@ class Plugin:
 		
 		self._instance = None
 	
-	def _prepare_config(self) -> None:
+	def _prepare_config(self, config: Dict[str, Any]) -> None:
 		
 		"""准备插件的 config；没有则跳过"""
 		
-		# 没有则不加载 config
-		cfg_file = Path(self.path / "config.yaml")
-		if not cfg_file.is_file():
-			return None
-		
-		# 加载并给 "$workspace" 占位符注入路径
-		config = yaml.safe_load(cfg_file.read_bytes())
+		# 没有配置覆盖时才加载配置文件
+		if not config:
+			
+			path = Path(self.path / "config.yaml")
+			if not path.is_file():
+				return None
+			
+			config = yaml.safe_load(path.read_bytes())
+	
+		# 给 "$workspace" 占位符注入路径
 		config = inject_workspace(config, str(self.path))
 		
 		self._config = config

@@ -3,7 +3,7 @@ from .plugin_entity	import PluginEntity
 from .utils			import topology_sort_plugins
 
 from pathlib	import Path
-from typing		import Dict, List
+from typing		import Dict, List, Any
 from contextlib	import suppress
 
 import logging
@@ -16,8 +16,8 @@ class Loader:
 	
 	def __init__(self, paths: List[Path]) -> None:
 		
-		self.paths		= paths
-		self.entities	: List[PluginEntity] = []
+		self.paths			= paths
+		self.entities		= []
 	
 	@property
 	def entity_mapping(self) -> Dict[str, PluginEntity]:
@@ -55,10 +55,10 @@ class Loader:
 		LOGGER.info(f"共收集 {len(self.entities)} 个插件: "
 			f"{[entity.plugin.package_name for entity in self.entities]}")
 	
-	async def load_plugins(self) -> None:
+	async def load_plugins(self, configs: Dict[str, Any]) -> None:
 		
 		"""拓扑序加载插件 (含激活)"""
-		
+				
 		for plugin in topology_sort_plugins(self.status["prepared"]):
 			
 			# 依赖没加载成功的 直接跳过
@@ -70,7 +70,7 @@ class Loader:
 				continue
 			
 			try:
-				await plugin.load()
+				await plugin.load(configs.get(plugin.package_name, {}))
 			
 			except Exception as exception:
 				

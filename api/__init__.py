@@ -4,15 +4,14 @@ from .config_ops	import get_root_config
 from .channel_ops	import register_channel
 from .platform_ops	import get_ncatbot_api
 from .registry_ops	import get_handler_registry
-from .store_ops		import (
+from .llm_ops		import (
+	get_model_info,
+	get_provider_info,
+)
+from .store_ops	import (
 	store_recall,
 	store_set,
 	store_contains,
-)
-from .llm_ops	import (
-	build_client,
-	get_model_info,
-	get_provider_info,
 )
 from .sync_ops	import get_invoke_lock, wait_main_ready, please_run_graph
 
@@ -23,7 +22,6 @@ __all__ = [
 	"get_root_config",
 
 	# llm_ops
-	"build_client",
 	"get_model_info",
 	"get_provider_info",
 

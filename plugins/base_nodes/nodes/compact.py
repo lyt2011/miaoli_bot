@@ -24,11 +24,11 @@ async def compact_if_need(state: GraphState, runtime: Runtime[GraphRuntimeContex
 	client		= runtime.context["client"]
 	messages	= state["messages"]
 	tid			= get_config()["configurable"]["thread_id"]
-	config		= get_model_info()
+	model		= get_model_info()
 	
 	# 对当前上下文立即求 tokens 数量 对于当前 token 小于 (上下文 - 最大输出) 保留值则不压缩
 	tokens = sum(estimate_message_tokens(message) for message in messages)
-	if tokens < (config["context_window"] - config["max_tokens"]):
+	if tokens < (model.context_window - model.max_tokens):
 		return None
 
 	compaction_range = get_compaction_range(messages)

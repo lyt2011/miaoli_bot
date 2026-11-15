@@ -1,6 +1,6 @@
 # Miaoli Bot Adapter
 
-miaoli_bot 内部数据适配 —— `on_load` 把根配置解析成 `PluginConfig` 放进 `SHARE_STORE`（子插件经 `miaoli_bot.api.get_root_config()` 取），省得每个节点自己解析 `providers` 列表。LLM 客户端**不再经由本插件**：那件事由 `miaoli_bot.api.build_client()` + `base_nodes` 的 `build_client` 节点负责。
+miaoli_bot 内部数据适配 —— `on_load` 把根配置解析成 `PluginConfig` 放进 `SHARE_STORE`（子插件经 `miaoli_bot.api.get_root_config()` 取），省得每个节点自己解析 `providers` 列表。LLM 客户端**不再经由本插件**：那件事由 `base_llm.api.build_client()` + `base_nodes` 的 `build_client` 节点负责。
 
 此外，**人格与输出协议这两份提示词资产也归本插件持有**（`data/`），主包不再内置任何提示词、也不再提供 `prompt_file` / `get_prompt`。
 

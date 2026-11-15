@@ -181,7 +181,7 @@ class MiaoLiBot(NcatBotPlugin):
 		# 实例化 准备并加载插件
 		self.plugin_loader = Loader(config.sub_plugin.load_from)
 		self.plugin_loader.prepare_plugins()
-		await self.plugin_loader.load_plugins()
+		await self.plugin_loader.load_plugins(config.sub_plugin.overwrite)
 		
 		# 启动tick任务并严肃制作回调
 		def _reset_task(task: asyncio.Task) -> None:

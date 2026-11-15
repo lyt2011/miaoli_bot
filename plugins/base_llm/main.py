@@ -3,7 +3,7 @@ from miaoli_bot.core	import PluginProtocol
 
 class BaseLLM(PluginProtocol):
 	
-	"""带重试的模型调用入口 只提供调用逻辑不挂任何节点"""
+	"""模型接入层 提供 build_client 与带重试的 call_llm 不挂任何节点"""
 	
 	async def on_load(self) -> None:
 		pass

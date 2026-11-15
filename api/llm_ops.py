@@ -1,98 +1,34 @@
-from langchain_anthropic	import ChatAnthropic
-
-from langchain_core.language_models	import BaseChatModel
-
-from langchain_deepseek	import ChatDeepSeek
-
-from langchain_openai	import ChatOpenAI
-
 from ..core		import SHARE_STORE
 from ..consts	import PLUGIN_CONFIG
 from ..models	import LLM, Provider
-from ..errors	import ClientNotFound, ModelNotFound, ProviderNotFound
-
-from typing	import Any, Dict, Optional, Type, Union
+from ..errors	import ModelNotFound, ProviderNotFound
 
 
-CLIENT_MAPPING = {
-	"deepseek": ChatDeepSeek,
-	"openai": ChatOpenAI,
-	"anthropic": ChatAnthropic,
-}
-
-
-def get_model_info() -> Dict[str, Any]:
+def get_model_info() -> LLM:
 	
-	"""获取当前使用的模型信息"""
+	"""获取当前使用的模型对象 找不到就抛 ModelNotFound"""
 	
-	config = SHARE_STORE.recall(PLUGIN_CONFIG)
+	config		= SHARE_STORE.recall(PLUGIN_CONFIG)
+	provider	= get_provider_info()
 	
-	# PluginConfig 保证他们同时存在
-	provider	= _get_provider(config.llm.provider)
-	model		= _get_model(config.llm.model, provider)
+	mapping	= {md.name: md for md in provider.models}
+	model	= mapping.get(config.llm.model, None)
 	
-	return model.model_dump()
-
-def get_provider_info() -> Dict[str, Any]:
-	"""获取当前使用的供应商信息"""
-	return _get_provider(SHARE_STORE.recall(PLUGIN_CONFIG).llm.provider).model_dump()
-
-def build_client(
-	provider_name	: Optional[str] = None,
-	model_name		: Optional[str] = None,
-) -> BaseChatModel:
-	
-	"""构建 BaseChatModel"""
-	
-	config = SHARE_STORE.recall(PLUGIN_CONFIG)
-	
-	# 参数不传则 plugin_config 定义的
-	provider_name	= provider_name or config.llm.provider
-	model_name		= model_name or config.llm.model
-	
-	# 拿 provider 对象
-	if (provider := _get_provider(provider_name)) is None:
-		raise ProviderNotFound(f"供应商 '{provider_name}' 未配置")
-	
-	# 通过 provider 对象 拿 model 对象
-	if (model := _get_model(model_name, provider)) is None:
-		raise ModelNotFound(f"供应商 '{provider_name}' 未配置 '{model_name}' 模型")
-	
-	# 通过 provider 对象声明的 client 拿 BaseChatModel 类
-	if (client_cls := _get_client_cls(provider.client)) is None:
-		raise ClientNotFound(f"{provider.client} 没有相应的适配器")
-	
-	# 构建 BaseChatModel 实例
-	client = client_cls(
-		base_url	= provider.base_url,
-		api_key		= provider.api_key,
-		model		= model.name,
-		max_tokens	= model.max_tokens
-	)
-	
-	return client
-
-
-def _get_provider(name: str) -> Union[Provider, None]:
-	
-	"""内部实现 获取 provider 对象"""
-	
-	config	= SHARE_STORE.recall(PLUGIN_CONFIG)
-	
-	providers_mapping	= {pv.name: pv for pv in config.llm.providers}
-	provider			= providers_mapping.get(name, None)
-	
-	return provider
-
-def _get_model(name: str, from_provider: Provider) -> Union[LLM, None]:
-	
-	"""内部实现 从 provider 获取 LLM 对象"""
-	
-	models_mapping	= {md.name: md for md in from_provider.models}
-	model			= models_mapping.get(name, None)
+	if model is None:
+		raise ModelNotFound(f"供应商 '{provider.name}' 未配置 '{config.llm.model}' 模型")
 	
 	return model
 
-def _get_client_cls(client: str) -> Union[Type[BaseChatModel], None]:
-	"""内部实现 从 CLIENT_MAPPING 拿 BaseChatModel 类"""
-	return CLIENT_MAPPING.get(client)
+def get_provider_info() -> Provider:
+	
+	"""获取当前使用的供应商对象 找不到就抛 ProviderNotFound"""
+	
+	config = SHARE_STORE.recall(PLUGIN_CONFIG)
+	
+	mapping		= {pv.name: pv for pv in config.llm.providers}
+	provider	= mapping.get(config.llm.provider, None)
+	
+	if provider is None:
+		raise ProviderNotFound(f"供应商 '{config.llm.provider}' 未配置")
+	
+	return provider

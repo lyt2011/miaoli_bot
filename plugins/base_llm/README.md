@@ -1,23 +1,34 @@
 # Base LLM
 
-带重试的模型调用入口 —— **库里没有节点**，不注册任何事件，只提供 `call_llm` 一个函数。
+模型接入层 —— **库里没有节点**，不注册任何事件，提供两个能力：`build_client`（把根配置变成一个 `BaseChatModel` 实例）与 `call_llm`（带重试地发一次请求）。
 
 ## 为什么单独成插件
 
-主包里「怎么发一次模型请求」这件事被拆成了两处：`api.build_client` 建客户端，各处自己 `await client.ainvoke(messages)`。一旦要加退避、要按异常类型分流、要统计失败次数，每个调用点都得抄一遍。
+「模型」这件事原来被摊在主包里：`api/llm_ops.py` 同时管着根配置的 `llm` 段解析（`build_client` / `get_model_info`）和三个 langchain 供应商实现的选择表（`CLIENT_MAPPING`），而调用点各自 `await client.ainvoke(messages)` —— 一旦要加退避、按异常类型分流、统计失败次数，每个调用点都得抄一遍。
 
-`call_llm` 把这一段收成唯一入口：谁要调模型就调它，重试策略只在这里长。它是纯逻辑，跟图、跟事件、跟会话都无关，所以放主包只是历史原因，搬出来才能独立演进。
+于是把「配置 → 客户端」的翻译（`build_client` / `CLIENT_MAPPING` / `get_client_cls`）和「客户端 → 回复」的调用（`call_llm`）都收进这里：主包不再 import 任何 `langchain_openai` / `langchain_deepseek` / `langchain_anthropic`，对「有哪些供应商实现」彻底无感，只保留根配置的 schema（`PluginConfig.llm` 必须在启动时校验）。
+
+**配置 schema 不在这里**，它属于主包的根配置模型：子插件反向给主包提供类型会破坏单向依赖，也会让 `config.yaml` 的 `llm` 段从「启动即校验」退化成「插件加载时才校验」。
 
 ## 目录
 
 | 路径 | 内容 |
 |---|---|
-| `api/` | 对外门面：`call_llm` / `is_retriable` / `MaxRetryLimitError` |
-| `core/` | 重试循环本体 |
-| `utils/` | 异常可重试判据（**目前恒 `False`**） |
+| `api/` | 对外门面：只转出两个能力 `build_client` / `call_llm`。常量、工具函数与异常类不在这里中转，要用就 `from base_llm.consts` / `base_llm.utils` / `base_llm.errors` |
+| `core/` | `build_client`（配置 → 客户端）+ `call_llm`（重试循环本体） |
+| `consts/` | `CLIENT_MAPPING`：`openai` / `deepseek` / `anthropic` 对应的 langchain 实现 |
+| `utils/` | `get_client_cls`（查实现类）+ `is_retriable`（异常可重试判据，**目前恒 `False`**） |
 | `errors/` | 尝试次数耗尽时抛的异常，继承主包的 `BaseBotError` |
 
 ## 对外契约
+
+`api/` 只放「做什么」：`build_client` 与 `call_llm`。异常类、常量表、工具函数各有自己的层，直接从那层 import —— 不经过 `api` 中转，免得多一条要同步的出口。
+
+```python
+def build_client(provider_name: str, model_name: str) -> BaseChatModel
+```
+
+从根配置（`miaoli_bot.api.get_root_config()`）里按名字找 provider 与 model，再按 `provider.client` 选实现类。找不到分别抛主包的 `ProviderNotFound` / `ModelNotFound` / `ClientNotFound`。名字必须显式传 —— 不再像以前那样不传就取 `config.llm.provider`，这样调用方可以给压缩、给判定单独指定便宜的模型。
 
 ```python
 async def call_llm(
@@ -48,9 +59,11 @@ max_retry=3  →  最多调 3 次，第 3 次失败抛（times=3）
 
 真正接进去时要决定的是：哪些异常值得重试。至少得排除 `400` 类（消息形状坏、参数错、鉴权失败），这些重试一百次也一样；超时、限流、`5xx` 才有意义。这是有意留的桩，不是漏写。
 
-## 现状：零调用点
+## 现状：`call_llm` 零调用点
 
-`base_nodes/nodes/call_llm.py`（节点）与 `base_compact/core/compact_now.py` 目前都还是直接 `await client.ainvoke(...)`。
+`build_client` 已接线：`base_nodes/nodes/build_client.py` 在 `ON_TURN_START` 里用它建客户端（`metadata.toml` 里 `base_nodes` 声明了对本插件的依赖）。
+
+但 `call_llm` 还没接：`base_nodes/nodes/call_llm.py`（节点）与 `base_compact/core/compact_now.py` 目前都还是直接 `await client.ainvoke(...)`。
 
 节点那个 `call_llm` 与本插件的 `call_llm` **是两个不同的东西**：节点签名是 `(state, runtime)`，本插件是 `(messages, client, *, max_retry)`。搬过来只是把能力放到了能独立演进的位置，接线还没做。
 

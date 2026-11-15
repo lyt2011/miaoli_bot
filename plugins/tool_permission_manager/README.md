@@ -50,8 +50,8 @@ permissions:
 
 新增工具后记得补条目，否则它会被默认摘除。
 
-> ✅ **`config.yaml` 缺失时 `enable` / `debug` 都走默认值 `true`**，即「插件照常生效 + 打印 warning」。
-> 此时授权表为空，所有工具都会被摘掉（默认拒绝）—— 宁可误杀，也不会漏放重要工具。
+> ⚠️ **必须提供 `config.yaml` 且能解析成字典**：缺文件时 `PluginConfig.model_validate(None)` 直接抛 `ValidationError`，插件加载失败 —— 字段默认值（`enable` / `debug` 为 `true`、`permissions` 为空表）只在有配置对象时生效。
+> 授权表为空 = 全部拒绝：所有工具都会被摘掉 —— 宁可误杀，也不会漏放重要工具。
 > 日志里能看到每个被隐藏的工具名，照它往 `permissions` 里补条目即可。
 
 ## 文件结构

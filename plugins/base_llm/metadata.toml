@@ -1,4 +1,4 @@
 name = "base_llm"
 entry_class = "main.BaseLLM"
-description = "带重试的模型调用入口 只提供调用逻辑不挂节点"
+description = "模型接入层 配置转客户端与带重试的模型调用 只提供能力不挂节点"
 dependences = []

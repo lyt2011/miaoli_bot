@@ -4,3 +4,6 @@ description = "基础节点 保证图运作正常"
 [[dependences]]
 name = "base_compact"
 version = "0.1.0"
+[[dependences]]
+name = "base_llm"
+version = "0.1.0"

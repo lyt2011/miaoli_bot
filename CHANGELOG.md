@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.55.0](CHANGELOG/v0.55.0.md) — 2026-11-15 — 🧱 图的进出口收成 `state["input"]` / `state["output"]`，`main.py` 不再拼 `HumanMessage`、也不再从 `messages` 末条猜回复（破坏性）
 - [v0.54.1](CHANGELOG/v0.54.1.md) — 2026-11-15 — 📝 人设与输出协议按真人闲聊语料实测收紧：话尾改偶尔用、一轮通常两条、新增长度与收尾约束
 - [v0.54.0](CHANGELOG/v0.54.0.md) — 2026-11-15 — 🧱 模型客户端工厂搬进 `base_llm`，`api.get_model_info` / `get_provider_info` 改返回对象（破坏性）
 - [v0.53.0](CHANGELOG/v0.53.0.md) — 2026-11-14 — 🧱 压缩与重试挖成库型子插件 `base_compact` / `base_llm`，`easier_send` 与 `meme_ops` 迁去 `miaoli_qq_channel`；主包不再认识 QQ、不持有提示词资产（破坏性）

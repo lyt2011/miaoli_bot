@@ -1,5 +1,3 @@
-from langchain_core.messages	import HumanMessage, AIMessage
-
 from langgraph.checkpoint.base	import BaseCheckpointSaver
 
 from ncatbot.core	import registrar
@@ -290,13 +288,9 @@ class MiaoLiBot(NcatBotPlugin):
 		if not content or (isinstance(content, str) and not content.strip()):
 			return None
 		
-		# 构建 HumanMessage
-		human = HumanMessage(content,
-			additional_kwargs={"platform": message.platform})
-		
 		state = await safe_run_graph(
 			{
-				"messages": [human],
+				"input": content,
 			},
 			{
 				"tool_surface": SHARE_STORE.recall(TOOL_REGISTRY).to_surface(),
@@ -315,8 +309,8 @@ class MiaoLiBot(NcatBotPlugin):
 				self.logger.error(f"渠道 {channel.name}: "
 					f"{message.thread_id} 跑图时出现异常: {type(state).__name__}: {state}", exc_info=state)
 			
-			case {"messages": [*_, last]} if isinstance(last, AIMessage):
-				await channel.reply(message.platform, message.thread_id, last.content)
+			case {"output": out}:
+				await channel.reply(message.platform, message.thread_id, out)
 			
 			case _:
 				self.logger.error(f"渠道 {channel.name}: "

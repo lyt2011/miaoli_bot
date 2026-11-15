@@ -1,9 +1,9 @@
 from miaoli_bot.core	import PluginProtocol
-from miaoli_bot.consts	import MEDIUM, ON_TURN_START
+from miaoli_bot.consts	import MEDIUM, TRIVIAL, ON_AGENT_END, ON_AGENT_START, ON_TURN_START
 from miaoli_bot.api		import store_set, get_handler_registry
 
 from .models	import PluginConfig
-from .nodes		import inject_soul, inject_output_protocol
+from .nodes		import inject_soul, inject_output_protocol, input_to_messages, messages_to_output
 from .consts	import PLUGIN_CONFIG, RAW_CONFIG, WORKSPACE
 
 
@@ -31,10 +31,19 @@ class MiaoliBotAdapter(PluginProtocol):
 			return None
 		
 		self.undo_list.append(
+			registry.on(ON_AGENT_START, input_to_messages, priority=MEDIUM),
+		)
+		self.undo_list.append(
 			registry.on(ON_TURN_START, inject_soul, priority=MEDIUM),
 		)
 		self.undo_list.append(
 			registry.on(ON_TURN_START, inject_output_protocol, priority=MEDIUM),
+		)
+		
+		# 优先级要低于 output_checker(LOWEST) 借它确认完末条是 AIMessage 再搬
+		# 又要高于 default_routing 的 MINIMUM 否则会被它的 Goto(END) 短路掉
+		self.undo_list.append(
+			registry.on(ON_AGENT_END, messages_to_output, priority=TRIVIAL),
 		)
 	
 	async def on_close(self) -> None:

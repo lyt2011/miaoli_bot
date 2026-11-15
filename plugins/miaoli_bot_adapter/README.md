@@ -9,7 +9,7 @@ miaoli_bot 内部数据适配 —— `on_load` 把根配置解析成 `PluginConf
 | 插件 | 负责的输入 | 产出 |
 | --- | --- | --- |
 | `miaoli_qq_channel`（**平级插件**，与本包同级目录，不是本包的子插件） | **信息**：QQ 事件 / 消息段（ncatbot 的 `MessageEvent`） | **结构化输入**：它自带的 `QQChannel`（`name = "qq"`，经 `miaoli_bot.api.register_channel()` 进 `ChannelRegistry`），`drain()` 给出 `BaseChannelMessage`，`to_text()` 交出这一回合的文本、`thread_id` 说明它属于哪个会话 |
-| `miaoli_bot_adapter`（本插件） | **miaoli_bot 内部数据**：根配置 + 人格资产（`SOUL.md` / `output_protocol.md`） | 根配置 → `SHARE_STORE`；人格资产 → `prompts` 的 `soul` / `output-protocol` 段 |
+| `miaoli_bot_adapter`（本插件） | **miaoli_bot 内部数据**：根配置 + 人格资产（`SOUL.md` / `output_protocol.md`）+ 图的进出口（`input` / `output`） | 根配置 → `SHARE_STORE`；人格资产 → `prompts` 的 `soul` / `output-protocol` 段；`input` → 一条 `HumanMessage`，末条消息 → `output` |
 
 `miaoli_qq_channel` 让图节点不必依赖 ncatbot 的事件类（它的消息段模型在 `plugins/qq_platform_tools/models/messages/`，入库结构是 `core/channel/qq_channel_message.py`），本插件让图节点不必依赖 miaoli_bot 的根配置结构。
 
@@ -17,10 +17,16 @@ miaoli_bot 内部数据适配 —— `on_load` 把根配置解析成 `PluginConf
 
 | 节点 | 事件 / 优先级 | 产出 |
 | --- | --- | --- |
+| `input_to_messages` | `on_agent_start`（`MEDIUM`） | 把 `state["input"]` 包成一条 `HumanMessage` 追加进 `messages` |
 | `inject_soul` | `on_turn_start`（`MEDIUM`） | `prompts` 的 `soul` 段，内容是 `data/SOUL.md` 全文 |
 | `inject_output_protocol` | `on_turn_start`（`MEDIUM`） | `prompts` 的 `output-protocol` 段，内容是 `data/output_protocol.md` 全文 |
+| `messages_to_output` | `on_agent_end`（`TRIVIAL`） | 把 `messages[-1].content` 写进 `state["output"]` |
 
-两个节点都挂 `on_turn_start`，比 `prompt_builder` 的 `on_before_request` 早一个事件，所以它们写的段一定赶在拼装之前就位。
+`inject_soul` / `inject_output_protocol` 挂 `on_turn_start`，比 `prompt_builder` 的 `on_before_request` 早一个事件，所以它们写的段一定赶在拼装之前就位。
+
+`input_to_messages` / `messages_to_output` 是图的**进出口**：调用方只往 `state["input"]` 里放 `to_content()` 的原样返回，不再自己拼 `HumanMessage`；出图时同理，`main.py` 只读 `state["output"]`，不再从 `messages` 末条里猜回复。两个字段都是 `UntrackedValue` 通道，**不落 checkpoint**，所以每轮调用方必须重新给 `input`。
+
+`messages_to_output` 注册在 `TRIVIAL`（`-1000`）：要排在 `base_nodes` 的 `output_checker`（`LOWEST`，`-100`）之后借它确认末条是 `AIMessage`，又要排在 `default_routing` 的 `on_agent_end`（`MINIMUM`，`-9999`）之前 —— 那个节点返回 `Goto(END)`，同优先级下会短路后面所有处理器。末条不是 `AIMessage`、或带 `tool_calls` / `invalid_tool_calls` 时它返回 `Abort` 而不是写值。
 
 ## 人格资产
 
@@ -44,7 +50,7 @@ miaoli_bot_adapter/
 ├── consts/                     # SHARE_STORE 键（PLUGIN_CONFIG / RAW_CONFIG / WORKSPACE）
 ├── data/                       # 人格资产（SOUL.md / output_protocol.md）
 ├── models/                     # PluginConfig
-└── nodes/                      # inject_soul / inject_output_protocol
+└── nodes/                      # input_to_messages / inject_soul / inject_output_protocol / messages_to_output
 ```
 
 ## 配置

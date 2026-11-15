@@ -10,6 +10,7 @@
 
 ## 索引
 
+- [v0.54.1](CHANGELOG/v0.54.1.md) — 2026-11-15 — 📝 人设与输出协议按真人闲聊语料实测收紧：话尾改偶尔用、一轮通常两条、新增长度与收尾约束
 - [v0.54.0](CHANGELOG/v0.54.0.md) — 2026-11-15 — 🧱 模型客户端工厂搬进 `base_llm`，`api.get_model_info` / `get_provider_info` 改返回对象（破坏性）
 - [v0.53.0](CHANGELOG/v0.53.0.md) — 2026-11-14 — 🧱 压缩与重试挖成库型子插件 `base_compact` / `base_llm`，`easier_send` 与 `meme_ops` 迁去 `miaoli_qq_channel`；主包不再认识 QQ、不持有提示词资产（破坏性）
 - [v0.52.0](CHANGELOG/v0.52.0.md) — 2026-11-14 — 🔁 模型调用收出 `core/llm/call_llm` 带重试入口 + `MaxRetryLimitError`（重试判据暂留恒 False 的桩）；人设重写：称呼固定「杂鱼」、越界请求改成「不做不陪聊 + 岔开」、话尾三个符号分工写清

@@ -1,4 +1,4 @@
 name = "miaoli_bot_adapter"
 entry_class = "main.MiaoliBotAdapter"
-description = "内部数据适配 + 人格资产：根配置 → state，SOUL.md / output_protocol.md → prompts"
+description = "内部数据适配 + 人格资产：根配置 → state，SOUL.md → prompts"
 dependences = []

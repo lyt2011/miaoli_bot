@@ -3,7 +3,7 @@ from miaoli_bot.consts	import MEDIUM, TRIVIAL, ON_AGENT_END, ON_AGENT_START, ON_
 from miaoli_bot.api		import store_set, get_handler_registry
 
 from .models	import PluginConfig
-from .nodes		import inject_soul, inject_output_protocol, input_to_messages, messages_to_output
+from .nodes		import inject_soul, input_to_messages, messages_to_output
 from .consts	import PLUGIN_CONFIG, RAW_CONFIG, WORKSPACE
 
 
@@ -35,9 +35,6 @@ class MiaoliBotAdapter(PluginProtocol):
 		)
 		self.undo_list.append(
 			registry.on(ON_TURN_START, inject_soul, priority=MEDIUM),
-		)
-		self.undo_list.append(
-			registry.on(ON_TURN_START, inject_output_protocol, priority=MEDIUM),
 		)
 		
 		# 优先级要低于 output_checker(LOWEST) 借它确认完末条是 AIMessage 再搬
